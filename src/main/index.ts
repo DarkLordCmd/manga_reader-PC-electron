@@ -18,6 +18,7 @@ import { runLoginWindow } from './services/login'
 import { probeSocks5Handshake, probeBridgeLine, probeSite, allSiteKeys } from './services/tor-check'
 import { fetchEhTagSuggest, fetchNhentaiTagSuggestions } from './services/tags'
 import { fetchCoverBuffer } from './services/covers'
+import { parseMangaPageUrl } from './services/page-url'
 import { ExAccountsService } from './services/accounts'
 import { CH } from '@shared/ipc'
 
@@ -120,8 +121,13 @@ app.whenReady().then(() => {
       }
     }
 
-    const gid = url.hostname
-    const index = Number(parts[0])
+    // Renderer requests pages as `manga://page/<galleryId>/<index>`, so the
+    // gallery id lives in the first path segment when hostname is "page".
+    const parsed = parseMangaPageUrl(request.url)
+    if (!parsed) return new Response('Not found', { status: 404 })
+    const gid = parsed.gid
+    const index = parsed.index
+
     const local = galleries.get(gid)
     if (local) {
       if (!Number.isInteger(index) || index < 0 || index >= local.pages.length) {
