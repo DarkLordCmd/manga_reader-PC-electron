@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useStore } from '../state/store'
+import type { TorStatus, BridgeStatus, SiteStatus } from '@shared/ipc'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
   return (
@@ -23,6 +24,10 @@ const TOR_SITES: { key: string; label: string }[] = [
 export default function Settings(): JSX.Element {
   const { settings, setSettings } = useStore()
   const [loginMsg, setLoginMsg] = useState<string | null>(null)
+  const [torStatus, setTorStatus] = useState<TorStatus | null>(null)
+  const [torChecking, setTorChecking] = useState(false)
+  const [bridgeResults, setBridgeResults] = useState<BridgeStatus[] | null>(null)
+  const [siteResults, setSiteResults] = useState<SiteStatus[] | null>(null)
 
   const upd = (patch: Partial<typeof settings>): void => setSettings({ ...settings, ...patch })
 
@@ -127,7 +132,22 @@ export default function Settings(): JSX.Element {
               value={settings.tor_socks_addr}
               onChange={(e) => upd({ tor_socks_addr: e.target.value })}
             />
+            <button
+              disabled={torChecking}
+              onClick={async () => {
+                setTorChecking(true)
+                setTorStatus(null)
+                try { setTorStatus(await window.api.checkTor()) } finally { setTorChecking(false) }
+              }}
+            >Проверить Tor</button>
           </div>
+          {torStatus && (
+            <div className={`check-result ${torStatus.state === 'connected' ? 'ok' : 'bad'}`}>
+              {torStatus.state === 'connected'
+                ? `✓ Tor работает (${torStatus.latencyMs} мс)`
+                : `✗ Tor недоступен: ${torStatus.reason}`}
+            </div>
+          )}
           <div className="row">
             <label>Трафик сайтов через Tor:</label>
           </div>
@@ -142,6 +162,43 @@ export default function Settings(): JSX.Element {
               </label>
             ))}
           </div>
+          <div className="row">
+            <label>Мосты Tor (по одному на строку):</label>
+          </div>
+          <textarea
+            className="cookie-input"
+            rows={3}
+            value={settings.tor_bridges}
+            placeholder={'obfs4 192.0.2.1:443 FINGERPRINT cert=... iat-mode=0'}
+            onChange={(e) => upd({ tor_bridges: e.target.value })}
+          />
+          <div className="row">
+            <button onClick={async () => {
+              const lines = settings.tor_bridges.split('\n').map((l) => l.trim()).filter(Boolean)
+              setBridgeResults(lines.length ? await window.api.checkBridges(lines) : [])
+            }}>Проверить мосты</button>
+            <button onClick={async () => setSiteResults(await window.api.checkSites())}>Доступность сайтов</button>
+          </div>
+          {bridgeResults && (
+            <div className="check-list">
+              {bridgeResults.map((b) => (
+                <div key={b.line} className={`check-result ${b.state === 'reachable' ? 'ok' : 'bad'}`}>
+                  {b.state === 'reachable' ? '✓' : b.state === 'unparsable' ? '⚠' : '✗'} {b.line}
+                  {b.state === 'reachable' && b.latencyMs != null ? ` (${b.latencyMs} мс)` : b.reason ? ` — ${b.reason}` : ''}
+                </div>
+              ))}
+            </div>
+          )}
+          {siteResults && (
+            <div className="check-list">
+              {siteResults.map((s) => (
+                <div key={s.key} className={`check-result ${s.state === 'up' ? 'ok' : 'bad'}`}>
+                  {s.state === 'up' ? '✓' : '✗'} {s.key}
+                  {s.state === 'down' && s.reason ? ` — ${s.reason}` : ''}
+                </div>
+              ))}
+            </div>
+          )}
           <div className="row">
             <label>ExHentai (onion) куки:</label>
             <textarea

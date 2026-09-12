@@ -13,6 +13,8 @@ import {
 } from './services/sources'
 import { searchExHentai, searchMangaShi, searchNhentai, searchRemanga, searchSenkuro, searchSimpleSite } from './services/catalog-search'
 import { runLoginWindow } from './services/login'
+import { probeSocks5Handshake, probeBridgeLine, probeSite, allSiteKeys } from './services/tor-check'
+import { fetchEhTagSuggest, fetchNhentaiTagSuggestions } from './services/tags'
 import { CH } from '@shared/ipc'
 
 const galleries = new Map<string, Gallery>()
@@ -281,6 +283,28 @@ app.whenReady().then(() => {
     else if (url.includes('nhentai')) next.nhentai_onion_cookies_raw = result.cookies
     settings.save(next)
     return result.cookies
+  })
+  ipcMain.handle(CH.ehTagSuggest, async (_e, text: string) => {
+    const s = settings.get()
+    const proxy = s.tor_proxied_sites.includes('ehentai') ? (s.tor_socks_addr || '127.0.0.1:9150') : undefined
+    return await fetchEhTagSuggest(text, { proxy, cookieHeader: s.onion_cookies_raw })
+  })
+  ipcMain.handle(CH.nhentaiTagSuggest, async (_e, text: string) => {
+    const s = settings.get()
+    const proxy = s.tor_proxied_sites.includes('nhentai') ? (s.tor_socks_addr || '127.0.0.1:9150') : undefined
+    return await fetchNhentaiTagSuggestions(text, { proxy })
+  })
+  ipcMain.handle(CH.checkTor, async () => {
+    const s = settings.get()
+    return await probeSocks5Handshake(s.tor_socks_addr || '127.0.0.1:9150')
+  })
+  ipcMain.handle(CH.checkBridges, async (_e, lines: string[]) => {
+    return await Promise.all(lines.map((line) => probeBridgeLine(line)))
+  })
+  ipcMain.handle(CH.checkSites, async () => {
+    const s = settings.get()
+    const torAddr = s.tor_socks_addr || '127.0.0.1:9150'
+    return await Promise.all(allSiteKeys().map((key) => probeSite(key, torAddr, s.tor_proxied_sites)))
   })
   ipcMain.handle(CH.setReadingPosition, (_e, gid: string, index: number) => {
     setReadingPosition(gid, index)

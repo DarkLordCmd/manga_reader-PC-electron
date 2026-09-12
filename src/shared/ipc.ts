@@ -34,6 +34,12 @@ export interface CatalogCard {
   score?: number | null
 }
 
+export interface EhTagSuggestion { ns: string; tn: string; display: string }
+export interface NhentaiTagSuggestion { name: string; count: number }
+export interface TorStatus { state: string; latencyMs?: number; reason?: string }
+export interface BridgeStatus { line: string; state: string; latencyMs?: number; reason?: string }
+export interface SiteStatus { key: string; state: string; reason?: string }
+
 export interface Api {
   getSettings(): Promise<Settings>
   setSettings(s: Settings): Promise<void>
@@ -47,6 +53,11 @@ export interface Api {
   searchCatalog(source: string, query: string, page: number, sort: string): Promise<CatalogCard[]>
   loginSite(url: string): Promise<string | null>
   setReadingPosition(id: string, index: number): Promise<void>
+  ehTagSuggest(text: string): Promise<EhTagSuggestion[]>
+  nhentaiTagSuggest(text: string): Promise<NhentaiTagSuggestion[]>
+  checkTor(): Promise<TorStatus>
+  checkBridges(lines: string[]): Promise<BridgeStatus[]>
+  checkSites(): Promise<SiteStatus[]>
 }
 
 export const CH = {
@@ -62,6 +73,11 @@ export const CH = {
   searchCatalog: 'catalog:search',
   loginSite: 'login:site',
   setReadingPosition: 'reader:position',
+  ehTagSuggest: 'tags:eh',
+  nhentaiTagSuggest: 'tags:nhentai',
+  checkTor: 'tor:check',
+  checkBridges: 'tor:bridges',
+  checkSites: 'sites:check',
   settingsChanged: 'settings:changed'
 } as const
 

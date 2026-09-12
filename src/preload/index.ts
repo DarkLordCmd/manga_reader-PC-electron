@@ -13,7 +13,12 @@ const api: Api = {
   fetchChapterList: (mangaId) => ipcRenderer.invoke(CH.fetchChapterList, mangaId),
   searchCatalog: (source, query, page, sort) => ipcRenderer.invoke(CH.searchCatalog, source, query, page, sort),
   loginSite: (url) => ipcRenderer.invoke(CH.loginSite, url),
-  setReadingPosition: (id, index) => ipcRenderer.invoke(CH.setReadingPosition, id, index)
+  setReadingPosition: (id, index) => ipcRenderer.invoke(CH.setReadingPosition, id, index),
+  ehTagSuggest: (text) => ipcRenderer.invoke(CH.ehTagSuggest, text),
+  nhentaiTagSuggest: (text) => ipcRenderer.invoke(CH.nhentaiTagSuggest, text),
+  checkTor: () => ipcRenderer.invoke(CH.checkTor),
+  checkBridges: (lines) => ipcRenderer.invoke(CH.checkBridges, lines),
+  checkSites: () => ipcRenderer.invoke(CH.checkSites)
 }
 
 contextBridge.exposeInMainWorld('api', api)

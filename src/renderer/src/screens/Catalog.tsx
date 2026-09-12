@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '../state/store'
-import type { CatalogCard, ChapterListItem } from '@shared/ipc'
+import type { CatalogCard, ChapterListItem, EhTagSuggestion, NhentaiTagSuggestion } from '@shared/ipc'
 import MangaCardGrid from '../components/MangaCardGrid'
 
 const SOURCES: { key: string; label: string }[] = [
@@ -25,7 +25,7 @@ const SORTS: { key: string; label: string }[] = [
 ]
 
 export default function Catalog(): JSX.Element {
-  const { setScreen, setOpened } = useStore()
+  const { setScreen, setOpened, settings, setSettings } = useStore()
   const [source, setSource] = useState('mangadex')
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState('relevance')
@@ -36,6 +36,28 @@ export default function Catalog(): JSX.Element {
   const [picked, setPicked] = useState<CatalogCard | null>(null)
   const [chapters, setChapters] = useState<ChapterListItem[] | null>(null)
   const [chapterError, setChapterError] = useState<string | null>(null)
+  const [tagQuery, setTagQuery] = useState('')
+  const [ehTags, setEhTags] = useState<EhTagSuggestion[]>([])
+  const [nhTags, setNhTags] = useState<NhentaiTagSuggestion[]>([])
+
+  const tagSource = source === 'exhentai' || source === 'exhentai_onion' || source === 'ehentai'
+  const nhTagSource = source === 'nhentai' || source === 'nhentai_onion'
+
+  useEffect(() => {
+    if (tagQuery.trim().length < 2) { setEhTags([]); setNhTags([]); return }
+    const t = setTimeout(async () => {
+      if (tagSource) setEhTags(await window.api.ehTagSuggest(tagQuery))
+      else if (nhTagSource) setNhTags(await window.api.nhentaiTagSuggest(tagQuery))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [tagQuery, tagSource, nhTagSource])
+
+  const appendTag = (tag: string): void => {
+    setQuery((q) => (q.trim() ? `${q.trim()} ${tag}` : tag))
+    setTagQuery('')
+    setEhTags([])
+    setNhTags([])
+  }
 
   const search = async (p: number): Promise<void> => {
     setLoading(true)
@@ -106,6 +128,50 @@ export default function Catalog(): JSX.Element {
         )}
         <button disabled={loading} onClick={() => void search(0)}>Найти</button>
       </div>
+
+      {(tagSource || nhTagSource) && (
+        <div className="tag-bar">
+          <div className="tag-input-wrap">
+            <input
+              className="tag-input"
+              value={tagQuery}
+              placeholder="Тег (начни вводить)…"
+              onChange={(e) => setTagQuery(e.target.value)}
+            />
+            {(ehTags.length > 0 || nhTags.length > 0) && (
+              <div className="tag-suggestions">
+                {ehTags.map((t) => (
+                  <button key={t.display} className="tag-suggestion" onClick={() => appendTag(t.display)}>{t.display}</button>
+                ))}
+                {nhTags.map((t) => (
+                  <button key={t.name} className="tag-suggestion" onClick={() => appendTag(t.name)}>
+                    {t.name} <span className="muted">{t.count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="fav-tags">
+            {settings.eh_tag_bookmarks.map((tag) => (
+              <button key={tag} className="fav-tag" onClick={() => appendTag(tag)}>{tag}</button>
+            ))}
+            {query.trim() && tagSource && (
+              <button
+                className="fav-tag add"
+                title="Сохранить теги из строки поиска"
+                onClick={() => {
+                  const tags = query.trim().split(/\s+/).filter((w) => w.includes(':'))
+                  if (tags.length) {
+                    const set = new Set(settings.eh_tag_bookmarks)
+                    tags.forEach((t) => set.add(t))
+                    setSettings({ ...settings, eh_tag_bookmarks: [...set] })
+                  }
+                }}
+              >★ Сохранить теги</button>
+            )}
+          </div>
+        </div>
+      )}
 
       {error && <div className="error-text">{error}</div>}
       {loading && <div className="muted">Поиск…</div>}
