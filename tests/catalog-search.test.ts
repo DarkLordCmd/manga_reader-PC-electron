@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { createServer } from 'http'
-import { searchSimpleSite, searchNhentai, extractGid, extractGidToken, searchMangaShi, ehErrorFromResponse, fetchGData } from '../src/main/services/catalog-search'
+import {
+  searchSimpleSite, searchNhentai, extractGid, extractGidToken, searchMangaShi, ehErrorFromResponse, fetchGData,
+  parseExHentaiListing
+} from '../src/main/services/catalog-search'
 
 function serve(fn: (req: any, res: any) => void): Promise<{ port: number; close: () => void }> {
   return new Promise((resolve) => {
@@ -119,6 +122,37 @@ describe('ehErrorFromResponse', () => {
   })
   it('returns null for a normal page', () => {
     expect(ehErrorFromResponse(200, '<html>normal listing</html>')).toBeNull()
+  })
+})
+
+describe('parseExHentaiListing', () => {
+  const html = `<table class="itg gltc"><tbody>
+    <tr class="gtr0">
+      <td class="gl1c glcat"><div class="cn">Manga</div></td>
+      <td class="gl2c"><div class="glthumb"><img src="/t/1.jpg"></div></td>
+      <td class="gl3c glname"><a href="/g/1000/abc123/">Some Title</a></td>
+      <td class="gl4c glhide"><div>1</div><div>66 pages</div></td>
+    </tr>
+    <tr class="gtr1">
+      <td class="gl1c glcat"><div class="cn">Doujinshi</div></td>
+      <td class="gl2c"><div class="glthumb"><img src="/t/2.jpg"></div></td>
+      <td class="gl3c glname"><a href="/g/2000/def456/">Another</a></td>
+      <td class="gl4c glhide"><div>1</div><div>30 pages</div></td>
+    </tr>
+    <tr><th>header</th></tr>
+  </tbody></table>`
+
+  it('parses compact rows: url, title, category, pages', () => {
+    const rows = parseExHentaiListing(html, 'https://exhentai.org')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toMatchObject({
+      url: 'https://exhentai.org/g/1000/abc123/',
+      title: 'Some Title',
+      category: 'Manga',
+      pages: 66
+    })
+    expect(rows[1].category).toBe('Doujinshi')
+    expect(rows[1].pages).toBe(30)
   })
 })
 

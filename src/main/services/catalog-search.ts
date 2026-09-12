@@ -160,6 +160,37 @@ export interface ExSearchResult extends CatalogItem {
   thumbUrl: string | null
 }
 
+/** Parses an E-Hentai/ExHentai listing page (compact markup, JHenTai-style). */
+export function parseExHentaiListing(html: string, base: string): ExSearchResult[] {
+  const $ = cheerio.load(html)
+  const results: ExSearchResult[] = []
+  $('table.itg tr').each((_i, el) => {
+    const $el = $(el)
+    const a = $el.find('.gl3c.glname a, td.glname a').first()
+    const href = a.attr('href') ?? ''
+    if (!href.includes('/g/')) return
+    const full = resolve(base, href)
+    if (!full) return
+    const title = $el.find('.glink').first().text().trim()
+      || a.text().trim() || (a.attr('title') ?? '')
+    const cover = $el.find('img').first().attr('data-src') || $el.find('img').first().attr('src') || null
+    const coverUrl = cover ? resolve(base, cover) : null
+    const category = $el.find('.cn').first().text().trim() || $el.find('td.glcat').first().text().trim() || null
+    const pageDivs = $el.find('.gl4c.glhide > div')
+    const pagesText = pageDivs.length >= 2 ? pageDivs.eq(1).text() : $el.text()
+    const pagesM = pagesText.match(/(\d+)\s+(?:pages?|страниц)/i)
+    const rowText = $el.text()
+    const ratingM = rowText.match(/(\d(?:\.\d+)?)\s*\/\s*5/)
+    results.push({
+      url: full, title, coverUrl,
+      thumbUrl: coverUrl,
+      category, rating: ratingM ? Number(ratingM[1]) : null,
+      pages: pagesM ? Number(pagesM[1]) : null, chapterTotal: null
+    })
+  })
+  return results
+}
+
 export function extractGid(url: string): string | null {
   const m = url.match(/\/g\/(\d+)\//)
   return m ? m[1] : null
@@ -281,30 +312,17 @@ export async function searchExHentai(
   if (ehErr) throw new Error(`ExHentai: ${ehErr}`)
   if (r.status >= 400) throw new Error(`ExHentai: HTTP ${r.status}`)
 
-  const $ = cheerio.load(r.text)
-  const results: ExSearchResult[] = []
-  $('table.itg tr.gtr0, table.itg tr.gtr1').each((_i, el) => {
-    const a = $(el).find('td.glname a').first()
-    const href = a.attr('href') ?? ''
-    if (!href.includes('/g/')) return
-    const full = resolve(base, href)
-    if (!full) return
-    const title = a.text().trim() || (a.attr('title') ?? '')
-    const cover = $(el).find('img').first().attr('data-src') || $(el).find('img').first().attr('src') || null
-    const coverUrl = cover ? resolve(base, cover) : null
-    const category = $(el).find('td.glcat').first().text().trim() || null
-    const rowText = $(el).text()
-    const pagesM = rowText.match(/(\d+)\s+(?:pages?|страниц)/i)
-    const ratingM = rowText.match(/(\d(?:\.\d+)?)\s*\/\s*5/)
-    results.push({
-      url: full, title, coverUrl,
-      thumbUrl: coverUrl,
-      category, rating: ratingM ? Number(ratingM[1]) : null,
-      pages: pagesM ? Number(pagesM[1]) : null, chapterTotal: null
-    })
-  })
+  const results = parseExHentaiListing(r.text, base)
 
   if (results.length === 0) {
+    // Sad panda / banned account pages are short and contain no galleries.
+    const lower = r.text.toLowerCase()
+    if (lower.includes('sad panda') || lower.includes('sorry, your ip') || lower.includes('ip has been banned')) {
+      throw new Error('ExHentai: sad panda — аккаунт/IP без доступа к ExHentai или вход не выполнен')
+    }
+    if (!r.text.includes('table') && r.text.length < 4000) {
+      throw new Error('ExHentai: страница пуста или требует входа (sad panda / логин)')
+    }
     throw new Error('ExHentai: ничего не найдено (или куки не действительны / сайт изменил вёрстку)')
   }
 
