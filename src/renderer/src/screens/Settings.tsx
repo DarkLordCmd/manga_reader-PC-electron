@@ -124,6 +124,27 @@ export default function Settings(): JSX.Element {
           </div>
         </Section>
 
+        <Section title="Каталог">
+          <div className="row">
+            <label>
+              <input
+                type="checkbox"
+                checked={settings.infinite_scroll}
+                onChange={(e) => upd({ infinite_scroll: e.target.checked })}
+              /> Бесконечная прокрутка каталога
+            </label>
+          </div>
+          <div className="row">
+            <label>
+              <input
+                type="checkbox"
+                checked={settings.nhentai_show_page_counts}
+                onChange={(e) => upd({ nhentai_show_page_counts: e.target.checked })}
+              /> Показывать количество страниц в каталоге NHentai
+            </label>
+          </div>
+        </Section>
+
         <Section title="Network & Accounts">
           <div className="row">
             <label>Tor SOCKS-адрес:</label>

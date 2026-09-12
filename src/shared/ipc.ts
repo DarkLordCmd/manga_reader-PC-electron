@@ -40,6 +40,23 @@ export interface TorStatus { state: string; latencyMs?: number; reason?: string 
 export interface BridgeStatus { line: string; state: string; latencyMs?: number; reason?: string }
 export interface SiteStatus { key: string; state: string; reason?: string }
 
+export interface CatalogFilters {
+  ehExcludedCats?: number
+  mangashiSort?: string
+  mangashiStatus?: string
+  mangashiType?: string
+  mangashiYear?: string
+  mangashiAgeRating?: string
+  mangashiChaptersMin?: string
+  mangashiChaptersMax?: string
+  mangashiTags?: string[]
+  remangaOrdering?: string
+  remangaStatus?: string
+  remangaTypes?: string
+  remangaGenres?: string[]
+  remangaCategories?: string[]
+}
+
 export interface Api {
   getSettings(): Promise<Settings>
   setSettings(s: Settings): Promise<void>
@@ -50,7 +67,7 @@ export interface Api {
   clearHistory(): Promise<void>
   openUrl(url: string, startPage?: number, mangaId?: string | null): Promise<OpenResult | null>
   fetchChapterList(mangaId: string): Promise<ChapterListItem[]>
-  searchCatalog(source: string, query: string, page: number, sort: string): Promise<CatalogCard[]>
+  searchCatalog(source: string, query: string, page: number, sort: string, filters?: CatalogFilters): Promise<CatalogCard[]>
   loginSite(url: string): Promise<string | null>
   setReadingPosition(id: string, index: number): Promise<void>
   ehTagSuggest(text: string): Promise<EhTagSuggestion[]>

@@ -13,6 +13,23 @@ export type CatalogSourceKey =
   | 'mangadex' | 'exhentai' | 'exhentai_onion' | 'ehentai' | 'nhentai'
   | 'nhentai_onion' | 'comx' | 'senkuro' | 'mangashi' | 'remanga' | 'mangalib'
 
+export interface CatalogFilters {
+  ehExcludedCats?: number
+  mangashiSort?: string
+  mangashiStatus?: string
+  mangashiType?: string
+  mangashiYear?: string
+  mangashiAgeRating?: string
+  mangashiChaptersMin?: string
+  mangashiChaptersMax?: string
+  mangashiTags?: string[]
+  remangaOrdering?: string
+  remangaStatus?: string
+  remangaTypes?: string
+  remangaGenres?: string[]
+  remangaCategories?: string[]
+}
+
 export interface SimpleSiteConfig {
   name: string
   base: string
@@ -128,6 +145,7 @@ export async function searchExHentai(
     useOnion: boolean
     page?: number
     forceTor?: boolean
+    excludedCats?: number
   }
 ): Promise<ExSearchResult[]> {
   const useProxy = opts.useOnion || opts.forceTor
@@ -136,14 +154,15 @@ export async function searchExHentai(
   const base = opts.useOnion
     ? 'http://exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion'
     : 'https://exhentai.org'
-  const sep = opts.useOnion ? '' : ''
-  void sep
+
+  const cats = opts.excludedCats ?? 0
+  const catsParam = cats > 0 ? `&f_cats=${cats}` : ''
 
   let url: string
   if (opts.useOnion) {
-    url = `${base}/?f_search=${encodeURIComponent(query)}&page=${opts.page ?? 0}`
+    url = `${base}/?f_search=${encodeURIComponent(query)}&page=${opts.page ?? 0}${catsParam}`
   } else {
-    url = `${base}/?f_search=${encodeURIComponent(query)}&page=${opts.page ?? 0}`
+    url = `${base}/?f_search=${encodeURIComponent(query)}&page=${opts.page ?? 0}${catsParam}`
   }
 
   const r = await httpFetch({
@@ -191,20 +210,30 @@ export async function searchExHentai(
 
 // ── Remanga ────────────────────────────────────────────────────────────
 
-export async function searchRemanga(query: string, page: number): Promise<CatalogItem[]> {
-  const q = new URLSearchParams({
-    query, page: String(page + 1), count: '40', ordering: 'index'
+export async function searchRemanga(
+  query: string,
+  page: number,
+  filters: CatalogFilters = {}
+): Promise<CatalogItem[]> {
+  const params = new URLSearchParams({
+    query, page: String(page + 1), count: '20', ordering: 'index'
   })
+  if (filters.remangaOrdering) params.set('ordering', filters.remangaOrdering)
+  if (filters.remangaStatus) params.set('status', filters.remangaStatus)
+  if (filters.remangaTypes) params.set('types', filters.remangaTypes)
+  for (const g of filters.remangaGenres ?? []) params.append('genres', g)
+  for (const c of filters.remangaCategories ?? []) params.append('categories', c)
   const json = await httpGetJson(
-    `https://api.remanga.org/api/v2/search/catalog/?${q.toString()}`,
+    `https://api.remanga.org/api/v2/search/catalog/?${params.toString()}`,
     { Referer: 'https://remanga.org/', Accept: 'application/json' }
   ) as any
-  const results: any[] = json?.content ?? []
+  const results: any[] = json?.results ?? json?.content ?? []
   return results.map((r) => ({
     url: `https://remanga.org/manga/${r?.dir ?? ''}/`,
-    title: r?.rus_name ?? r?.name ?? 'Без названия',
+    title: r?.main_name ?? r?.rus_name ?? r?.name ?? 'Без названия',
     coverUrl: r?.cover?.high ?? r?.cover?.mid ?? null,
-    pages: r?.count_chapters ?? null
+    pages: r?.count_chapters ?? null,
+    score: typeof r?.avg_rating === 'number' ? r.avg_rating : null
   }))
 }
 
@@ -240,9 +269,23 @@ export async function searchSenkuro(query: string, cookieHeader = ''): Promise<C
 
 // ── Manga-shi ──────────────────────────────────────────────────────────
 
-export async function searchMangaShi(query: string, proxy?: string): Promise<CatalogItem[]> {
+export async function searchMangaShi(
+  query: string,
+  proxy?: string,
+  filters: CatalogFilters = {}
+): Promise<CatalogItem[]> {
   const base = 'https://manga-shi.org'
-  const url = `${base}/catalog/?q=${encodeURIComponent(query)}`
+  const params: string[] = []
+  if (query.trim()) params.push(`q=${encodeURIComponent(query.trim())}`)
+  if (filters.mangashiSort) params.push(`sort=${filters.mangashiSort}`)
+  if (filters.mangashiStatus) params.push(`status=${filters.mangashiStatus}`)
+  if (filters.mangashiType) params.push(`type=${filters.mangashiType}`)
+  if (filters.mangashiYear) params.push(`year=${filters.mangashiYear}`)
+  if (filters.mangashiAgeRating) params.push(`age_rating=${filters.mangashiAgeRating}`)
+  if (filters.mangashiChaptersMin) params.push(`chapters_min=${filters.mangashiChaptersMin}`)
+  if (filters.mangashiChaptersMax) params.push(`chapters_max=${filters.mangashiChaptersMax}`)
+  for (const t of filters.mangashiTags ?? []) params.push(`tag=${t}`)
+  const url = `${base}/catalog/${params.length ? `?${params.join('&')}` : ''}`
   const r = await httpFetch({ url, headers: { Referer: `${base}/`, Accept: 'text/html' } }, proxy)
   if (r.status >= 400) throw new Error(`Manga-shi: HTTP ${r.status}`)
   const $ = cheerio.load(r.text)

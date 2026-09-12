@@ -233,7 +233,7 @@ app.whenReady().then(() => {
     }
     return chapters.map((c) => ({ chapter_id: c.chapter_id, chapter_num: c.chapter_num, title: c.title }))
   })
-  ipcMain.handle(CH.searchCatalog, async (_e, source: string, query: string, page: number, sort: string) => {
+  ipcMain.handle(CH.searchCatalog, async (_e, source: string, query: string, page: number, sort: string, filters: any = {}) => {
     const s = settings.get()
     const torSocks = s.tor_socks_addr || '127.0.0.1:9150'
     const siteKey = source === 'nhentai_onion' ? 'nhentai' : source
@@ -244,9 +244,9 @@ app.whenReady().then(() => {
         url: c.manga_id, title: c.title, coverUrl: c.cover_url, pages: null, kind: c.kind, score: c.score
       }))
     }
-    if (source === 'remanga') return await searchRemanga(query, page)
+    if (source === 'remanga') return await searchRemanga(query, page, filters)
     if (source === 'senkuro') return await searchSenkuro(query, s.onion_cookies_raw)
-    if (source === 'mangashi') return await searchMangaShi(query, proxy)
+    if (source === 'mangashi') return await searchMangaShi(query, proxy, filters)
     if (source === 'nhentai') return await searchNhentai('https://nhentai.net', query, page, { proxy, cookieHeader: s.onion_cookies_raw })
     if (source === 'nhentai_onion') {
       const base = s.nhentai_onion_base || 'http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion'
@@ -260,7 +260,8 @@ app.whenReady().then(() => {
         torSocksAddr: torSocks,
         useOnion,
         page,
-        forceTor: source === 'ehentai' && s.tor_proxied_sites.includes('ehentai')
+        forceTor: source === 'ehentai' && s.tor_proxied_sites.includes('ehentai'),
+        excludedCats: filters.ehExcludedCats
       })
       return ex.map((c) => ({ url: c.url, title: c.title, coverUrl: c.coverUrl, pages: c.pages, score: c.rating }))
     }

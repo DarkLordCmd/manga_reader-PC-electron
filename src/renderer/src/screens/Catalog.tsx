@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '../state/store'
-import type { CatalogCard, ChapterListItem, EhTagSuggestion, NhentaiTagSuggestion } from '@shared/ipc'
+import type { CatalogCard, CatalogFilters, ChapterListItem } from '@shared/ipc'
+import { EH_CATEGORIES, MANGASHI_TAGS, REMANGA_GENRES } from '@shared/filters'
 import MangaCardGrid from '../components/MangaCardGrid'
 
 const SOURCES: { key: string; label: string }[] = [
@@ -24,6 +25,55 @@ const SORTS: { key: string; label: string }[] = [
   { key: 'followedCount', label: 'По подпискам' }
 ]
 
+const MS_SORTS: [string, string][] = [
+  ['', 'По умолчанию'], ['added', 'По дате добавления'], ['updated', 'По обновлению глав'],
+  ['rating', 'По рейтингу'], ['popular', 'По популярности'], ['chapters', 'По количеству глав'], ['year', 'По году выпуска']
+]
+const MS_STATUS: [string, string][] = [['', 'Все'], ['ONGOING', 'Онгоинг'], ['COMPLETED', 'Завершён'], ['HIATUS', 'Хиатус']]
+const MS_TYPES: [string, string][] = [['', 'Все'], ['MANGA', 'Манга'], ['MANHWA', 'Манхва'], ['MANHUA', 'Маньхуа'], ['WESTERN', 'Западный комикс']]
+const MS_AGES: [string, string][] = [['', 'Все'], ['sfw', 'Без 18+'], ['adult', 'Только 18+']]
+
+const RM_ORDERING: [string, string][] = [
+  ['', 'По умолчанию'], ['-rating', 'По рейтингу ▼'], ['rating', 'По рейтингу ▲'],
+  ['-views', 'По просмотрам ▼'], ['views', 'По просмотрам ▲'], ['-id', 'По добавлению ▼'], ['id', 'По добавлению ▲']
+]
+const RM_STATUS: [string, string][] = [['', 'Все'], ['1', 'Завершён'], ['2', 'Продолжается'], ['3', 'Заморожен']]
+const RM_TYPES: [string, string][] = [['', 'Все'], ['1', 'Манга'], ['2', 'Манхва'], ['3', 'Маньхуа'], ['4', 'Западный комикс'], ['7', 'Другое']]
+
+function FilterRow({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
+  return (
+    <div className="filter-row">
+      <div className="filter-label">{label}</div>
+      {children}
+    </div>
+  )
+}
+
+function SelectFilter({ options, value, onChange }: { options: [string, string][]; value: string; onChange: (v: string) => void }): JSX.Element {
+  return (
+    <select className="filter-select" value={value} onChange={(e) => onChange(e.target.value)}>
+      {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+    </select>
+  )
+}
+
+function TagChecklist({ items, selected, onToggle }: { items: [string, string][]; selected: string[]; onToggle: (v: string) => void }): JSX.Element {
+  return (
+    <div className="tag-checklist">
+      {items.map(([val, label]) => {
+        const active = selected.includes(val)
+        return (
+          <button
+            key={val}
+            className={`tag-check${active ? ' active' : ''}`}
+            onClick={() => onToggle(val)}
+          >{label}</button>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function Catalog(): JSX.Element {
   const { setScreen, setOpened, settings, setSettings } = useStore()
   const [source, setSource] = useState('mangadex')
@@ -37,11 +87,41 @@ export default function Catalog(): JSX.Element {
   const [chapters, setChapters] = useState<ChapterListItem[] | null>(null)
   const [chapterError, setChapterError] = useState<string | null>(null)
   const [tagQuery, setTagQuery] = useState('')
-  const [ehTags, setEhTags] = useState<EhTagSuggestion[]>([])
-  const [nhTags, setNhTags] = useState<NhentaiTagSuggestion[]>([])
+  const [ehTags, setEhTags] = useState<{ display: string }[]>([])
+  const [nhTags, setNhTags] = useState<{ name: string; count: number }[]>([])
+
+  // ── Filters ──
+  const [ehExcludedCats, setEhExcludedCats] = useState(0)
+  const [msSort, setMsSort] = useState('')
+  const [msStatus, setMsStatus] = useState('')
+  const [msType, setMsType] = useState('')
+  const [msYear, setMsYear] = useState('')
+  const [msAge, setMsAge] = useState('')
+  const [msChaptersMin, setMsChaptersMin] = useState('')
+  const [msChaptersMax, setMsChaptersMax] = useState('')
+  const [msTags, setMsTags] = useState<string[]>([])
+  const [rmOrdering, setRmOrdering] = useState('')
+  const [rmStatus, setRmStatus] = useState('')
+  const [rmTypes, setRmTypes] = useState('')
+  const [rmGenres, setRmGenres] = useState<string[]>([])
+
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const infiniteScroll = settings.infinite_scroll
+
+  const filters: CatalogFilters = {
+    ehExcludedCats,
+    mangashiSort: msSort, mangashiStatus: msStatus, mangashiType: msType,
+    mangashiYear: msYear, mangashiAgeRating: msAge,
+    mangashiChaptersMin: msChaptersMin, mangashiChaptersMax: msChaptersMax,
+    mangashiTags: msTags,
+    remangaOrdering: rmOrdering, remangaStatus: rmStatus, remangaTypes: rmTypes,
+    remangaGenres: rmGenres
+  }
 
   const tagSource = source === 'exhentai' || source === 'exhentai_onion' || source === 'ehentai'
   const nhTagSource = source === 'nhentai' || source === 'nhentai_onion'
+  const showFilters = source === 'exhentai' || source === 'exhentai_onion' || source === 'ehentai'
+    || source === 'mangashi' || source === 'remanga'
 
   useEffect(() => {
     if (tagQuery.trim().length < 2) { setEhTags([]); setNhTags([]); return }
@@ -59,35 +139,49 @@ export default function Catalog(): JSX.Element {
     setNhTags([])
   }
 
-  const search = async (p: number): Promise<void> => {
+  const search = useCallback(async (p: number, append = false): Promise<void> => {
     setLoading(true)
     setError(null)
     try {
-      const res = await window.api.searchCatalog(source, query.trim(), p, sort)
-      setCards(res)
+      const res = await window.api.searchCatalog(source, query.trim(), p, sort, filters)
+      setCards((prev) => (append ? [...prev, ...res] : res))
       setPage(p)
     } catch (e: any) {
-      setCards([])
+      if (!append) setCards([])
       setError(String(e?.message ?? e))
     } finally {
       setLoading(false)
     }
+  }, [source, query, sort, filters])
+
+  // Reset scroll page when filters change
+  const changeSource = (s: string): void => {
+    setSource(s)
+    setCards([])
+    setError(null)
+    setPage(0)
   }
 
+  const resetFilters = (): void => {
+    setEhExcludedCats(0)
+    setMsSort(''); setMsStatus(''); setMsType(''); setMsYear(''); setMsAge('')
+    setMsChaptersMin(''); setMsChaptersMax(''); setMsTags([])
+    setRmOrdering(''); setRmStatus(''); setRmTypes(''); setRmGenres([])
+  }
+
+  // Infinite scroll sentinel
+  useEffect(() => {
+    if (!infiniteScroll || cards.length === 0) return
+    const el = sentinelRef.current
+    if (!el) return
+    const obs = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && !loading) void search(page + 1, true)
+    }, { rootMargin: '400px' })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [infiniteScroll, cards.length, page, loading, search])
+
   const openChapters = async (card: CatalogCard): Promise<void> => {
-    // For MangaDex the card url is a bare manga id; for others it's a series URL
-    if (source !== 'mangadex') {
-      // Non-MangaDex cards represent a series page: open its chapter list
-      setPicked(card)
-      setChapters(null)
-      setChapterError(null)
-      try {
-        setChapters(await window.api.fetchChapterList(card.url))
-      } catch (e: any) {
-        setChapterError(String(e?.message ?? e))
-      }
-      return
-    }
     setPicked(card)
     setChapters(null)
     setChapterError(null)
@@ -108,10 +202,16 @@ export default function Catalog(): JSX.Element {
     }
   }
 
+  const toggleCat = (bit: number): void => {
+    setEhExcludedCats((c) => c ^ bit)
+    setPage(0)
+    void search(0)
+  }
+
   return (
     <div className="catalog screen">
       <div className="catalog-toolbar">
-        <select value={source} onChange={(e) => { setSource(e.target.value); setCards([]); setError(null) }}>
+        <select value={source} onChange={(e) => changeSource(e.target.value)}>
           {SOURCES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
         <input
@@ -173,17 +273,80 @@ export default function Catalog(): JSX.Element {
         </div>
       )}
 
+      {showFilters && (
+        <div className="filter-panel">
+          {tagSource && (
+            <>
+              <div className="filter-title">Категории</div>
+              <div className="filter-cats">
+                {EH_CATEGORIES.map(([label, bit]) => {
+                  const enabled = (ehExcludedCats & bit) === 0
+                  return (
+                    <label key={label} className="filter-check">
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={() => toggleCat(bit)}
+                      /> {label}
+                    </label>
+                  )
+                })}
+              </div>
+            </>
+          )}
+
+          {source === 'mangashi' && (
+            <>
+              <FilterRow label="Сортировка"><SelectFilter options={MS_SORTS} value={msSort} onChange={(v) => { setMsSort(v); setPage(0); void search(0) }} /></FilterRow>
+              <FilterRow label="Статус"><SelectFilter options={MS_STATUS} value={msStatus} onChange={(v) => { setMsStatus(v); setPage(0); void search(0) }} /></FilterRow>
+              <FilterRow label="Тип"><SelectFilter options={MS_TYPES} value={msType} onChange={(v) => { setMsType(v); setPage(0); void search(0) }} /></FilterRow>
+              <FilterRow label="Год выпуска">
+                <input className="filter-input" value={msYear} placeholder="Напр. 2024" onChange={(e) => setMsYear(e.target.value)} onBlur={() => void search(0)} />
+              </FilterRow>
+              <FilterRow label="Возрастной рейтинг"><SelectFilter options={MS_AGES} value={msAge} onChange={(v) => { setMsAge(v); setPage(0); void search(0) }} /></FilterRow>
+              <FilterRow label="Кол-во глав">
+                <div className="filter-range">
+                  <input className="filter-input narrow" value={msChaptersMin} placeholder="От" onChange={(e) => setMsChaptersMin(e.target.value)} onBlur={() => void search(0)} />
+                  <span>—</span>
+                  <input className="filter-input narrow" value={msChaptersMax} placeholder="До" onChange={(e) => setMsChaptersMax(e.target.value)} onBlur={() => void search(0)} />
+                </div>
+              </FilterRow>
+              <div className="filter-title">Жанры</div>
+              <TagChecklist items={MANGASHI_TAGS} selected={msTags} onToggle={(v) => { setMsTags((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]); setPage(0); void search(0) }} />
+            </>
+          )}
+
+          {source === 'remanga' && (
+            <>
+              <FilterRow label="Сортировка"><SelectFilter options={RM_ORDERING} value={rmOrdering} onChange={(v) => { setRmOrdering(v); setPage(0); void search(0) }} /></FilterRow>
+              <FilterRow label="Статус"><SelectFilter options={RM_STATUS} value={rmStatus} onChange={(v) => { setRmStatus(v); setPage(0); void search(0) }} /></FilterRow>
+              <FilterRow label="Тип"><SelectFilter options={RM_TYPES} value={rmTypes} onChange={(v) => { setRmTypes(v); setPage(0); void search(0) }} /></FilterRow>
+              <div className="filter-title">Жанры</div>
+              <TagChecklist items={REMANGA_GENRES} selected={rmGenres} onToggle={(v) => { setRmGenres((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]); setPage(0); void search(0) }} />
+            </>
+          )}
+
+          <button className="filter-reset" onClick={() => { resetFilters(); setPage(0); void search(0) }}>Сбросить ↺</button>
+        </div>
+      )}
+
       {error && <div className="error-text">{error}</div>}
-      {loading && <div className="muted">Поиск…</div>}
+      {loading && cards.length === 0 && <div className="muted">Поиск…</div>}
       {!loading && cards.length > 0 && (
         <MangaCardGrid cards={cards} onSelect={(c) => void openChapters(c)} />
       )}
 
-      {cards.length > 0 && (
+      {cards.length > 0 && infiniteScroll && (
+        <div ref={sentinelRef} className="catalog-sentinel">
+          {loading ? <span className="muted">Загрузка…</span> : null}
+        </div>
+      )}
+
+      {cards.length > 0 && !infiniteScroll && (
         <div className="catalog-pager">
           <button disabled={page === 0 || loading} onClick={() => void search(page - 1)}>Пред.</button>
           <span className="muted">Стр. {page + 1}</span>
-          <button disabled={loading} onClick={() => void search(page + 1)}>След.</button>
+          <button disabled={loading} onClick={() => void search(page + 1, true)}>След.</button>
         </div>
       )}
 
