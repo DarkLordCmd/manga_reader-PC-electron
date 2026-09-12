@@ -1,5 +1,6 @@
 import { Agent } from 'undici'
 import { SocksProxyAgent } from 'socks-proxy-agent'
+import { isFrontingEnabled, supportsFronting, frontingIpFor, buildFrontingDispatcher, markUnavailable } from './domain-fronting'
 
 export interface HttpFetchOptions {
   url: string
@@ -38,9 +39,20 @@ export function buildSocksDispatcher(proxy: string): Agent {
   })
 }
 
-function buildAgent(proxy: string | undefined): Agent | undefined {
-  if (!proxy || proxy.trim() === '') return undefined
-  return buildSocksDispatcher(proxy)
+function buildDispatcherFor(url: string, proxy?: string): { dispatcher: Agent | undefined; frontHost?: string; frontIp?: string } {
+  if (proxy && proxy.trim() !== '') {
+    return { dispatcher: buildSocksDispatcher(proxy) }
+  }
+  if (isFrontingEnabled()) {
+    try {
+      const host = new URL(url).hostname
+      if (supportsFronting(host)) {
+        const ip = frontingIpFor(host)
+        return { dispatcher: buildFrontingDispatcher(host, ip), frontHost: host, frontIp: ip }
+      }
+    } catch { /* ignore */ }
+  }
+  return { dispatcher: undefined }
 }
 
 function normalizeHeaders(headers: Record<string, string>): Record<string, string> {
@@ -52,7 +64,7 @@ function normalizeHeaders(headers: Record<string, string>): Record<string, strin
 }
 
 export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise<HttpResult> {
-  const dispatcher = buildAgent(proxy)
+  const { dispatcher, frontHost, frontIp } = buildDispatcherFor(opts.url, proxy)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30_000)
   try {
@@ -75,6 +87,9 @@ export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise
         : ((res.headers.get('set-cookie') ?? '').split(/,(?=\s*[^=\s]+=)/).map((s) => s.trim()).filter(Boolean))
     } catch { /* ignore */ }
     return { status: res.status, text: await res.text(), setCookies }
+  } catch (e) {
+    if (frontHost && frontIp) markUnavailable(frontHost, frontIp)
+    throw e
   } finally {
     clearTimeout(timer)
   }
@@ -95,7 +110,7 @@ export async function httpFetchBinary(
   proxy?: string,
   timeoutMs = 30_000
 ): Promise<Uint8Array> {
-  const dispatcher = buildAgent(proxy)
+  const { dispatcher, frontHost, frontIp } = buildDispatcherFor(url, proxy)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -110,6 +125,9 @@ export async function httpFetchBinary(
     } as any)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return new Uint8Array(await res.arrayBuffer())
+  } catch (e) {
+    if (frontHost && frontIp) markUnavailable(frontHost, frontIp)
+    throw e
   } finally {
     clearTimeout(timer)
   }

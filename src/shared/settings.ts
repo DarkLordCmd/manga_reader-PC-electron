@@ -19,6 +19,7 @@ export interface Settings {
   infinite_scroll: boolean
   tor_proxied_sites: string[]
   nhentai_show_page_counts: boolean
+  enable_domain_fronting: boolean
   viewing_history: HistoryEntry[]
   show_r34_history: boolean
   eh_tag_bookmarks: string[]
@@ -33,6 +34,7 @@ export function defaultSettings(): Settings {
     tor_socks_addr: '127.0.0.1:9150', tor_bridges: '', exhentai_proxy_addr: '',
     onion_cookies_raw: '', nhentai_onion_cookies_raw: '', nhentai_onion_base: '',
     infinite_scroll: false, tor_proxied_sites: [], nhentai_show_page_counts: true,
+    enable_domain_fronting: false,
     viewing_history: [], show_r34_history: true, eh_tag_bookmarks: [], read_chapters: []
   }
 }
@@ -76,6 +78,7 @@ export function parseSettings(raw: unknown): Settings {
     infinite_scroll: bool(o.infinite_scroll, false),
     tor_proxied_sites: strArr(o.tor_proxied_sites),
     nhentai_show_page_counts: bool(o.nhentai_show_page_counts, true),
+    enable_domain_fronting: bool(o.enable_domain_fronting, false),
     viewing_history: history,
     show_r34_history: bool(o.show_r34_history, true),
     eh_tag_bookmarks: strArr(o.eh_tag_bookmarks),

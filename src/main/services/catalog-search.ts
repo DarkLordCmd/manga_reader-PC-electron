@@ -165,6 +165,71 @@ export function extractGid(url: string): string | null {
   return m ? m[1] : null
 }
 
+export function extractGidToken(url: string): { gid: string; token: string } | null {
+  const m = url.match(/\/g\/(\d+)\/([0-9a-f]+)\/?/)
+  return m ? { gid: m[1], token: m[2] } : null
+}
+
+export interface GDataResult {
+  gid: string
+  token: string
+  title: string
+  title_jpn?: string
+  category: string
+  thumb?: string
+  uploader: string
+  posted: string
+  filecount: string
+  filesize: number
+  expunged: boolean
+  rating: string
+  tags: string[]
+  comment_count: number
+}
+
+/**
+ * E-Hentai/ExHentai JSON metadata API (same as JHenTai's requestGalleryMetadatas):
+ * POST api.php with `{ method: 'gdata', gidlist: [[gid, token], ...], namespace: 1 }`.
+ * Batching is capped at 25 per request.
+ */
+export async function fetchGData(
+  list: { gid: string; token: string }[],
+  opts: { apiBase?: string; cookieHeader?: string; proxy?: string } = {}
+): Promise<GDataResult[]> {
+  if (list.length === 0) return []
+  const apiBase = opts.apiBase ?? 'https://exhentai.org/api.php'
+  const out: GDataResult[] = []
+  for (let i = 0; i < list.length; i += 25) {
+    const batch = list.slice(i, i + 25)
+    const json = await httpPostJson(
+      apiBase,
+      JSON.stringify({ method: 'gdata', gidlist: batch.map((b) => [b.gid, b.token]), namespace: 1 }),
+      { 'Content-Type': 'application/json', ...(opts.cookieHeader ? { Cookie: opts.cookieHeader } : {}) },
+      opts.proxy
+    ) as any
+    const arr: any[] = json?.gmetadata ?? []
+    for (const m of arr) {
+      out.push({
+        gid: String(m?.gid ?? ''),
+        token: String(m?.token ?? ''),
+        title: m?.title ?? '',
+        title_jpn: m?.title_jpn,
+        category: m?.category ?? '',
+        thumb: m?.thumb,
+        uploader: m?.uploader ?? '',
+        posted: m?.posted ?? '',
+        filecount: String(m?.filecount ?? ''),
+        filesize: m?.filesize ?? 0,
+        expunged: !!m?.expunged,
+        rating: m?.rating ?? '',
+        tags: Array.isArray(m?.tags) ? m.tags : [],
+        comment_count: m?.comment_count ?? 0
+      })
+    }
+  }
+  return out
+}
+
 export async function searchExHentai(
   query: string,
   opts: {
@@ -242,6 +307,31 @@ export async function searchExHentai(
   if (results.length === 0) {
     throw new Error('ExHentai: ничего не найдено (или куки не действительны / сайт изменил вёрстку)')
   }
+
+  // Enrich with the official gdata metadata API (same as JHenTai) for
+  // accurate rating / category / page count. Best-effort.
+  try {
+    const meta = await fetchGData(
+      results.map((r) => extractGidToken(r.url)).filter((x): x is { gid: string; token: string } => !!x),
+      {
+        apiBase: opts.domainOverride ? 'https://api.e-hentai.org/api.php' : 'https://exhentai.org/api.php',
+        cookieHeader: opts.cookieHeader,
+        proxy
+      }
+    )
+    const byGid = new Map(meta.map((m) => [m.gid, m]))
+    for (const r of results) {
+      const gid = extractGid(r.url)
+      const m = gid ? byGid.get(gid) : undefined
+      if (!m) continue
+      if (m.category) r.category = m.category
+      const rc = Number(m.rating)
+      if (!isNaN(rc) && rc > 0) r.rating = rc
+      const fc = Number(m.filecount)
+      if (!isNaN(fc) && fc > 0) r.pages = fc
+    }
+  } catch { /* best-effort */ }
+
   return results
 }
 

@@ -161,6 +161,15 @@ export default function Settings(): JSX.Element {
 
         <Section title="Network & Accounts">
           <div className="row">
+            <label>
+              <input
+                type="checkbox"
+                checked={settings.enable_domain_fronting}
+                onChange={(e) => upd({ enable_domain_fronting: e.target.checked })}
+              /> Domain Fronting для ExHentai (доступ без VPN, когда DNS заблокирован)
+            </label>
+          </div>
+          <div className="row">
             <label>Tor SOCKS-адрес:</label>
             <input
               className="text-input"

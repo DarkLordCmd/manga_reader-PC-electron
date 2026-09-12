@@ -18,6 +18,7 @@ import { runLoginWindow } from './services/login'
 import { probeSocks5Handshake, probeBridgeLine, probeSite, allSiteKeys } from './services/tor-check'
 import { fetchEhTagSuggest, fetchNhentaiTagSuggestions } from './services/tags'
 import { fetchCoverBuffer } from './services/covers'
+import { setFrontingEnabled } from './services/domain-fronting'
 import { parseMangaPageUrl } from './services/page-url'
 import { ExAccountsService } from './services/accounts'
 import { CH } from '@shared/ipc'
@@ -100,6 +101,7 @@ function extractMangaDexChapterId(url: string): string | null {
 
 app.whenReady().then(() => {
   settings = new SettingsService(app.getPath('userData'))
+  setFrontingEnabled(settings.get().enable_domain_fronting)
   exAccounts = new ExAccountsService(app.getPath('userData'))
   exAccounts.init()
   history = new HistoryManager()
@@ -152,6 +154,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle(CH.getSettings, () => settings.get())
   ipcMain.handle(CH.setSettings, (_e, s) => {
+    setFrontingEnabled(!!s?.enable_domain_fronting)
     settings.save(s)
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s)
   })

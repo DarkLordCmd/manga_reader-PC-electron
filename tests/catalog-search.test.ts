@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createServer } from 'http'
-import { searchSimpleSite, searchNhentai, extractGid, searchMangaShi, ehErrorFromResponse } from '../src/main/services/catalog-search'
+import { searchSimpleSite, searchNhentai, extractGid, extractGidToken, searchMangaShi, ehErrorFromResponse, fetchGData } from '../src/main/services/catalog-search'
 
 function serve(fn: (req: any, res: any) => void): Promise<{ port: number; close: () => void }> {
   return new Promise((resolve) => {
@@ -37,6 +37,42 @@ describe('extractGid', () => {
     expect(extractGid('https://exhentai.org/g/123456/abcdef/')).toBe('123456')
     expect(extractGid('https://e-hentai.org/g/99/x/')).toBe('99')
     expect(extractGid('https://exhentai.org/')).toBeNull()
+  })
+})
+
+describe('extractGidToken', () => {
+  it('parses gid and token from a gallery URL', () => {
+    expect(extractGidToken('https://exhentai.org/g/123456/abcdef1234/')).toEqual({ gid: '123456', token: 'abcdef1234' })
+    expect(extractGidToken('https://exhentai.org/')).toBeNull()
+  })
+})
+
+describe('fetchGData', () => {
+  it('batches gidlist and maps gmetadata', async () => {
+    const { port, close } = await serve((req, res) => {
+      let body = ''
+      req.on('data', (d) => { body += d })
+      req.on('end', () => {
+        const parsed = JSON.parse(body)
+        const gidlist: [string, string][] = parsed.gidlist
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({
+          gmetadata: gidlist.map(([gid, token]) => ({
+            gid, token, title: `Title ${gid}`, category: 'Manga', rating: '4.8',
+            filecount: '30', expunged: false, tags: ['female:big breasts']
+          }))
+        }))
+      })
+    })
+    const results = await fetchGData([{ gid: '1', token: 'a' }, { gid: '2', token: 'b' }], {
+      apiBase: `http://127.0.0.1:${port}/api.php`
+    })
+    expect(results).toHaveLength(2)
+    expect(results[0].title).toBe('Title 1')
+    expect(results[0].category).toBe('Manga')
+    expect(results[0].rating).toBe('4.8')
+    expect(results[0].filecount).toBe('30')
+    close()
   })
 })
 
