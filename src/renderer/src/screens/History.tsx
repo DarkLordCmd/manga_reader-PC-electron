@@ -1,0 +1,1 @@
+export default function History(): JSX.Element { return <div className="screen">История просмотра</div> }

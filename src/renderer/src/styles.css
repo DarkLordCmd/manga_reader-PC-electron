@@ -1,4 +1,15 @@
-:root { color-scheme: dark; }
+:root {
+  color-scheme: dark;
+  --bg: #000; --panel: #0a0a16; --border: #2d2d4e;
+  --text: #f1f5f9; --muted: #94a3b8; --dim: #64748b; --accent: #f97316;
+}
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
-body { background: #000; color: #f1f5f9; font-family: system-ui, sans-serif; }
+body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 13px; }
+.app { display: flex; height: 100%; }
+.sidebar { width: 48px; background: #000; border-right: 1px solid var(--border); display: flex; flex-direction: column; align-items: center; padding: 8px 4px; gap: 12px; }
+.nav-btn { width: 40px; height: 40px; font-size: 18px; color: var(--muted); background: transparent; border: 2px solid transparent; border-radius: 4px; cursor: pointer; }
+.nav-btn.active { color: #fff; background: #2d2d4e; border-color: var(--accent); }
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.topbar { padding: 8px 12px; border-bottom: 1px solid var(--border); font-weight: 600; }
+.screen { flex: 1; overflow: auto; padding: 12px; }

@@ -1,0 +1,1 @@
+export default function Catalog(): JSX.Element { return <div className="screen">Catalog</div> }

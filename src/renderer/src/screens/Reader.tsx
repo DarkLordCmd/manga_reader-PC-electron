@@ -1,0 +1,1 @@
+export default function Reader(): JSX.Element { return <div className="screen">Reader</div> }
