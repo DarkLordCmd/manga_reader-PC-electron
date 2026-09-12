@@ -267,7 +267,7 @@ export interface GDataResult {
  */
 export async function fetchGData(
   list: { gid: string; token: string }[],
-  opts: { apiBase?: string; cookieHeader?: string; proxy?: string } = {}
+  opts: { apiBase?: string; cookieHeader?: string; proxy?: string; timeoutMs?: number } = {}
 ): Promise<GDataResult[]> {
   if (list.length === 0) return []
   const apiBase = opts.apiBase ?? 'https://exhentai.org/api.php'
@@ -278,7 +278,8 @@ export async function fetchGData(
       apiBase,
       JSON.stringify({ method: 'gdata', gidlist: batch.map((b) => [b.gid, b.token]), namespace: 1 }),
       { 'Content-Type': 'application/json', ...(opts.cookieHeader ? { Cookie: opts.cookieHeader } : {}) },
-      opts.proxy
+      opts.proxy,
+      opts.timeoutMs ?? 20_000
     ) as any
     const arr: any[] = json?.gmetadata ?? []
     for (const m of arr) {
@@ -345,6 +346,8 @@ export async function searchExHentai(
       Accept: 'text/html,application/xhtml+xml',
       ...(opts.cookieHeader ? { Cookie: opts.cookieHeader } : {})
     },
+    // Tor (especially via bridges) is slow — give proxied requests plenty of time.
+    timeoutMs: proxy ? 120_000 : 30_000,
     // An empty body (sad panda / IP rate-limit on the direct path) retries
     // once through domain fronting, which uses a different egress IP.
     frontOnEmpty: true
@@ -379,7 +382,8 @@ export async function searchExHentai(
       {
         apiBase: opts.domainOverride ? 'https://api.e-hentai.org/api.php' : 'https://exhentai.org/api.php',
         cookieHeader: opts.cookieHeader,
-        proxy
+        proxy,
+        timeoutMs: proxy ? 120_000 : 20_000
       }
     )
     const byGid = new Map(meta.map((m) => [m.gid, m]))

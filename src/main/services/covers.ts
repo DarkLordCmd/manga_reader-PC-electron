@@ -65,7 +65,7 @@ export async function fetchCoverBuffer(
 
   const proxy = coverProxy(siteKey, url, s)
   try {
-    const bytes = await httpFetchBinary(url, headers, proxy)
+    const bytes = await httpFetchBinary(url, headers, proxy, proxy ? 90_000 : 30_000)
     return Buffer.from(bytes)
   } catch (e) {
     // nhentai thumbnail fallback: the HTML-reported cover (e.g. cover.webp)
@@ -75,7 +75,7 @@ export async function fetchCoverBuffer(
       if (url.includes('/cover.')) alts.push(url.replace(/\/cover\.(\w+)/, '/thumb.$1'))
       for (const alt of alts) {
         try {
-          const bytes = await httpFetchBinary(alt, headers, proxy)
+          const bytes = await httpFetchBinary(alt, headers, proxy, proxy ? 90_000 : 30_000)
           return Buffer.from(bytes)
         } catch { /* next */ }
       }

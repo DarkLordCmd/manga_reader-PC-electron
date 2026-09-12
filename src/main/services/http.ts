@@ -1,5 +1,5 @@
-import { Agent } from 'undici'
-import { SocksProxyAgent } from 'socks-proxy-agent'
+import { Agent, buildConnector } from 'undici'
+import { connect as netConnect } from 'net'
 import { isFrontingEnabled, supportsFronting, frontingIpFor, buildFrontingDispatcher, markUnavailable } from './domain-fronting'
 import { isEhHost, notifyEhSetCookies } from './eh-session'
 
@@ -27,17 +27,52 @@ function normalizeSocksAddr(addr: string): string {
     .replace(/^socks4:\/\//, '')
 }
 
+/** Minimal SOCKS5 CONNECT with remote DNS (like `curl --socks5-hostname`). */
+function socks5Connect(proxyHost: string, proxyPort: number, destHost: string, destPort: number, timeoutMs = 20_000): Promise<import('net').Socket> {
+  return new Promise((resolve, reject) => {
+    const socket = netConnect({ host: proxyHost, port: proxyPort })
+    const timer = setTimeout(() => { socket.destroy(); reject(new Error('socks proxy timeout')) }, timeoutMs)
+    socket.once('error', (e) => { clearTimeout(timer); reject(e) })
+    const fail = (msg: string): void => { clearTimeout(timer); socket.destroy(); reject(new Error(msg)) }
+
+    socket.once('connect', () => {
+      // greeting: VER=5, NMETHODS=1, METHOD=0 (no auth)
+      socket.write(Buffer.from([0x05, 0x01, 0x00]))
+    })
+    let stage = 0
+    socket.on('data', (chunk) => {
+      if (stage === 0) {
+        if (chunk.length < 2 || chunk[0] !== 0x05 || chunk[1] !== 0x00) return fail('socks: bad auth method')
+        stage = 1
+        // CONNECT: VER=5 CMD=1 RSV=0 ATYP=3 (domain) LEN host port
+        const host = Buffer.from(destHost, 'utf-8')
+        const port = Buffer.alloc(2)
+        port.writeUInt16BE(destPort)
+        socket.write(Buffer.concat([Buffer.from([0x05, 0x01, 0x00, 0x03, host.length]), host, port]))
+      } else if (stage === 1) {
+        if (chunk.length < 2 || chunk[0] !== 0x05 || chunk[1] !== 0x00) {
+          return fail(`socks: connect failed (rep=${chunk[1]})`)
+        }
+        clearTimeout(timer)
+        resolve(socket)
+      }
+    })
+  })
+}
+
 export function buildSocksDispatcher(proxy: string): Agent {
-  const proxyAgent = new SocksProxyAgent(`socks5h://${normalizeSocksAddr(proxy)}`)
+  const [proxyHost, proxyPort] = normalizeSocksAddr(proxy).split(':')
+  const port = Number(proxyPort || 9150)
+  const connector = buildConnector({ timeout: 30_000 })
   return new Agent({
-    connect: (origin, _ctx) => {
-      const req = {} as any
-      const opts = {
-        host: origin.hostname,
-        port: Number(origin.port || (origin.protocol === 'https:' ? 443 : 80)),
-        secureEndpoint: origin.protocol === 'https:'
-      } as any
-      return proxyAgent.connect(req, opts) as any
+    connect: async (opts: any, callback) => {
+      try {
+        const destPort = Number(opts.port || (opts.protocol === 'https:' ? 443 : 80))
+        const socket = await socks5Connect(proxyHost || '127.0.0.1', port, opts.hostname, destPort)
+        connector({ ...opts, httpSocket: socket }, callback)
+      } catch (err) {
+        callback(err as Error, null)
+      }
     }
   })
 }
