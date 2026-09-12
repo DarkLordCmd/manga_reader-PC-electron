@@ -1,0 +1,23 @@
+appId: dev.mangareader.electron
+productName: Manga Reader
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**
+  - package.json
+win:
+  target:
+    - nsis
+    - portable
+mac:
+  target: dmg
+  category: public.app-category.entertainment
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Graphics
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
