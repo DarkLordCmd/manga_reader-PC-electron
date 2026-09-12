@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '../state/store'
-import type { CatalogCard, CatalogFilters, ChapterListItem } from '@shared/ipc'
+import type { CatalogCard, CatalogFilters, ChapterListItem, ExAccount } from '@shared/ipc'
 import { EH_CATEGORIES, MANGASHI_TAGS, REMANGA_GENRES } from '@shared/filters'
 import MangaCardGrid from '../components/MangaCardGrid'
 
@@ -89,6 +89,9 @@ export default function Catalog(): JSX.Element {
   const [tagQuery, setTagQuery] = useState('')
   const [ehTags, setEhTags] = useState<{ display: string }[]>([])
   const [nhTags, setNhTags] = useState<{ name: string; count: number }[]>([])
+  const [exAccounts, setExAccounts] = useState<ExAccount[]>([])
+  const [exCurrentId, setExCurrentId] = useState(0)
+  const [exNotice, setExNotice] = useState<string | null>(null)
 
   // ── Filters ──
   const [ehExcludedCats, setEhExcludedCats] = useState(0)
@@ -131,6 +134,12 @@ export default function Catalog(): JSX.Element {
     }, 300)
     return () => clearTimeout(t)
   }, [tagQuery, tagSource, nhTagSource])
+
+  useEffect(() => {
+    window.api.getExAccounts().then((r) => { setExAccounts(r.accounts); setExCurrentId(r.currentId) })
+  }, [])
+
+  const exIsAccountSource = source === 'exhentai' || source === 'ehentai'
 
   const appendTag = (tag: string): void => {
     setQuery((q) => (q.trim() ? `${q.trim()} ${tag}` : tag))
@@ -192,11 +201,16 @@ export default function Catalog(): JSX.Element {
     }
   }
 
-  const openChapter = async (chapterId: string): Promise<void> => {
-    const mangaId = picked && source === 'mangadex' ? picked.url : null
+  const openChapter = async (chapterId: string, chapterIndex: number): Promise<void> => {
+    const mangaId = picked?.url ?? null
     const r = await window.api.openUrl(chapterId, 0, mangaId)
     if (r) {
-      setOpened({ kind: 'online', ...r, startPage: 0 })
+      if (source === 'mangadex' && mangaId && chapters) {
+        const total = chapters.length
+        const progress = { ...settings.read_progress, [mangaId]: [chapterIndex + 1, total] as [number, number] }
+        setSettings({ ...settings, read_progress: progress })
+      }
+      setOpened({ kind: 'online', ...r, startPage: 0, chapterList: chapters, chapterIndex })
       setPicked(null)
       setScreen('Reader')
     }
@@ -214,6 +228,20 @@ export default function Catalog(): JSX.Element {
         <select value={source} onChange={(e) => changeSource(e.target.value)}>
           {SOURCES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
+        {exIsAccountSource && (
+          <select
+            title="Аккаунт ExHentai"
+            value={exCurrentId}
+            onChange={(e) => {
+              const id = Number(e.target.value)
+              void window.api.setExAccount(id).then((r) => { setExAccounts(r.accounts); setExCurrentId(r.currentId) })
+            }}
+          >
+            {exAccounts.length === 0 && <option value={0}>🔑 Без аккаунта</option>}
+            {exAccounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        )}
+        {exNotice && <span className="muted">{exNotice}</span>}
         <input
           className="catalog-search"
           value={query}
@@ -333,7 +361,11 @@ export default function Catalog(): JSX.Element {
       {error && <div className="error-text">{error}</div>}
       {loading && cards.length === 0 && <div className="muted">Поиск…</div>}
       {!loading && cards.length > 0 && (
-        <MangaCardGrid cards={cards} onSelect={(c) => void openChapters(c)} />
+        <MangaCardGrid
+          cards={cards}
+          onSelect={(c) => void openChapters(c)}
+          progress={source === 'mangadex' ? settings.read_progress : undefined}
+        />
       )}
 
       {cards.length > 0 && infiniteScroll && (
@@ -357,11 +389,21 @@ export default function Catalog(): JSX.Element {
             <div className="chapter-list">
               {chapterError && <div className="error-text">{chapterError}</div>}
               {!chapters && !chapterError && <div>Загрузка…</div>}
-              {chapters && chapters.map((c) => (
-                <button key={c.chapter_id} className="chapter-item" onClick={() => void openChapter(c.chapter_id)}>
-                  {c.title ? `${c.chapter_num} — ${c.title}` : c.chapter_num}
-                </button>
-              ))}
+              {chapters && (
+                <div className="chapter-count muted">Всего глав: {chapters.length}</div>
+              )}
+              {chapters && chapters.map((c, i) => {
+                const isRead = settings.read_chapters.includes(c.chapter_id)
+                return (
+                  <button
+                    key={c.chapter_id}
+                    className={`chapter-item${isRead ? ' read' : ''}`}
+                    onClick={() => void openChapter(c.chapter_id, i)}
+                  >
+                    {isRead ? '✓ ' : ''}{c.title ? `${c.chapter_num} — ${c.title}` : c.chapter_num}
+                  </button>
+                )
+              })}
             </div>
             <button onClick={() => setPicked(null)}>Закрыть</button>
           </div>

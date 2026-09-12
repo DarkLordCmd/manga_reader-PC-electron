@@ -57,11 +57,28 @@ export interface CatalogFilters {
   remangaCategories?: string[]
 }
 
+export interface ExAccount {
+  id: number
+  name: string
+  cookies: [string, string][]
+}
+
+export interface ExAccountsResult {
+  accounts: ExAccount[]
+  currentId: number
+}
+
+export interface ImportAccountsResult {
+  count: number
+  accounts: ExAccountsResult
+}
+
 export interface Api {
   getSettings(): Promise<Settings>
   setSettings(s: Settings): Promise<void>
   pickFolder(): Promise<OpenFolderResult | null>
   openFolder(path: string): Promise<OpenFolderResult | null>
+  rescanFolder(path: string): Promise<OpenFolderResult | null>
   getHistory(): Promise<HistoryEntry[]>
   recordProgress(url: string, page: number, total: number): Promise<void>
   clearHistory(): Promise<void>
@@ -75,6 +92,12 @@ export interface Api {
   checkTor(): Promise<TorStatus>
   checkBridges(lines: string[]): Promise<BridgeStatus[]>
   checkSites(): Promise<SiteStatus[]>
+  getExAccounts(): Promise<ExAccountsResult>
+  setExAccount(id: number): Promise<ExAccountsResult>
+  addExAccount(name: string, memberId: string, passHash: string, igneous: string): Promise<ExAccountsResult>
+  removeExAccount(id: number): Promise<ExAccountsResult>
+  importExAccounts(): Promise<ImportAccountsResult | null>
+  markChapterRead(url: string): Promise<void>
 }
 
 export const CH = {
@@ -82,6 +105,7 @@ export const CH = {
   setSettings: 'settings:set',
   pickFolder: 'folder:pick',
   openFolder: 'folder:open',
+  rescanFolder: 'folder:rescan',
   getHistory: 'history:get',
   recordProgress: 'history:progress',
   clearHistory: 'history:clear',
@@ -95,6 +119,12 @@ export const CH = {
   checkTor: 'tor:check',
   checkBridges: 'tor:bridges',
   checkSites: 'sites:check',
+  getExAccounts: 'ex:accounts',
+  setExAccount: 'ex:set',
+  addExAccount: 'ex:add',
+  removeExAccount: 'ex:remove',
+  importExAccounts: 'ex:import',
+  markChapterRead: 'reader:markread',
   settingsChanged: 'settings:changed'
 } as const
 

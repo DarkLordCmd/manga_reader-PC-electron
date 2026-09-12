@@ -1,4 +1,5 @@
 import type { HistoryEntry } from '@shared/types'
+import { mangaSeriesUrlFromChapterUrl } from './sources'
 
 export interface HistoryUpdate {
   url: string
@@ -32,10 +33,11 @@ export class HistoryManager {
   entries: HistoryEntry[] = []
 
   load(entries: HistoryEntry[]): void {
-    const normalized = entries.map((e) => ({
-      ...e,
-      series_id: e.series_id || e.url
-    }))
+    const normalized = entries.map((e) => {
+      const seriesId = e.series_id || e.url
+      const normalizedSeries = mangaSeriesUrlFromChapterUrl(seriesId)
+      return { ...e, series_id: normalizedSeries ?? seriesId }
+    })
     normalized.sort((a, b) => b.opened_at - a.opened_at)
     const seen = new Set<string>()
     this.entries = normalized.filter((e) => (seen.has(e.series_id) ? false : (seen.add(e.series_id), true)))

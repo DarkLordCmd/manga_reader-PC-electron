@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol, net } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
+import { readFileSync } from 'fs'
 import { SettingsService } from './services/settings'
 import { HistoryManager } from './services/history'
 import { galleryFromFolder, type Gallery } from './services/gallery'
@@ -11,10 +12,13 @@ import {
   fetchRemangaChapter, fetchRemangaChapters, fetchSenkuroChapter, fetchSenkuroChapters,
   mangaSeriesUrlFromChapterUrl
 } from './services/sources'
+import { fetchMangaShiChapters } from './services/catalog-search'
 import { searchExHentai, searchMangaShi, searchNhentai, searchRemanga, searchSenkuro, searchSimpleSite } from './services/catalog-search'
 import { runLoginWindow } from './services/login'
 import { probeSocks5Handshake, probeBridgeLine, probeSite, allSiteKeys } from './services/tor-check'
 import { fetchEhTagSuggest, fetchNhentaiTagSuggestions } from './services/tags'
+import { fetchCoverBuffer } from './services/covers'
+import { ExAccountsService } from './services/accounts'
 import { CH } from '@shared/ipc'
 
 const galleries = new Map<string, Gallery>()
@@ -28,6 +32,25 @@ protocol.registerSchemesAsPrivileged([
 
 let settings: SettingsService
 let history: HistoryManager
+let exAccounts: ExAccountsService
+
+function getCover(url: string): Promise<Buffer> {
+  const cached = coverCache.get(url)
+  if (cached) return Promise.resolve(cached)
+  const inFlight = coverInFlight.get(url)
+  if (inFlight) return inFlight
+  const p = (async () => {
+    try {
+      const buf = await fetchCoverBuffer(url, settings.get(), exAccounts.currentCookieHeader())
+      coverCache.set(url, buf)
+      return buf
+    } finally {
+      coverInFlight.delete(url)
+    }
+  })()
+  coverInFlight.set(url, p)
+  return p
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -74,37 +97,10 @@ function extractMangaDexChapterId(url: string): string | null {
   return null
 }
 
-async function fetchCoverBuffer(url: string): Promise<Buffer> {
-  const cached = coverCache.get(url)
-  if (cached) return cached
-  const inFlight = coverInFlight.get(url)
-  if (inFlight) return inFlight
-  const p = (async () => {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 20_000)
-    try {
-      const res = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          Referer: 'https://mangadex.org/'
-        },
-        signal: controller.signal
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const buf = Buffer.from(await res.arrayBuffer())
-      coverCache.set(url, buf)
-      return buf
-    } finally {
-      clearTimeout(timer)
-      coverInFlight.delete(url)
-    }
-  })()
-  coverInFlight.set(url, p)
-  return p
-}
-
 app.whenReady().then(() => {
   settings = new SettingsService(app.getPath('userData'))
+  exAccounts = new ExAccountsService(app.getPath('userData'))
+  exAccounts.init()
   history = new HistoryManager()
   history.load(settings.get().viewing_history)
 
@@ -117,7 +113,7 @@ app.whenReady().then(() => {
       if (!encoded) return new Response('Not found', { status: 404 })
       const target = decodeURIComponent(encoded)
       try {
-        const buf = await fetchCoverBuffer(target)
+        const buf = await getCover(target)
         return new Response(Uint8Array.from(buf), { headers: { 'Content-Type': 'image/jpeg' } })
       } catch {
         return new Response('Not found', { status: 404 })
@@ -180,8 +176,16 @@ app.whenReady().then(() => {
       || (url.includes('manga-shi') && s.tor_proxied_sites.includes('mangashi'))
       || (url.includes('remanga') && s.tor_proxied_sites.includes('remanga'))
       || (url.includes('mangalib') && s.tor_proxied_sites.includes('mangalib'))
-    const proxy = useTor ? torSocks : undefined
-    const cookieHeader = s.onion_cookies_raw
+    let proxy = useTor ? torSocks : undefined
+    // Clearnet ExHentai/E-Hentai uses the active account pool cookies and,
+    // if configured, the dedicated exhentai_proxy_addr proxy.
+    const isClearnetEx = url.includes('exhentai') || url.includes('e-hentai.org')
+    const cookieHeader = url.includes('.onion')
+      ? s.onion_cookies_raw
+      : isClearnetEx
+        ? exAccounts.currentCookieHeader()
+        : s.onion_cookies_raw
+    if (isClearnetEx && !url.includes('.onion') && s.exhentai_proxy_addr.trim()) proxy = s.exhentai_proxy_addr.trim()
     let result: { title: string; pageUrls: string[]; coverUrl: string | null; source: string; referer: string | null; proxy?: string; mangaId: string | null }
     let seriesId = mangaId ?? trimmed
     const seriesUrl = mangaSeriesUrlFromChapterUrl(trimmed)
@@ -228,6 +232,10 @@ app.whenReady().then(() => {
     } else if (mangaId.includes('senkuro')) {
       const slug = mangaId.trim().replace(/\/+$/, '').split('/').filter(Boolean).pop() ?? mangaId
       chapters = await fetchSenkuroChapters(slug, settings.get().onion_cookies_raw)
+    } else if (mangaId.includes('manga-shi')) {
+      const s = settings.get()
+      const proxy = s.tor_proxied_sites.includes('mangashi') ? (s.tor_socks_addr || '127.0.0.1:9150') : undefined
+      chapters = await fetchMangaShiChapters(mangaId, proxy)
     } else {
       chapters = await fetchChapterList(mangaId)
     }
@@ -247,14 +255,17 @@ app.whenReady().then(() => {
     if (source === 'remanga') return await searchRemanga(query, page, filters)
     if (source === 'senkuro') return await searchSenkuro(query, s.onion_cookies_raw)
     if (source === 'mangashi') return await searchMangaShi(query, proxy, filters)
-    if (source === 'nhentai') return await searchNhentai('https://nhentai.net', query, page, { proxy, cookieHeader: s.onion_cookies_raw })
+    if (source === 'nhentai') return await searchNhentai('https://nhentai.net', query, page, { proxy, cookieHeader: s.onion_cookies_raw, showPageCounts: s.nhentai_show_page_counts })
     if (source === 'nhentai_onion') {
       const base = s.nhentai_onion_base || 'http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion'
-      return await searchNhentai(base, query, page, { proxy: torSocks, cookieHeader: s.nhentai_onion_cookies_raw })
+      return await searchNhentai(base, query, page, { proxy: torSocks, cookieHeader: s.nhentai_onion_cookies_raw, showPageCounts: s.nhentai_show_page_counts })
     }
     if (source === 'ehentai' || source === 'exhentai' || source === 'exhentai_onion') {
       const useOnion = source === 'exhentai_onion'
-      const cookieHeader = useOnion ? s.onion_cookies_raw : s.onion_cookies_raw
+      const cookieHeader = useOnion ? s.onion_cookies_raw : exAccounts.currentCookieHeader()
+      const exProxy = useOnion
+        ? torSocks
+        : (s.exhentai_proxy_addr.trim() || undefined)
       const ex = await searchExHentai(query, {
         cookieHeader,
         torSocksAddr: torSocks,
@@ -262,7 +273,7 @@ app.whenReady().then(() => {
         page,
         forceTor: source === 'ehentai' && s.tor_proxied_sites.includes('ehentai'),
         excludedCats: filters.ehExcludedCats
-      })
+      }, exProxy)
       return ex.map((c) => ({ url: c.url, title: c.title, coverUrl: c.coverUrl, pages: c.pages, score: c.rating }))
     }
     if (source === 'comx' || source === 'mangalib') {
@@ -287,8 +298,8 @@ app.whenReady().then(() => {
   })
   ipcMain.handle(CH.ehTagSuggest, async (_e, text: string) => {
     const s = settings.get()
-    const proxy = s.tor_proxied_sites.includes('ehentai') ? (s.tor_socks_addr || '127.0.0.1:9150') : undefined
-    return await fetchEhTagSuggest(text, { proxy, cookieHeader: s.onion_cookies_raw })
+    const proxy = s.tor_proxied_sites.includes('ehentai') ? (s.tor_socks_addr || '127.0.0.1:9150') : (s.exhentai_proxy_addr.trim() || undefined)
+    return await fetchEhTagSuggest(text, { proxy, cookieHeader: exAccounts.currentCookieHeader() || s.onion_cookies_raw })
   })
   ipcMain.handle(CH.nhentaiTagSuggest, async (_e, text: string) => {
     const s = settings.get()
@@ -309,6 +320,47 @@ app.whenReady().then(() => {
   })
   ipcMain.handle(CH.setReadingPosition, (_e, gid: string, index: number) => {
     setReadingPosition(gid, index)
+  })
+  ipcMain.handle(CH.rescanFolder, (_e, path: string) => {
+    const g = galleryFromFolder(path)
+    if (!g) return null
+    galleries.set(g.id, g)
+    return { id: g.id, title: g.title, pageCount: g.pages.length, pages: g.pages, url: `file://${path}` }
+  })
+  ipcMain.handle(CH.getExAccounts, () => ({ accounts: exAccounts.accounts, currentId: exAccounts.currentId }))
+  ipcMain.handle(CH.setExAccount, (_e, id: number) => {
+    exAccounts.setCurrent(id)
+    return { accounts: exAccounts.accounts, currentId: exAccounts.currentId }
+  })
+  ipcMain.handle(CH.addExAccount, (_e, name: string, memberId: string, passHash: string, igneous: string) => {
+    exAccounts.addManual(name, memberId, passHash, igneous)
+    return { accounts: exAccounts.accounts, currentId: exAccounts.currentId }
+  })
+  ipcMain.handle(CH.removeExAccount, (_e, id: number) => {
+    exAccounts.remove(id)
+    return { accounts: exAccounts.accounts, currentId: exAccounts.currentId }
+  })
+  ipcMain.handle(CH.importExAccounts, async () => {
+    const r = await dialog.showOpenDialog({
+      title: 'Выбери JSON, который сохранил юзерскрипт AutoLogin',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile']
+    })
+    if (r.canceled || r.filePaths.length === 0) return null
+    let content: string
+    try {
+      content = readFileSync(r.filePaths[0], 'utf-8')
+    } catch (e: any) {
+      return { count: 0, accounts: { accounts: exAccounts.accounts, currentId: exAccounts.currentId } }
+    }
+    const count = exAccounts.importFromContent(content)
+    return { count, accounts: { accounts: exAccounts.accounts, currentId: exAccounts.currentId } }
+  })
+  ipcMain.handle(CH.markChapterRead, (_e, url: string) => {
+    const s = settings.get()
+    if (!s.read_chapters.includes(url)) {
+      settings.save({ ...s, read_chapters: [...s.read_chapters, url] })
+    }
   })
 
   createWindow()

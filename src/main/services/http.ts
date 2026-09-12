@@ -79,6 +79,32 @@ export async function httpGetText(
   return httpFetch({ url, headers, timeoutMs }, proxy)
 }
 
+export async function httpFetchBinary(
+  url: string,
+  headers: Record<string, string> = {},
+  proxy?: string,
+  timeoutMs = 30_000
+): Promise<Uint8Array> {
+  const dispatcher = buildAgent(proxy)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: normalizeHeaders({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        ...headers
+      }),
+      signal: controller.signal,
+      ...(dispatcher ? { dispatcher } : {})
+    } as any)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return new Uint8Array(await res.arrayBuffer())
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function httpGetJson(
   url: string,
   headers: Record<string, string> = {},

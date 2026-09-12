@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio'
 import { httpFetch, httpGetJson, httpPostJson } from './http'
 import type { CookieJar } from './cookies'
+import type { ChapterInfo } from './sources'
 
 export interface CatalogItem {
   url: string
@@ -146,10 +147,11 @@ export async function searchExHentai(
     page?: number
     forceTor?: boolean
     excludedCats?: number
-  }
+  },
+  exProxy?: string
 ): Promise<ExSearchResult[]> {
   const useProxy = opts.useOnion || opts.forceTor
-  const proxy = useProxy ? opts.torSocksAddr : undefined
+  const proxy = exProxy ?? (useProxy ? opts.torSocksAddr : undefined)
   const ua = useProxy ? TOR_UA : UA
   const base = opts.useOnion
     ? 'http://exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion'
@@ -310,13 +312,118 @@ export async function searchMangaShi(
   return results
 }
 
+// ── Manga-shi chapters ─────────────────────────────────────────────────
+
+function findNextPage(html: string): number | null {
+  const re = /page=(\d+)/g
+  let m: RegExpExecArray | null
+  let best: number | null = null
+  while ((m = re.exec(html)) !== null) {
+    const n = Number(m[1])
+    if (n > 1 && (best === null || n > best)) best = n
+  }
+  return best
+}
+
+function mangashiChapterNumFromUrl(full: string, text: string): string {
+  try {
+    const u = new URL(full)
+    const seg = u.pathname.split('/').filter(Boolean).find((s) => s.startsWith('glava-'))
+    if (seg) return `Глава ${seg.slice('glava-'.length)}`
+  } catch { /* ignore */ }
+  const lower = text.toLowerCase()
+  const pos = lower.indexOf('глава')
+  if (pos >= 0) {
+    const rest = text.slice(pos + 'глава'.length).trimStart()
+    const m = rest.match(/^[\d.]+/)
+    if (m) return `Глава ${m[0]}`
+  }
+  const firstLine = text.split('\n').map((l) => l.trim()).find((l) => l.length > 0)
+  return firstLine && firstLine.length > 0 ? firstLine : 'Глава'
+}
+
+export async function fetchMangaShiChapters(mangaUrl: string, proxy?: string): Promise<ChapterInfo[]> {
+  const base = mangaUrl.trim().replace(/\/+$/, '')
+  const opts = { headers: { Referer: mangaUrl, Accept: 'text/html,application/xhtml+xml' }, timeoutMs: 30_000 }
+
+  const page1 = await httpFetch({ url: mangaUrl, ...opts }, proxy)
+  if (page1.status >= 400) throw new Error(`Manga-shi: HTTP ${page1.status}`)
+
+  const allChapters: ChapterInfo[] = []
+  const seen = new Set<string>()
+
+  const parseChapters = (html: string): void => {
+    const $ = cheerio.load(html)
+    $('a[href]').each((_i, el) => {
+      const href = $(el).attr('href') ?? ''
+      if (!href.includes('/glava-')) return
+      const full = resolve(base, href)
+      if (!full || seen.has(full)) return
+      seen.add(full)
+      const text = $(el).text()
+      allChapters.push({
+        chapter_id: full,
+        chapter_num: mangashiChapterNumFromUrl(full, text),
+        title: null,
+        lang: 'mangashi'
+      })
+    })
+  }
+
+  parseChapters(page1.text)
+
+  let page = findNextPage(page1.text)
+  while (page != null && page <= 200) {
+    const target = `${base}/chapters/?chapter_sort=latest&page=${page}`
+    const r = await httpFetch({ url: target, ...opts }, proxy)
+    if (r.status >= 400) break
+    parseChapters(r.text)
+    const next = findNextPage(r.text)
+    if (next == null || next <= page) break
+    page = next
+  }
+
+  if (!allChapters.some((ch) => ch.chapter_num === 'Глава 1')) {
+    const ch1 = allChapters.find((ch) => ch.chapter_num === 'Читать сначала')
+    allChapters.push({
+      chapter_id: ch1?.chapter_id ?? `${base}/glava-1/`,
+      chapter_num: 'Глава 1',
+      title: null,
+      lang: 'mangashi'
+    })
+  }
+
+  const sortKey = (id: string): number => {
+    const m = id.trim().replace(/\/+$/, '').split('/').pop()?.match(/^glava-(\d+)/)
+    return m ? Number(m[1]) : 0
+  }
+  allChapters.sort((a, b) => sortKey(a.chapter_id) - sortKey(b.chapter_id))
+
+  if (allChapters.length === 0) {
+    throw new Error('На этой странице не нашлось ни одной главы — возможно, тайтл ещё не начали переводить, либо сайт изменил вёрстку.')
+  }
+  return allChapters
+}
+
 // ── nhentai simple (catalog) ───────────────────────────────────────────
+
+function parseNhentaiPageCount(html: string): number | null {
+  const words = html.replace(/<[^>]+>/g, ' ').replace(/[^\w:. ]/g, ' ').split(/\s+/)
+  for (let i = 0; i < words.length - 1; i++) {
+    const w = words[i]
+    const n = Number(w)
+    const next = words[i + 1].toLowerCase()
+    if (Number.isInteger(n) && (next === 'pages' || next === 'page')) return n
+  }
+  const m = html.match(/pages?\s*[:]\s*(\d+)/i) || html.match(/[^a-z](\d+)\s+pages?/i)
+  return m ? Number(m[1]) : null
+}
 
 export async function searchNhentai(
   base: string,
   query: string,
   page: number,
-  opts: { proxy?: string; cookieHeader?: string } = {}
+  opts: { proxy?: string; cookieHeader?: string; showPageCounts?: boolean } = {}
 ): Promise<CatalogItem[]> {
   const url = `${base}/search/?q=${encodeURIComponent(query)}&page=${page + 1}`
   const r = await httpFetch({
@@ -339,6 +446,28 @@ export async function searchNhentai(
     results.push({ url: full, title, coverUrl: cover ? resolve(base, cover) : null, pages: null })
   })
   if (results.length === 0) throw new Error('NHentai: ничего не найдено')
+
+  if (opts.showPageCounts) {
+    const maxConcurrent = base.includes('.onion') ? 2 : 4
+    const queue = [...results]
+    let next = 0
+    async function worker(): Promise<void> {
+      while (next < queue.length) {
+        const idx = next++
+        const item = queue[idx]
+        try {
+          const pr = await httpFetch({
+            url: item.url,
+            headers: { Referer: `${base}/`, Accept: 'text/html' },
+            timeoutMs: 20_000
+          }, opts.proxy)
+          const pages = pr.status < 400 ? parseNhentaiPageCount(pr.text) : null
+          if (pages != null) item.pages = pages
+        } catch { /* ignore */ }
+      }
+    }
+    await Promise.all(Array.from({ length: maxConcurrent }, () => worker()))
+  }
   return results
 }
 

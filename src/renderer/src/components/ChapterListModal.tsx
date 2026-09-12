@@ -4,12 +4,13 @@ import type { ChapterListItem } from '@shared/ipc'
 
 interface Props {
   mangaId: string
-  onOpenChapter: (chapterId: string) => void
+  currentUrl: string
+  onOpenChapter: (chapterId: string, chapterList: ChapterListItem[], chapterIndex: number) => void
   onClose: () => void
 }
 
-export default function ChapterListModal({ mangaId, onOpenChapter, onClose }: Props): JSX.Element {
-  const { opened } = useStore()
+export default function ChapterListModal({ mangaId, currentUrl, onOpenChapter, onClose }: Props): JSX.Element {
+  const { settings } = useStore()
   const [chapters, setChapters] = useState<ChapterListItem[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -21,8 +22,6 @@ export default function ChapterListModal({ mangaId, onOpenChapter, onClose }: Pr
     return () => { cancelled = true }
   }, [mangaId])
 
-  const currentUrl = opened?.kind === 'online' ? opened.url : ''
-
   return (
     <div className="overlay" onClick={onClose}>
       <div className="overlay-card chapters" onClick={(e) => e.stopPropagation()}>
@@ -30,16 +29,25 @@ export default function ChapterListModal({ mangaId, onOpenChapter, onClose }: Pr
         <div className="chapter-list">
           {error && <div className="error-text">{error}</div>}
           {!chapters && !error && <div>Загрузка…</div>}
-          {chapters && chapters.map((c) => {
+          {chapters && (
+            <div className="chapter-count muted">Всего глав: {chapters.length}</div>
+          )}
+          {chapters && chapters.map((c, i) => {
             const isCurrent = c.chapter_id === currentUrl
+            const isRead = settings.read_chapters.includes(c.chapter_id)
             const label = c.title ? `${c.chapter_num} — ${c.title}` : c.chapter_num
+            const cls = [
+              'chapter-item',
+              isCurrent ? ' current' : '',
+              isRead ? ' read' : ''
+            ].join('')
             return (
               <button
                 key={c.chapter_id}
-                className={`chapter-item${isCurrent ? ' current' : ''}`}
-                onClick={() => onOpenChapter(c.chapter_id)}
+                className={cls}
+                onClick={() => onOpenChapter(c.chapter_id, chapters, i)}
               >
-                {label}
+                {isRead ? '✓ ' : ''}{label}
               </button>
             )
           })}

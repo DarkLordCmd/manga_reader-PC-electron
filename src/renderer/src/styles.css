@@ -108,3 +108,9 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .tag-check.active { border-color: #22c55e; color: #22c55e; }
 .filter-reset { margin-top: 8px; background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 4px; padding: 3px 10px; cursor: pointer; }
 .catalog-sentinel { height: 40px; display: flex; align-items: center; justify-content: center; }
+.manga-progress { position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 6px; background: linear-gradient(transparent, rgba(0,0,0,0.7)); }
+.manga-progress-track { height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden; }
+.manga-progress-fill { height: 100%; background: var(--accent, #f97316); border-radius: 2px; }
+.manga-cover { position: relative; }
+.chapter-item.read { color: #22c55e; }
+.chapter-count { font-size: 12px; margin-bottom: 6px; }

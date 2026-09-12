@@ -1,12 +1,13 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { Settings } from '@shared/settings'
 import { defaultSettings } from '@shared/settings'
+import type { ChapterListItem } from '@shared/ipc'
 
 export type Screen = 'Reader' | 'Catalog' | 'History' | 'Settings'
 
 export type OpenedGallery =
   | { kind: 'local'; id: string; title: string; pageCount: number; pages: string[]; url: string; startPage: number }
-  | { kind: 'online'; id: string; title: string; pageCount: number; source: string; url: string; startPage: number; mangaId: string | null }
+  | { kind: 'online'; id: string; title: string; pageCount: number; source: string; url: string; startPage: number; mangaId: string | null; chapterList?: ChapterListItem[] | null; chapterIndex?: number | null }
 
 interface Store {
   screen: Screen

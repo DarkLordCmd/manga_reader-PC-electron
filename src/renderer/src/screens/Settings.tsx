@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useStore } from '../state/store'
-import type { TorStatus, BridgeStatus, SiteStatus } from '@shared/ipc'
+import type { TorStatus, BridgeStatus, SiteStatus, ExAccountsResult } from '@shared/ipc'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
   return (
@@ -28,6 +28,16 @@ export default function Settings(): JSX.Element {
   const [torChecking, setTorChecking] = useState(false)
   const [bridgeResults, setBridgeResults] = useState<BridgeStatus[] | null>(null)
   const [siteResults, setSiteResults] = useState<SiteStatus[] | null>(null)
+  const [exAcc, setExAcc] = useState<ExAccountsResult>({ accounts: [], currentId: 0 })
+  const [exName, setExName] = useState('')
+  const [exMemberId, setExMemberId] = useState('')
+  const [exPassHash, setExPassHash] = useState('')
+  const [exIgneous, setExIgneous] = useState('')
+  const [exNotice, setExNotice] = useState<string | null>(null)
+
+  useEffect(() => {
+    window.api.getExAccounts().then(setExAcc)
+  }, [])
 
   const upd = (patch: Partial<typeof settings>): void => setSettings({ ...settings, ...patch })
 
@@ -268,6 +278,62 @@ export default function Settings(): JSX.Element {
             />
           </div>
           {loginMsg && <div className="login-msg muted">{loginMsg}</div>}
+        </Section>
+
+        <Section title="Аккаунты ExHentai">
+          <div className="row">
+            <label>Активный аккаунт используется для всех запросов к ExHentai (обычный режим).</label>
+          </div>
+          {exAcc.accounts.length === 0 && (
+            <div className="row muted">Нет ни одного аккаунта.</div>
+          )}
+          {exAcc.accounts.map((a) => (
+            <div className="row" key={a.id}>
+              <button
+                className={a.id === exAcc.currentId ? 'tab active' : 'tab'}
+                onClick={() => void window.api.setExAccount(a.id).then(setExAcc)}
+              >{a.name}</button>
+              <button
+                className="icon-btn"
+                title="Удалить аккаунт"
+                onClick={async () => {
+                  setExAcc(await window.api.removeExAccount(a.id))
+                }}
+              >✕</button>
+            </div>
+          ))}
+          <div className="row">
+            <button onClick={() => void (async () => {
+              const r = await window.api.importExAccounts()
+              if (r) {
+                setExAcc(r.accounts)
+                setExNotice(r.count > 0 ? `Импортировано аккаунтов: ${r.count}` : 'В файле не найдено аккаунтов')
+              }
+            })()}>📂 Импортировать пул (Share, storage.json)</button>
+            <button onClick={async () => {
+              const r = await window.api.addExAccount(exName, exMemberId, exPassHash, exIgneous)
+              setExAcc(r)
+              setExNotice(`Добавлен аккаунт (${r.currentId ? r.accounts.find((a) => a.id === r.currentId)?.name : ''})`)
+              setExName(''); setExMemberId(''); setExPassHash(''); setExIgneous('')
+            }}>＋ Добавить аккаунт вручную</button>
+          </div>
+          {exNotice && <div className="row muted">{exNotice}</div>}
+          <div className="row">
+            <label>Название (необязательно)</label>
+            <input className="text-input" value={exName} onChange={(e) => setExName(e.target.value)} />
+          </div>
+          <div className="row">
+            <label>ipb_member_id</label>
+            <input className="text-input" value={exMemberId} onChange={(e) => setExMemberId(e.target.value)} />
+          </div>
+          <div className="row">
+            <label>ipb_pass_hash</label>
+            <input className="text-input" value={exPassHash} onChange={(e) => setExPassHash(e.target.value)} />
+          </div>
+          <div className="row">
+            <label>igneous (только для ExHentai)</label>
+            <input className="text-input" value={exIgneous} onChange={(e) => setExIgneous(e.target.value)} />
+          </div>
         </Section>
 
         <Section title="🔒 Приватность">
