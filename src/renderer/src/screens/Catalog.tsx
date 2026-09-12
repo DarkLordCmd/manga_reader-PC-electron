@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '../state/store'
 import type { CatalogCard, CatalogFilters, ChapterListItem, ExAccount } from '@shared/ipc'
-import { EH_CATEGORIES, MANGASHI_TAGS, REMANGA_GENRES } from '@shared/filters'
+import { EH_CATEGORIES, MANGASHI_TAGS, REMANGA_GENRES, MD_LANGS, MD_POPULAR_TAGS, NH_POPULAR_TAGS } from '@shared/filters'
 import MangaCardGrid from '../components/MangaCardGrid'
 
 const SOURCES: { key: string; label: string }[] = [
@@ -107,24 +107,31 @@ export default function Catalog(): JSX.Element {
   const [rmStatus, setRmStatus] = useState('')
   const [rmTypes, setRmTypes] = useState('')
   const [rmGenres, setRmGenres] = useState<string[]>([])
+  const [mdTagQuery, setMdTagQuery] = useState('')
+  const [mdActiveTags, setMdActiveTags] = useState<string[]>([])
+  const [mdLangs, setMdLangs] = useState<string[]>([])
+  const [nhFilterTags, setNhFilterTags] = useState<string[]>([])
 
   const sentinelRef = useRef<HTMLDivElement>(null)
   const infiniteScroll = settings.infinite_scroll
 
   const filters: CatalogFilters = {
     ehExcludedCats,
+    mangadexTags: mdActiveTags,
+    mangadexLangs: mdLangs,
     mangashiSort: msSort, mangashiStatus: msStatus, mangashiType: msType,
     mangashiYear: msYear, mangashiAgeRating: msAge,
     mangashiChaptersMin: msChaptersMin, mangashiChaptersMax: msChaptersMax,
     mangashiTags: msTags,
     remangaOrdering: rmOrdering, remangaStatus: rmStatus, remangaTypes: rmTypes,
-    remangaGenres: rmGenres
+    remangaGenres: rmGenres,
+    nhentaiTags: nhFilterTags
   }
 
   const tagSource = source === 'exhentai' || source === 'exhentai_onion' || source === 'ehentai'
   const nhTagSource = source === 'nhentai' || source === 'nhentai_onion'
   const showFilters = source === 'exhentai' || source === 'exhentai_onion' || source === 'ehentai'
-    || source === 'mangashi' || source === 'remanga'
+    || source === 'mangashi' || source === 'remanga' || source === 'mangadex' || nhTagSource
 
   useEffect(() => {
     if (tagQuery.trim().length < 2) { setEhTags([]); setNhTags([]); return }
@@ -173,6 +180,9 @@ export default function Catalog(): JSX.Element {
 
   const resetFilters = (): void => {
     setEhExcludedCats(0)
+    setMdActiveTags([])
+    setMdLangs([])
+    setNhFilterTags([])
     setMsSort(''); setMsStatus(''); setMsType(''); setMsYear(''); setMsAge('')
     setMsChaptersMin(''); setMsChaptersMax(''); setMsTags([])
     setRmOrdering(''); setRmStatus(''); setRmTypes(''); setRmGenres([])
@@ -348,6 +358,75 @@ export default function Catalog(): JSX.Element {
                           onChange={() => toggleCat(bit)}
                         /> {label}
                       </label>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+
+            {source === 'mangadex' && (
+              <>
+                <div className="filter-title">Поиск лейблов</div>
+                <input
+                  className="filter-input full"
+                  value={mdTagQuery}
+                  placeholder="Например романтика"
+                  onChange={(e) => setMdTagQuery(e.target.value)}
+                />
+                <div className="filter-title">Популярные</div>
+                <div className="tag-checklist">
+                  {MD_POPULAR_TAGS
+                    .filter((t) => !mdTagQuery || t.toLowerCase().includes(mdTagQuery.toLowerCase()))
+                    .map((tag) => {
+                      const active = mdActiveTags.includes(tag)
+                      return (
+                        <button
+                          key={tag}
+                          className={`tag-check${active ? ' active' : ''}`}
+                          onClick={() => {
+                            setMdActiveTags((prev) => prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag])
+                            setPage(0); void search(0)
+                          }}
+                        >{tag}</button>
+                      )
+                    })}
+                </div>
+                <div className="filter-title">Язык перевода</div>
+                <div className="filter-cats">
+                  {MD_LANGS.map(([code, label]) => {
+                    const active = mdLangs.includes(code)
+                    return (
+                      <label key={code} className={`filter-check${active ? ' active' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={active}
+                          onChange={() => {
+                            setMdLangs((prev) => prev.includes(code) ? prev.filter((l) => l !== code) : [...prev, code])
+                            setPage(0); void search(0)
+                          }}
+                        /> {label}
+                      </label>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+
+            {nhTagSource && (
+              <>
+                <div className="filter-title">Популярные теги</div>
+                <div className="tag-checklist">
+                  {NH_POPULAR_TAGS.map((tag) => {
+                    const active = nhFilterTags.includes(tag)
+                    return (
+                      <button
+                        key={tag}
+                        className={`tag-check${active ? ' active' : ''}`}
+                        onClick={() => {
+                          setNhFilterTags((prev) => prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag])
+                          setPage(0); void search(0)
+                        }}
+                      >{tag}</button>
                     )
                   })}
                 </div>

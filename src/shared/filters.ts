@@ -127,3 +127,21 @@ export const EH_CATEGORIES: [string, number][] = [
   ['Doujinshi', 2], ['Manga', 4], ['Artist CG', 8], ['Game CG', 16], ['Western', 512],
   ['Non-H', 256], ['Image Set', 32], ['Cosplay', 64], ['Asian Porn', 128], ['Misc', 1]
 ]
+
+export const MD_LANGS: [string, string][] = [
+  ['ru', '🇷🇺 Русский'], ['en', '🇺🇸 Английский'], ['ja', '🇯🇵 Японский'],
+  ['ko', '🇰🇷 Корейский'], ['zh', '🇨🇳 Китайский'], ['fr', '🇫🇷 Французский'],
+  ['de', '🇩🇪 Немецкий'], ['es', '🇪🇸 Испанский'], ['pt-br', '🇧🇷 Португальский'],
+  ['it', '🇮🇹 Итальянский']
+]
+
+export const MD_POPULAR_TAGS: string[] = [
+  'Романтика', 'Экшен', 'Фэнтези', 'Комедия', 'Драма', 'Боевые искусства',
+  'Приключения', 'Школа', 'Гарем', 'Исекай', 'Сверхъестественное', 'Психологическое'
+]
+
+export const NH_POPULAR_TAGS: string[] = [
+  'full color', 'sole female', 'sole male', 'story arc', 'group', 'romance',
+  'harem', 'big breasts', 'stockings', 'glasses', 'ahegao', 'yuri', 'yaoi',
+  'milf', 'incest', 'schoolgirl uniform', 'virginity', 'pregnant', 'uncensored', 'netorare'
+]

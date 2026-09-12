@@ -423,9 +423,11 @@ export async function searchNhentai(
   base: string,
   query: string,
   page: number,
-  opts: { proxy?: string; cookieHeader?: string; showPageCounts?: boolean } = {}
+  opts: { proxy?: string; cookieHeader?: string; showPageCounts?: boolean; tags?: string[] } = {}
 ): Promise<CatalogItem[]> {
-  const url = `${base}/search/?q=${encodeURIComponent(query)}&page=${page + 1}`
+  const tagPart = (opts.tags ?? []).map((t) => `tag:${t}`).join(' ')
+  const fullQuery = [query.trim(), tagPart].filter(Boolean).join(' ')
+  const url = `${base}/search/?q=${encodeURIComponent(fullQuery)}&page=${page + 1}`
   const r = await httpFetch({
     url,
     headers: { Referer: `${base}/`, Accept: 'text/html' }

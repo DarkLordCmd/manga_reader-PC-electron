@@ -104,10 +104,12 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .filter-label { min-width: 130px; color: var(--muted); font-size: 12px; }
 .filter-select { background: #14141f; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; }
 .filter-input { background: #14141f; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; width: 90px; }
+.filter-input.full { width: 100%; box-sizing: border-box; margin-bottom: 4px; }
 .filter-input.narrow { width: 50px; }
 .filter-range { display: flex; align-items: center; gap: 6px; }
 .filter-cats { display: flex; flex-wrap: wrap; gap: 8px; }
 .filter-check { color: var(--text); display: flex; align-items: center; gap: 4px; font-size: 12px; }
+.filter-check.active { color: var(--accent); }
 .tag-checklist { display: flex; flex-wrap: wrap; gap: 6px; max-height: 220px; overflow-y: auto; }
 .tag-check { background: #14141f; border: 1px solid var(--border); border-radius: 12px; color: var(--text); padding: 2px 10px; cursor: pointer; font-size: 12px; }
 .tag-check.active { border-color: #22c55e; color: #22c55e; }

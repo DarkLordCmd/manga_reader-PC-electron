@@ -248,17 +248,17 @@ app.whenReady().then(() => {
     const proxy = s.tor_proxied_sites.includes(siteKey) || source.endsWith('_onion') ? torSocks : undefined
 
     if (source === 'mangadex') {
-      return (await searchMangaDex(query, sort as any, page)).map((c) => ({
+      return (await searchMangaDex(query, sort as any, page, filters.mangadexTags ?? [], filters.mangadexLangs ?? [])).map((c) => ({
         url: c.manga_id, title: c.title, coverUrl: c.cover_url, pages: null, kind: c.kind, score: c.score
       }))
     }
     if (source === 'remanga') return await searchRemanga(query, page, filters)
     if (source === 'senkuro') return await searchSenkuro(query, s.onion_cookies_raw)
     if (source === 'mangashi') return await searchMangaShi(query, proxy, filters)
-    if (source === 'nhentai') return await searchNhentai('https://nhentai.net', query, page, { proxy, cookieHeader: s.onion_cookies_raw, showPageCounts: s.nhentai_show_page_counts })
+    if (source === 'nhentai') return await searchNhentai('https://nhentai.net', query, page, { proxy, cookieHeader: s.onion_cookies_raw, showPageCounts: s.nhentai_show_page_counts, tags: filters.nhentaiTags })
     if (source === 'nhentai_onion') {
       const base = s.nhentai_onion_base || 'http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion'
-      return await searchNhentai(base, query, page, { proxy: torSocks, cookieHeader: s.nhentai_onion_cookies_raw, showPageCounts: s.nhentai_show_page_counts })
+      return await searchNhentai(base, query, page, { proxy: torSocks, cookieHeader: s.nhentai_onion_cookies_raw, showPageCounts: s.nhentai_show_page_counts, tags: filters.nhentaiTags })
     }
     if (source === 'ehentai' || source === 'exhentai' || source === 'exhentai_onion') {
       const useOnion = source === 'exhentai_onion'

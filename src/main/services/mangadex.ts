@@ -82,15 +82,41 @@ async function fetchFeed(manga_id: string, lang: string): Promise<ChapterInfo[]>
   return all
 }
 
+function isTagId(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+}
+
+async function resolveTagIds(tags: string[]): Promise<string[]> {
+  const out: string[] = []
+  const names: string[] = []
+  for (const t of tags) {
+    if (isTagId(t)) out.push(t)
+    else names.push(t)
+  }
+  if (names.length === 0) return out
+  const json: any = await httpGetJson('https://api.mangadex.org/manga/tag')
+  const arr: any[] = json?.data ?? []
+  for (const n of names) {
+    const found = arr.find((t: any) => {
+      const nameEn = t?.attributes?.name?.en ?? ''
+      const nameRu = t?.attributes?.name?.ru ?? ''
+      return n.toLowerCase() === nameEn.toLowerCase() || n.toLowerCase() === nameRu.toLowerCase()
+    })
+    if (found?.id && typeof found.id === 'string') out.push(found.id)
+  }
+  return out
+}
+
 export async function searchMangaDex(
   query: string, sort: MangaSort, page: number,
   tags: string[] = [], langs: string[] = []
 ): Promise<MangaCard[]> {
+  const tagIds = await resolveTagIds(tags)
   const params = new URLSearchParams({ limit: '30', offset: String(page * 30), 'includes[]': 'cover_art' })
   params.set(`order[${ORDER_KEY[sort]}]`, 'desc')
   for (const r of ['safe', 'suggestive', 'erotica']) params.append('contentRating[]', r)
   if (query) params.set('title', query)
-  for (const t of tags) params.append('includedTags[]', t)
+  for (const t of tagIds) params.append('includedTags[]', t)
   for (const l of langs) params.append('availableTranslatedLanguage[]', l)
   const json = await httpGetJson(`https://api.mangadex.org/manga?${params.toString()}`)
   const cards = parseMangaSearch(json)

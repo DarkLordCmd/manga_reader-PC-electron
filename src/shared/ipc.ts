@@ -42,6 +42,9 @@ export interface SiteStatus { key: string; state: string; reason?: string }
 
 export interface CatalogFilters {
   ehExcludedCats?: number
+  mangadexTags?: string[]
+  mangadexLangs?: string[]
+  nhentaiTags?: string[]
   mangashiSort?: string
   mangashiStatus?: string
   mangashiType?: string
