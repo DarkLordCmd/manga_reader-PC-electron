@@ -8,6 +8,9 @@ export interface CatalogItem {
   title: string
   coverUrl: string | null
   pages: number | null
+  kind?: string | null
+  score?: number | null
+  chapterCount?: number | null
 }
 
 export type CatalogSourceKey =
@@ -202,13 +205,14 @@ export async function searchExHentai(
     const title = a.text().trim() || (a.attr('title') ?? '')
     const cover = $(el).find('img').first().attr('data-src') || $(el).find('img').first().attr('src') || null
     const coverUrl = cover ? resolve(base, cover) : null
+    const category = $(el).find('td.glcat').first().text().trim() || null
     const rowText = $(el).text()
     const pagesM = rowText.match(/(\d+)\s+(?:pages?|страниц)/i)
     const ratingM = rowText.match(/(\d(?:\.\d+)?)\s*\/\s*5/)
     results.push({
       url: full, title, coverUrl,
       thumbUrl: coverUrl,
-      category: null, rating: ratingM ? Number(ratingM[1]) : null,
+      category, rating: ratingM ? Number(ratingM[1]) : null,
       pages: pagesM ? Number(pagesM[1]) : null, chapterTotal: null
     })
   })
@@ -244,6 +248,7 @@ export async function searchRemanga(
     title: r?.main_name ?? r?.rus_name ?? r?.name ?? 'Без названия',
     coverUrl: r?.cover?.high ?? r?.cover?.mid ?? null,
     pages: r?.count_chapters ?? null,
+    kind: r?.type?.name ?? null,
     score: typeof r?.avg_rating === 'number' ? r.avg_rating : null
   }))
 }
@@ -283,9 +288,10 @@ export async function searchSenkuro(query: string, cookieHeader = ''): Promise<C
 export async function searchMangaShi(
   query: string,
   proxy?: string,
-  filters: CatalogFilters = {}
+  filters: CatalogFilters = {},
+  baseOverride?: string
 ): Promise<CatalogItem[]> {
-  const base = 'https://manga-shi.org'
+  const base = baseOverride ?? 'https://manga-shi.org'
   const params: string[] = []
   if (query.trim()) params.push(`q=${encodeURIComponent(query.trim())}`)
   if (filters.mangashiSort) params.push(`sort=${filters.mangashiSort}`)
@@ -311,10 +317,30 @@ export async function searchMangaShi(
     const title = $(el).find('h3').first().text().trim() || $(el).attr('title') || ''
     const img = $(el).find('img').first()
     const cover = img.attr('data-src') || img.attr('src') || null
+    const kind = $(el).find('div.flex.justify-between span:first-child').first().text().trim() || null
+    // Rating: find the badge div (a div whose two direct spans hold the
+    // grade letter and the numeric score, e.g. "9,7"). Matched structurally
+    // rather than by class name since the class list is Tailwind noise.
+    let score: number | null = null
+    $(el).find('div').each((_d, d) => {
+      const directSpans = $(d).children('span')
+      if (directSpans.length >= 2) {
+        const v = directSpans.eq(1).text().trim().replace(',', '.')
+        const n = Number(v)
+        if (v !== 'n/a' && v !== '' && !isNaN(n)) {
+          score = n
+          return false
+        }
+      }
+    })
+    let chapterCount: number | null = null
+    const ctText = $(el).find('i.ph-clock-clockwise').first().parent().find('span.shrink-0').first().text()
+    const ctDigits = ctText.replace(/\D/g, '')
+    if (ctDigits) chapterCount = Number(ctDigits)
     results.push({
       url: full, title,
       coverUrl: cover ? resolve(base, cover) : null,
-      pages: null
+      pages: null, kind, score, chapterCount
     })
   })
   if (results.length === 0) throw new Error('Manga-shi: ничего не найдено')

@@ -300,7 +300,7 @@ app.whenReady().then(() => {
         domainOverride: source === 'ehentai' ? 'https://e-hentai.org' : undefined,
         cursor
       }, exProxy)
-      return ex.map((c) => ({ url: c.url, title: c.title, coverUrl: c.coverUrl, pages: c.pages, score: c.rating }))
+      return ex.map((c) => ({ url: c.url, title: c.title, coverUrl: c.coverUrl, pages: c.pages, score: c.rating, kind: c.category }))
     }
     if (source === 'comx' || source === 'mangalib') {
       const cfg = {
