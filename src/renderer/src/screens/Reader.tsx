@@ -4,6 +4,7 @@ import { useGallery } from '../hooks/useGallery'
 import { useHotkeys } from '../hooks/useHotkeys'
 import ScrollView from '../components/ScrollView'
 import BookView from '../components/BookView'
+import ThumbnailPanel from '../components/ThumbnailPanel'
 
 export default function Reader(): JSX.Element {
   const { settings, setSettings } = useStore()
@@ -59,28 +60,42 @@ export default function Reader(): JSX.Element {
 
       {!gallery && <div className="screen">Открой папку кнопкой Open</div>}
 
-      {gallery && settings.reading_mode === 'Scroll' && (
-        <ScrollView
-          galleryId={gallery.id}
-          pages={gallery.pages}
-          widthScale={settings.width_scale}
-          currentIndex={currentIndex}
-          jumpTo={jumpTo}
-          onVisible={onVisible}
-          onJumpDone={onJumpDone}
-        />
-      )}
-
-      {gallery && settings.reading_mode === 'Book' && (
-        <BookView
-          galleryId={gallery.id}
-          pageCount={pageCount}
-          currentIndex={currentIndex}
-          pagesPerScreen={perScreen}
-          direction={settings.book_direction}
-          onPrev={goPrev}
-          onNext={goNext}
-        />
+      {gallery && (
+        <div className="reader-body">
+          {settings.show_thumbnails && (
+            <ThumbnailPanel
+              galleryId={gallery.id}
+              pageCount={pageCount}
+              currentIndex={currentIndex}
+              thumbSize={settings.thumb_size}
+              onSelect={(i) => { setCurrentIndex(i); setJumpTo(i) }}
+            />
+          )}
+          <div className="reader-content">
+            {settings.reading_mode === 'Scroll' && (
+              <ScrollView
+                galleryId={gallery.id}
+                pages={gallery.pages}
+                widthScale={settings.width_scale}
+                currentIndex={currentIndex}
+                jumpTo={jumpTo}
+                onVisible={onVisible}
+                onJumpDone={onJumpDone}
+              />
+            )}
+            {settings.reading_mode === 'Book' && (
+              <BookView
+                galleryId={gallery.id}
+                pageCount={pageCount}
+                currentIndex={currentIndex}
+                pagesPerScreen={perScreen}
+                direction={settings.book_direction}
+                onPrev={goPrev}
+                onNext={goNext}
+              />
+            )}
+          </div>
+        </div>
       )}
 
       {showHelp && (
