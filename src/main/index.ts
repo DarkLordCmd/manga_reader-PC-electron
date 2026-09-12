@@ -182,6 +182,7 @@ app.whenReady().then(() => {
     const useTor = url.includes('.onion')
       || (url.includes('nhentai') && s.tor_proxied_sites.includes('nhentai'))
       || (url.includes('e-hentai.org') && s.tor_proxied_sites.includes('ehentai'))
+      || (url.includes('exhentai.org') && (s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai')))
       || (url.includes('com-x.life') && s.tor_proxied_sites.includes('comx'))
       || (url.includes('senkuro') && s.tor_proxied_sites.includes('senkuro'))
       || (url.includes('manga-shi') && s.tor_proxied_sites.includes('mangashi'))
@@ -292,15 +293,17 @@ app.whenReady().then(() => {
     if (source === 'ehentai' || source === 'exhentai' || source === 'exhentai_onion') {
       const useOnion = source === 'exhentai_onion'
       const cookieHeader = useOnion ? s.onion_cookies_raw : exAccounts.currentCookieHeader()
-      const exProxy = useOnion
-        ? torSocks
-        : (s.exhentai_proxy_addr.trim() || undefined)
+      // The "E-Hentai" Tor toggle routes both e-hentai.org and exhentai.org
+      // through Tor (same site family), like the original app.
+      const torForEx = s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai')
+      const useTor = useOnion || torForEx
+      const exProxy = useTor ? torSocks : (s.exhentai_proxy_addr.trim() || undefined)
       const ex = await searchExHentai(query, {
         cookieHeader,
         torSocksAddr: torSocks,
         useOnion,
         page,
-        forceTor: source === 'ehentai' && s.tor_proxied_sites.includes('ehentai'),
+        forceTor: torForEx,
         excludedCats: filters.ehExcludedCats,
         domainOverride: source === 'ehentai' ? 'https://e-hentai.org' : undefined,
         cursor: cursor ? { dir: cursor.dir, gid: cursor.cursor } : undefined

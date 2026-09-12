@@ -344,7 +344,10 @@ export async function searchExHentai(
       Referer: `${base}/`,
       Accept: 'text/html,application/xhtml+xml',
       ...(opts.cookieHeader ? { Cookie: opts.cookieHeader } : {})
-    }
+    },
+    // An empty body (sad panda / IP rate-limit on the direct path) retries
+    // once through domain fronting, which uses a different egress IP.
+    frontOnEmpty: true
   }, proxy)
 
   if (looksRateLimited(r.status, r.text)) {

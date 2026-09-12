@@ -10,6 +10,8 @@ export interface HttpFetchOptions {
   body?: string
   timeoutMs?: number
   redirect?: 'follow' | 'manual'
+  /** When true, an empty body from the direct path triggers a domain-fronting retry. */
+  frontOnEmpty?: boolean
 }
 
 export interface HttpResult {
@@ -130,35 +132,50 @@ async function performFetch(
   dispatcher: Agent | undefined,
   frontHost: string | undefined,
   frontIp: string | undefined
-): Promise<Response> {
+): Promise<{ res: Response; bodyText: string | null }> {
   const baseTimeout = opts.timeoutMs ?? 30_000
   const init = buildInit(opts)
   // `redirect:'manual'` must stay on undici: Chromium returns an opaque
   // redirect response (status 0, no headers), so Set-Cookie would be lost.
   const forceUndici = opts.redirect === 'manual'
+  const frontOnEmpty = opts.frontOnEmpty === true
 
   if (!dispatcher || !frontHost) {
-    return fetchWithTimeout(opts.url, init, baseTimeout, dispatcher, forceUndici)
+    const res = await fetchWithTimeout(opts.url, init, baseTimeout, dispatcher, forceUndici)
+    return { res, bodyText: null }
   }
 
   // Domain-fronting mode: direct first, fronting as fallback.
-  try {
-    if (!forceUndici) {
-      return await fetchWithTimeout(opts.url, init, Math.min(baseTimeout, 12_000))
-    }
-  } catch { /* direct failed, fall through to fronting */ }
+  let directEmpty: { res: Response; text: string } | null = null
+  if (!forceUndici) {
+    try {
+      const res = await fetchWithTimeout(opts.url, init, Math.min(baseTimeout, 12_000))
+      if (!frontOnEmpty) return { res, bodyText: null }
+      const text = await res.text()
+      if (text.trim().length > 0) return { res, bodyText: text }
+      // Empty body (e.g. ExHentai sad panda / IP rate-limit) → try fronting.
+      directEmpty = { res, text }
+    } catch { /* direct failed, fall through to fronting */ }
+  }
 
   try {
-    return await fetchWithTimeout(opts.url, init, baseTimeout, dispatcher, forceUndici)
+    const res = await fetchWithTimeout(opts.url, init, 10_000, dispatcher, forceUndici)
+    return { res, bodyText: null }
   } catch (e) {
     markUnavailable(frontHost, frontIp!)
+    if (directEmpty) {
+      // Fronting unreachable — surface the direct (empty) result so the
+      // caller reports the accurate sad-panda/rate-limit error instead of a
+      // network timeout.
+      return { res: directEmpty.res, bodyText: directEmpty.text }
+    }
     throw e
   }
 }
 
 export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise<HttpResult> {
   const { dispatcher, frontHost, frontIp } = buildDispatcherFor(opts.url, proxy)
-  const res = await performFetch(opts, dispatcher, frontHost, frontIp)
+  const { res, bodyText } = await performFetch(opts, dispatcher, frontHost, frontIp)
   const setCookies = extractSetCookies(res)
   if (setCookies.length > 0) {
     try {
@@ -166,7 +183,8 @@ export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise
       if (isEhHost(host)) notifyEhSetCookies(host, setCookies)
     } catch { /* ignore */ }
   }
-  return { status: res.status, text: await res.text(), setCookies }
+  const text = bodyText ?? await res.text()
+  return { status: res.status, text, setCookies }
 }
 
 export async function httpGetText(
@@ -185,7 +203,7 @@ export async function httpFetchBinary(
   timeoutMs = 30_000
 ): Promise<Uint8Array> {
   const { dispatcher, frontHost, frontIp } = buildDispatcherFor(url, proxy)
-  const res = await performFetch({ url, headers, timeoutMs, method: 'GET' }, dispatcher, frontHost, frontIp)
+  const { res } = await performFetch({ url, headers, timeoutMs, method: 'GET' }, dispatcher, frontHost, frontIp)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return new Uint8Array(await res.arrayBuffer())
 }

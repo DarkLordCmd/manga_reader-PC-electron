@@ -115,7 +115,8 @@ export async function fetchSimpleGallery(
       Accept: 'text/html,application/xhtml+xml',
       ...(opts.cookieHeader ? { Cookie: opts.cookieHeader } : {})
     },
-    timeoutMs: opts.timeoutMs ?? (opts.proxy && url.includes('.onion') ? 120_000 : 30_000)
+    timeoutMs: opts.timeoutMs ?? (opts.proxy && url.includes('.onion') ? 120_000 : 30_000),
+    frontOnEmpty: true
   }, opts.proxy)
 
   if (r.status >= 400) throw new Error(`HTTP ${r.status}`)
