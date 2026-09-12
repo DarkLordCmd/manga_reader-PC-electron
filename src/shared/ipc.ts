@@ -33,6 +33,7 @@ export interface CatalogCard {
   kind?: string
   score?: number | null
   chapterCount?: number | null
+  cursor?: string | null
 }
 
 export interface EhTagSuggestion { ns: string; tn: string; display: string }
@@ -79,7 +80,7 @@ export interface ImportAccountsResult {
 
 export interface CatalogCursor {
   dir: 'next' | 'prev'
-  gid: string
+  cursor: string
 }
 
 export interface Api {

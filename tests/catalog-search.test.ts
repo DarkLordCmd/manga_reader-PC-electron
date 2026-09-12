@@ -59,7 +59,7 @@ describe('searchMangaShi', () => {
           </a>
         </body></html>`)
     })
-    const results = await searchMangaShi('x', undefined, {}, `http://127.0.0.1:${port}` as any)
+    const results = await searchMangaShi('x', undefined, {}, 0, `http://127.0.0.1:${port}`)
     expect(results[0].kind).toBe('Манхва')
     expect(results[0].score).toBe(9.7)
     expect(results[0].chapterCount).toBe(132)

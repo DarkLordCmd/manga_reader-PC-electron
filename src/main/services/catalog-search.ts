@@ -255,11 +255,14 @@ export async function searchRemanga(
 
 // ── Senkuro ────────────────────────────────────────────────────────────
 
-export async function searchSenkuro(query: string, cookieHeader = ''): Promise<CatalogItem[]> {
-  const gql = JSON.stringify({ query: `query { searchManga(query: "${query}") { edges { node { id slug titles { lang content } cover { original { url } } } } } }` })
+export async function searchSenkuro(query: string, cookieHeader = '', after?: string): Promise<CatalogItem[]> {
+  const searchPart = query.trim() ? `search: "${query.trim()}"` : ''
+  const afterPart = after ? `after: "${after}"` : ''
+  const gql = JSON.stringify({ query: `query { mangas(first: 30 ${afterPart} ${searchPart} orderBy: { field: VIEWS direction: DESC }) { edges { node { id slug titles { lang content } type score cover { original { url } } } cursor } pageInfo { endCursor } } }` })
   const headers: Record<string, string> = {
     'Content-Type': 'application/json', 'App-Id': '1006632962658', 'App-Version': '240626',
-    Origin: 'https://senkuro.me', Accept: 'application/json'
+    Origin: 'https://senkuro.me', Accept: 'application/json',
+    Referer: 'https://senkuro.me/browse/manga'
   }
   if (cookieHeader) {
     headers.Cookie = cookieHeader
@@ -267,16 +270,26 @@ export async function searchSenkuro(query: string, cookieHeader = ''): Promise<C
     if (token) headers.Authorization = `Bearer ${token}`
   }
   const json = await httpPostJson('https://api.senkuro.org/graphql', gql, headers) as any
-  const edges: any[] = json?.data?.searchManga?.edges ?? []
+  const edges: any[] = json?.data?.mangas?.edges ?? []
   const items = edges.map((e) => {
     const n = e?.node ?? {}
     const title = n?.titles?.find((t: any) => t?.lang === 'RU')?.content
-      ?? n?.titles?.[0]?.content ?? 'Без названия'
+      ?? n?.titles?.find((t: any) => t?.lang === 'EN')?.content
+      ?? 'Без названия'
+    const rawType = n?.type ?? ''
+    const kind = rawType === 'MANGA' || rawType === 'RU_MANGA' || rawType === 'OEL_MANGA' ? 'Манга'
+      : rawType === 'MANHWA' ? 'Манхва'
+      : rawType === 'MANHUA' ? 'Маньхуа'
+      : rawType === 'COMICS' ? 'Комикс'
+      : rawType || null
     return {
       url: `https://senkuro.me/manga/${n?.slug ?? ''}/`,
       title,
       coverUrl: n?.cover?.original?.url ?? null,
-      pages: null
+      pages: null,
+      kind,
+      score: typeof n?.score === 'number' ? n.score : null,
+      cursor: typeof e?.cursor === 'string' ? e.cursor : null
     }
   })
   if (items.length === 0) throw new Error('Senkuro: ничего не найдено')
@@ -289,6 +302,7 @@ export async function searchMangaShi(
   query: string,
   proxy?: string,
   filters: CatalogFilters = {},
+  page = 0,
   baseOverride?: string
 ): Promise<CatalogItem[]> {
   const base = baseOverride ?? 'https://manga-shi.org'
@@ -302,6 +316,8 @@ export async function searchMangaShi(
   if (filters.mangashiChaptersMin) params.push(`chapters_min=${filters.mangashiChaptersMin}`)
   if (filters.mangashiChaptersMax) params.push(`chapters_max=${filters.mangashiChaptersMax}`)
   for (const t of filters.mangashiTags ?? []) params.push(`tag=${t}`)
+  // manga-shi.org pagination is 1-indexed on the wire; our page is 0-based.
+  if (page > 0) params.push(`page=${page + 1}`)
   const url = `${base}/catalog/${params.length ? `?${params.join('&')}` : ''}`
   const r = await httpFetch({ url, headers: { Referer: `${base}/`, Accept: 'text/html' } }, proxy)
   if (r.status >= 400) throw new Error(`Manga-shi: HTTP ${r.status}`)

@@ -277,8 +277,8 @@ app.whenReady().then(() => {
       }))
     }
     if (source === 'remanga') return await searchRemanga(query, page, filters)
-    if (source === 'senkuro') return await searchSenkuro(query, s.onion_cookies_raw)
-    if (source === 'mangashi') return await searchMangaShi(query, proxy, filters)
+    if (source === 'senkuro') return await searchSenkuro(query, s.onion_cookies_raw, cursor?.dir === 'next' ? cursor.cursor : undefined)
+    if (source === 'mangashi') return await searchMangaShi(query, proxy, filters, page)
     if (source === 'nhentai') return await searchNhentai('https://nhentai.net', query, page, { proxy, cookieHeader: s.onion_cookies_raw, showPageCounts: s.nhentai_show_page_counts, tags: filters.nhentaiTags })
     if (source === 'nhentai_onion') {
       const base = s.nhentai_onion_base || 'http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion'
@@ -298,7 +298,7 @@ app.whenReady().then(() => {
         forceTor: source === 'ehentai' && s.tor_proxied_sites.includes('ehentai'),
         excludedCats: filters.ehExcludedCats,
         domainOverride: source === 'ehentai' ? 'https://e-hentai.org' : undefined,
-        cursor
+        cursor: cursor ? { dir: cursor.dir, gid: cursor.cursor } : undefined
       }, exProxy)
       return ex.map((c) => ({ url: c.url, title: c.title, coverUrl: c.coverUrl, pages: c.pages, score: c.rating, kind: c.category }))
     }
@@ -307,7 +307,8 @@ app.whenReady().then(() => {
         comx: { name: 'Com-X', base: 'https://com-x.life', catalogPath: '/manga/', searchPath: '/search?q=', linkMarker: '/manga/' },
         mangalib: { name: 'Mangalib', base: 'https://mangalib.me', catalogPath: '/manga-list', searchPath: '/search?q=', linkMarker: '/manga/' }
       }[source]!
-      return await searchSimpleSite(cfg, query, '', { proxy })
+      const extra = page > 0 ? `page=${page + 1}` : ''
+      return await searchSimpleSite(cfg, query, extra, { proxy })
     }
     return []
   })

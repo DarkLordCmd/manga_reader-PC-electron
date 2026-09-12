@@ -167,15 +167,24 @@ export default function Catalog(): JSX.Element {
     setLoading(true)
     setError(null)
     let cursor: CatalogCursor | undefined
-    if (exSource && p !== 0) {
+    if (p !== 0) {
       const dir: 'next' | 'prev' = p < page ? 'prev' : 'next'
-      const ref = dir === 'next' ? cards[cards.length - 1] : cards[0]
-      const m = ref?.url.match(/\/g\/(\d+)\//)
-      if (m) cursor = { dir, gid: m[1] }
+      if (exSource) {
+        const ref = dir === 'next' ? cards[cards.length - 1] : cards[0]
+        const m = ref?.url.match(/\/g\/(\d+)\//)
+        if (m) cursor = { dir, cursor: m[1] }
+      } else if (source === 'senkuro' && dir === 'next') {
+        const last = cards[cards.length - 1]
+        if (last?.cursor) cursor = { dir, cursor: last.cursor }
+      }
     }
     try {
       const res = await window.api.searchCatalog(source, query.trim(), p, sort, filters, cursor)
-      setCards((prev) => (append ? [...prev, ...res] : res))
+      setCards((prev) => {
+        if (!append) return res
+        const seen = new Set(prev.map((c) => c.url))
+        return [...prev, ...res.filter((c) => !seen.has(c.url))]
+      })
       setPage(p)
     } catch (e: any) {
       if (!append) setCards([])
@@ -349,7 +358,7 @@ export default function Catalog(): JSX.Element {
             <div className="catalog-pager">
               <button disabled={page === 0 || loading} onClick={() => void search(page - 1)}>Пред.</button>
               <span className="muted">Стр. {page + 1}</span>
-              <button disabled={loading} onClick={() => void search(page + 1, true)}>След.</button>
+              <button disabled={loading} onClick={() => void search(page + 1)}>След.</button>
             </div>
           )}
         </div>
