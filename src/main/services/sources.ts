@@ -136,7 +136,7 @@ export async function fetchSenkuroChapters(mangaSlug: string, cookieHeader = '')
     'https://api.senkuro.org/graphql', mangaGql,
     { ...senkuroHeaders(cookieHeader), Referer: `https://senkuro.me/manga/${mangaSlug}/chapters` }
   ) as any
-  const branchId: number = mangaJson?.data?.manga?.branches?.[0]?.id ?? 0
+  const branchId: string = String(mangaJson?.data?.manga?.branches?.[0]?.id ?? '')
   if (!branchId) throw new Error('Senkuro: не удалось определить ветку')
   const mainName: string = mangaJson?.data?.manga?.titles?.find((t: any) => t?.lang === 'RU')?.content ?? ''
 
@@ -145,11 +145,12 @@ export async function fetchSenkuroChapters(mangaSlug: string, cookieHeader = '')
   for (;;) {
     const after = cursor ? `"${cursor}"` : 'null'
     const gql = JSON.stringify({
-      query: `query { mangaChapters(first: 100, branchId: ${branchId}, after: ${after}, orderBy: { field: NUMBER, direction: ASC }) { edges { node { id slug name number volume } } pageInfo { endCursor hasNextPage } } }`
+      query: `query { mangaChapters(first: 100, branchId: "${branchId}", after: ${after}, orderBy: { field: NUMBER, direction: ASC }) { edges { node { id slug name number volume } } pageInfo { endCursor hasNextPage } } }`
     })
     const json = await httpPostJson(
       'https://api.senkuro.org/graphql', gql,
-      { ...senkuroHeaders(cookieHeader), Referer: 'https://senkuro.me/' }
+      { ...senkuroHeaders(cookieHeader), Referer: 'https://senkuro.me/' },
+      undefined, 30_000
     ) as any
     const data = json?.data?.mangaChapters
     for (const edge of data?.edges ?? []) {
@@ -166,6 +167,7 @@ export async function fetchSenkuroChapters(mangaSlug: string, cookieHeader = '')
     }
     cursor = data?.pageInfo?.endCursor ?? null
     if (!data?.pageInfo?.hasNextPage) break
+    await new Promise((r) => setTimeout(r, 400))
   }
   if (all.length === 0) throw new Error('Senkuro: список глав пуст')
   return all
