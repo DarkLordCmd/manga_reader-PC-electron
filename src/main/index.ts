@@ -11,6 +11,8 @@ import {
   fetchRemangaChapter, fetchRemangaChapters, fetchSenkuroChapter, fetchSenkuroChapters,
   mangaSeriesUrlFromChapterUrl
 } from './services/sources'
+import { searchExHentai, searchMangaShi, searchNhentai, searchRemanga, searchSenkuro, searchSimpleSite } from './services/catalog-search'
+import { runLoginWindow } from './services/login'
 import { CH } from '@shared/ipc'
 
 const galleries = new Map<string, Gallery>()
@@ -218,11 +220,68 @@ app.whenReady().then(() => {
     return { id: gid, title: result.title, pageCount: result.pageUrls.length, source: result.source, url: trimmed, mangaId: seriesId }
   })
   ipcMain.handle(CH.fetchChapterList, async (_e, mangaId: string) => {
-    const chapters = await fetchChapterList(mangaId)
+    let chapters
+    if (mangaId.includes('remanga.org')) {
+      chapters = await fetchRemangaChapters(mangaId)
+    } else if (mangaId.includes('senkuro')) {
+      const slug = mangaId.trim().replace(/\/+$/, '').split('/').filter(Boolean).pop() ?? mangaId
+      chapters = await fetchSenkuroChapters(slug, settings.get().onion_cookies_raw)
+    } else {
+      chapters = await fetchChapterList(mangaId)
+    }
     return chapters.map((c) => ({ chapter_id: c.chapter_id, chapter_num: c.chapter_num, title: c.title }))
   })
-  ipcMain.handle(CH.searchMangaDex, (_e, query: string, sort: string, page: number) =>
-    searchMangaDex(query, sort as any, page))
+  ipcMain.handle(CH.searchCatalog, async (_e, source: string, query: string, page: number, sort: string) => {
+    const s = settings.get()
+    const torSocks = s.tor_socks_addr || '127.0.0.1:9150'
+    const siteKey = source === 'nhentai_onion' ? 'nhentai' : source
+    const proxy = s.tor_proxied_sites.includes(siteKey) || source.endsWith('_onion') ? torSocks : undefined
+
+    if (source === 'mangadex') {
+      return (await searchMangaDex(query, sort as any, page)).map((c) => ({
+        url: c.manga_id, title: c.title, coverUrl: c.cover_url, pages: null, kind: c.kind, score: c.score
+      }))
+    }
+    if (source === 'remanga') return await searchRemanga(query, page)
+    if (source === 'senkuro') return await searchSenkuro(query, s.onion_cookies_raw)
+    if (source === 'mangashi') return await searchMangaShi(query, proxy)
+    if (source === 'nhentai') return await searchNhentai('https://nhentai.net', query, page, { proxy, cookieHeader: s.onion_cookies_raw })
+    if (source === 'nhentai_onion') {
+      const base = s.nhentai_onion_base || 'http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion'
+      return await searchNhentai(base, query, page, { proxy: torSocks, cookieHeader: s.nhentai_onion_cookies_raw })
+    }
+    if (source === 'ehentai' || source === 'exhentai' || source === 'exhentai_onion') {
+      const useOnion = source === 'exhentai_onion'
+      const cookieHeader = useOnion ? s.onion_cookies_raw : s.onion_cookies_raw
+      const ex = await searchExHentai(query, {
+        cookieHeader,
+        torSocksAddr: torSocks,
+        useOnion,
+        page,
+        forceTor: source === 'ehentai' && s.tor_proxied_sites.includes('ehentai')
+      })
+      return ex.map((c) => ({ url: c.url, title: c.title, coverUrl: c.coverUrl, pages: c.pages, score: c.rating }))
+    }
+    if (source === 'comx' || source === 'mangalib') {
+      const cfg = {
+        comx: { name: 'Com-X', base: 'https://com-x.life', catalogPath: '/manga/', searchPath: '/search?q=', linkMarker: '/manga/' },
+        mangalib: { name: 'Mangalib', base: 'https://mangalib.me', catalogPath: '/manga-list', searchPath: '/search?q=', linkMarker: '/manga/' }
+      }[source]!
+      return await searchSimpleSite(cfg, query, '', { proxy })
+    }
+    return []
+  })
+  ipcMain.handle(CH.loginSite, async (_e, url: string) => {
+    const s = settings.get()
+    const result = await runLoginWindow(url, s.tor_socks_addr || '127.0.0.1:9150')
+    if (!result) return null
+    // Persist cookies into settings depending on target
+    const next = { ...settings.get() }
+    if (url.includes('exhentai')) next.onion_cookies_raw = result.cookies
+    else if (url.includes('nhentai')) next.nhentai_onion_cookies_raw = result.cookies
+    settings.save(next)
+    return result.cookies
+  })
   ipcMain.handle(CH.setReadingPosition, (_e, gid: string, index: number) => {
     setReadingPosition(gid, index)
   })

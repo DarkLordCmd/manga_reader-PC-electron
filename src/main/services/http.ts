@@ -24,13 +24,12 @@ function normalizeSocksAddr(addr: string): string {
 export function buildSocksDispatcher(proxy: string): Agent {
   const proxyAgent = new SocksProxyAgent(`socks5h://${normalizeSocksAddr(proxy)}`)
   return new Agent({
-    connect: (_origin, ctx) => {
-      const c = ctx as any
+    connect: (origin, _ctx) => {
       const req = {} as any
       const opts = {
-        host: c.hostname,
-        port: Number(c.port),
-        secureEndpoint: c.protocol === 'https:'
+        host: origin.hostname,
+        port: Number(origin.port || (origin.protocol === 'https:' ? 443 : 80)),
+        secureEndpoint: origin.protocol === 'https:'
       } as any
       return proxyAgent.connect(req, opts) as any
     }

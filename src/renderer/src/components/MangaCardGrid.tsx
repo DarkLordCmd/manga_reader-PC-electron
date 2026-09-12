@@ -1,8 +1,8 @@
-import type { MangaCard } from '@shared/mangadex'
+import type { CatalogCard } from '@shared/ipc'
 
 interface Props {
-  cards: MangaCard[]
-  onSelect: (card: MangaCard) => void
+  cards: CatalogCard[]
+  onSelect: (card: CatalogCard) => void
 }
 
 function coverSrc(url: string): string {
@@ -12,16 +12,16 @@ function coverSrc(url: string): string {
 export default function MangaCardGrid({ cards, onSelect }: Props): JSX.Element {
   return (
     <div className="catalog-grid">
-      {cards.map((c) => (
-        <div key={c.manga_id} className="manga-card" onClick={() => onSelect(c)}>
+      {cards.map((c, i) => (
+        <div key={`${c.url}-${i}`} className="manga-card" onClick={() => onSelect(c)}>
           <div className="manga-cover">
-            {c.cover_url
-              ? <img src={coverSrc(c.cover_url)} alt={c.title} loading="lazy" />
+            {c.coverUrl
+              ? <img src={coverSrc(c.coverUrl)} alt={c.title} loading="lazy" />
               : <div className="cover-placeholder" />}
           </div>
           <div className="manga-title" title={c.title}>{c.title}</div>
           <div className="manga-meta">
-            <span>{c.kind}</span>
+            <span>{c.kind ?? (c.pages != null ? `${c.pages} стр.` : '')}</span>
             {c.score != null && <span className="score">★ {c.score.toFixed(1)}</span>}
           </div>
         </div>

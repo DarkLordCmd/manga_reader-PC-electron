@@ -25,6 +25,15 @@ export interface ChapterListItem {
   title: string | null
 }
 
+export interface CatalogCard {
+  url: string
+  title: string
+  coverUrl: string | null
+  pages: number | null
+  kind?: string
+  score?: number | null
+}
+
 export interface Api {
   getSettings(): Promise<Settings>
   setSettings(s: Settings): Promise<void>
@@ -35,7 +44,8 @@ export interface Api {
   clearHistory(): Promise<void>
   openUrl(url: string, startPage?: number, mangaId?: string | null): Promise<OpenResult | null>
   fetchChapterList(mangaId: string): Promise<ChapterListItem[]>
-  searchMangaDex(query: string, sort: string, page: number): Promise<MangaCard[]>
+  searchCatalog(source: string, query: string, page: number, sort: string): Promise<CatalogCard[]>
+  loginSite(url: string): Promise<string | null>
   setReadingPosition(id: string, index: number): Promise<void>
 }
 
@@ -49,7 +59,10 @@ export const CH = {
   clearHistory: 'history:clear',
   openUrl: 'url:open',
   fetchChapterList: 'manga:chapters',
-  searchMangaDex: 'catalog:search',
+  searchCatalog: 'catalog:search',
+  loginSite: 'login:site',
   setReadingPosition: 'reader:position',
   settingsChanged: 'settings:changed'
 } as const
+
+export type { MangaCard }

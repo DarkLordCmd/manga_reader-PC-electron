@@ -11,7 +11,8 @@ const api: Api = {
   clearHistory: () => ipcRenderer.invoke(CH.clearHistory),
   openUrl: (url, startPage, mangaId) => ipcRenderer.invoke(CH.openUrl, url, startPage, mangaId),
   fetchChapterList: (mangaId) => ipcRenderer.invoke(CH.fetchChapterList, mangaId),
-  searchMangaDex: (query, sort, page) => ipcRenderer.invoke(CH.searchMangaDex, query, sort, page),
+  searchCatalog: (source, query, page, sort) => ipcRenderer.invoke(CH.searchCatalog, source, query, page, sort),
+  loginSite: (url) => ipcRenderer.invoke(CH.loginSite, url),
   setReadingPosition: (id, index) => ipcRenderer.invoke(CH.setReadingPosition, id, index)
 }
 
