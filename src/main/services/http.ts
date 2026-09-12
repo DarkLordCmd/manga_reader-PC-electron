@@ -7,11 +7,13 @@ export interface HttpFetchOptions {
   method?: 'GET' | 'POST'
   body?: string
   timeoutMs?: number
+  redirect?: 'follow' | 'manual'
 }
 
 export interface HttpResult {
   status: number
   text: string
+  setCookies: string[]
 }
 
 function normalizeSocksAddr(addr: string): string {
@@ -62,9 +64,17 @@ export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise
       }),
       body: opts.body,
       signal: controller.signal,
+      redirect: opts.redirect,
       ...(dispatcher ? { dispatcher } : {})
     } as any)
-    return { status: res.status, text: await res.text() }
+    let setCookies: string[] = []
+    try {
+      const getSetCookie = (res.headers as any).getSetCookie
+      setCookies = typeof getSetCookie === 'function'
+        ? (getSetCookie.call(res.headers) ?? [])
+        : ((res.headers.get('set-cookie') ?? '').split(/,(?=\s*[^=\s]+=)/).map((s) => s.trim()).filter(Boolean))
+    } catch { /* ignore */ }
+    return { status: res.status, text: await res.text(), setCookies }
   } finally {
     clearTimeout(timer)
   }

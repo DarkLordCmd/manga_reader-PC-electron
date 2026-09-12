@@ -78,6 +78,11 @@ export interface ImportAccountsResult {
   accounts: ExAccountsResult
 }
 
+export interface PasswordLoginResult {
+  ok: boolean
+  message: string
+}
+
 export interface CatalogCursor {
   dir: 'next' | 'prev'
   cursor: string
@@ -96,6 +101,7 @@ export interface Api {
   fetchChapterList(mangaId: string): Promise<ChapterListItem[]>
   searchCatalog(source: string, query: string, page: number, sort: string, filters?: CatalogFilters, cursor?: CatalogCursor): Promise<CatalogCard[]>
   loginSite(url: string): Promise<string | null>
+  loginPassword(user: string, pass: string): Promise<PasswordLoginResult>
   setReadingPosition(id: string, index: number): Promise<void>
   ehTagSuggest(text: string): Promise<EhTagSuggestion[]>
   nhentaiTagSuggest(text: string): Promise<NhentaiTagSuggestion[]>
@@ -123,6 +129,7 @@ export const CH = {
   fetchChapterList: 'manga:chapters',
   searchCatalog: 'catalog:search',
   loginSite: 'login:site',
+  loginPassword: 'ex:passwordlogin',
   setReadingPosition: 'reader:position',
   ehTagSuggest: 'tags:eh',
   nhentaiTagSuggest: 'tags:nhentai',

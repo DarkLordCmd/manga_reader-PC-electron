@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { parseAccountsFromJson, accountCookieHeader, type ExAccount } from './accounts-parse'
+import { httpFetch } from './http'
 
 export type { ExAccount } from './accounts-parse'
 
@@ -114,5 +115,59 @@ export class ExAccountsService {
     const first = renumbered[0]
     this.currentId = first.id
     return renumbered.length
+  }
+
+  /**
+   * Password login to E-Hentai via the forums (same flow as JHenTai):
+   * POST `act=Login&CODE=01` with username/password, capture the session
+   * cookies from the redirect response (ipb_member_id / ipb_pass_hash),
+   * then store them as the current clearnet account.
+   */
+  async passwordLogin(user: string, pass: string): Promise<{ ok: boolean; message: string }> {
+    if (!user.trim() || !pass) return { ok: false, message: 'Введи логин и пароль' }
+    const r = await httpFetch({
+      url: 'https://forums.e-hentai.org/index.php?act=Login&CODE=01',
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Referer: 'https://forums.e-hentai.org/index.php?'
+      },
+      body: new URLSearchParams({
+        referer: 'https://forums.e-hentai.org/index.php?',
+        b: '',
+        bt: '',
+        UserName: user,
+        PassWord: pass,
+        CookieDate: '365'
+      }).toString(),
+      timeoutMs: 30_000
+    })
+
+    const cookies: [string, string][] = []
+    for (const sc of r.setCookies) {
+      const eq = sc.indexOf('=')
+      if (eq <= 0) continue
+      const name = sc.slice(0, eq).trim()
+      const value = sc.slice(eq + 1).split(';')[0].trim()
+      if (name && value) cookies.push([name, value])
+    }
+
+    if (r.status >= 400 || r.status === 0) {
+      return { ok: false, message: `Ошибка входа (HTTP ${r.status})` }
+    }
+
+    const loggedIn = cookies.some(([n]) => n === 'ipb_member_id')
+    if (!loggedIn) {
+      return { ok: false, message: 'Не удалось войти — проверь логин и пароль' }
+    }
+
+    const id = this.accounts.reduce((m, a) => Math.max(m, a.id), 0) + 1
+    const acc: ExAccount = { id, name: user.trim(), cookies }
+    this.accounts.push(acc)
+    this.manualAccounts.push(acc)
+    this.currentId = id
+    saveManualAccounts(this.userDataDir, this.manualAccounts)
+    return { ok: true, message: `Вход выполнен: ${user.trim()}` }
   }
 }

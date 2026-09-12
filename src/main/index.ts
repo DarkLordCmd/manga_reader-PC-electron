@@ -323,6 +323,15 @@ app.whenReady().then(() => {
     settings.save(next)
     return result.cookies
   })
+  ipcMain.handle(CH.loginPassword, async (_e, user: string, pass: string) => {
+    const r = await exAccounts.passwordLogin(user, pass)
+    if (r.ok) {
+      const s = settings.get()
+      // Keep the account pool in sync with the cookie header used for clearnet ExHentai.
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s)
+    }
+    return r
+  })
   ipcMain.handle(CH.ehTagSuggest, async (_e, text: string) => {
     const s = settings.get()
     const proxy = s.tor_proxied_sites.includes('ehentai') ? (s.tor_socks_addr || '127.0.0.1:9150') : (s.exhentai_proxy_addr.trim() || undefined)

@@ -68,6 +68,19 @@ async function loadOne(g: OnlineGallery, e: Entry, headers: Record<string, strin
         ...dispatch
       } as any)
       if (!res.ok) throw new Error(`HTTP ${res.status} for ${e.url}`)
+      // E-Hentai/ExHentai sometimes answers image requests with an HTML
+      // "image limit exceeded" page — detect it so the page isn't stored.
+      if (e.url.includes('exhentai') || e.url.includes('ehgt.org') || e.url.includes('e-hentai.org')) {
+        const ct = res.headers.get('content-type') ?? ''
+        if (ct.includes('text/html') || ct.includes('application/xhtml')) {
+          const buf = Buffer.from(await res.arrayBuffer())
+          const head = buf.slice(0, 400).toString('utf-8')
+          if (head.startsWith('You have exceeded your image') || head.includes('exceeded your image viewing limits')) {
+            throw new Error('Превышен лимит просмотра изображений на E-Hentai.')
+          }
+          throw new Error(`E-Hentai вернул HTML вместо изображения (${e.url})`)
+        }
+      }
       e.buffer = Buffer.from(await res.arrayBuffer())
       e.state = 'done'
     } finally {

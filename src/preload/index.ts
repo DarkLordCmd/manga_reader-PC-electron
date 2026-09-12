@@ -14,6 +14,7 @@ const api: Api = {
   fetchChapterList: (mangaId) => ipcRenderer.invoke(CH.fetchChapterList, mangaId),
   searchCatalog: (source, query, page, sort, filters, cursor) => ipcRenderer.invoke(CH.searchCatalog, source, query, page, sort, filters, cursor),
   loginSite: (url) => ipcRenderer.invoke(CH.loginSite, url),
+  loginPassword: (user, pass) => ipcRenderer.invoke(CH.loginPassword, user, pass),
   setReadingPosition: (id, index) => ipcRenderer.invoke(CH.setReadingPosition, id, index),
   ehTagSuggest: (text) => ipcRenderer.invoke(CH.ehTagSuggest, text),
   nhentaiTagSuggest: (text) => ipcRenderer.invoke(CH.nhentaiTagSuggest, text),

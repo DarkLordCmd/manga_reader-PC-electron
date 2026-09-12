@@ -133,6 +133,26 @@ function looksRateLimited(status: number, html: string): boolean {
     'your ip address has been banned', 'excessive request rate'].some((m) => lower.includes(m))
 }
 
+/** Maps E-Hentai/ExHentai responses to user-friendly errors (same checks as JHenTai). */
+export function ehErrorFromResponse(status: number, text: string): string | null {
+  if (status === 403) return 'Cloudflare блокирует запрос (403). Попробуй другой IP/VPN или подожди.'
+  if (status === 429) return 'Слишком много запросов (429). Подожди минуту-другую.'
+  if (!text || text.trim().length === 0) {
+    return 'Сервер ответил пустым телом — похоже, IP забанен на ExHentai (sad panda) или запрос блокируется анти-ботом.'
+  }
+  if (text.startsWith('Your IP address') || text.startsWith('This IP address')) {
+    const first = text.split('\n')[0].trim()
+    return `IP забанен: ${first}`
+  }
+  if (text.startsWith('You have exceeded your image')) {
+    return 'Превышен лимит просмотра изображений на E-Hentai. Подожди до сброса лимита.'
+  }
+  if (text.includes('Page load has been aborted due to a fatal error')) {
+    return 'Внутренняя ошибка сервера E-Hentai. Попробуй ещё раз позже.'
+  }
+  return null
+}
+
 export interface ExSearchResult extends CatalogItem {
   category: string | null
   rating: number | null
@@ -192,6 +212,8 @@ export async function searchExHentai(
   if (looksRateLimited(r.status, r.text)) {
     throw new Error('Сайт временно заблокировал IP за слишком частые запросы (excessive request rate). Подожди минуту-другую и попробуй снова.')
   }
+  const ehErr = ehErrorFromResponse(r.status, r.text)
+  if (ehErr) throw new Error(`ExHentai: ${ehErr}`)
   if (r.status >= 400) throw new Error(`ExHentai: HTTP ${r.status}`)
 
   const $ = cheerio.load(r.text)

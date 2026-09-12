@@ -34,6 +34,10 @@ export default function Settings(): JSX.Element {
   const [exPassHash, setExPassHash] = useState('')
   const [exIgneous, setExIgneous] = useState('')
   const [exNotice, setExNotice] = useState<string | null>(null)
+  const [pwUser, setPwUser] = useState('')
+  const [pwPass, setPwPass] = useState('')
+  const [pwMsg, setPwMsg] = useState<string | null>(null)
+  const [pwBusy, setPwBusy] = useState(false)
 
   useEffect(() => {
     window.api.getExAccounts().then(setExAcc)
@@ -283,6 +287,33 @@ export default function Settings(): JSX.Element {
         </Section>
 
         <Section title="Аккаунты ExHentai">
+          <div className="row">
+            <label>Вход по логину/паролю (E-Hentai):</label>
+          </div>
+          <div className="row">
+            <input className="text-input" placeholder="Логин" value={pwUser} onChange={(e) => setPwUser(e.target.value)} style={{ width: 160 }} />
+            <input className="text-input" type="password" placeholder="Пароль" value={pwPass} onChange={(e) => setPwPass(e.target.value)} style={{ width: 160 }} />
+            <button
+              disabled={pwBusy}
+              onClick={async () => {
+                setPwBusy(true)
+                setPwMsg(null)
+                try {
+                  const r = await window.api.loginPassword(pwUser, pwPass)
+                  setPwMsg(r.message)
+                  if (r.ok) {
+                    setPwPass('')
+                    setExAcc(await window.api.getExAccounts())
+                  }
+                } catch (e: any) {
+                  setPwMsg(`Ошибка: ${e?.message ?? e}`)
+                } finally {
+                  setPwBusy(false)
+                }
+              }}
+            >🔑 Войти</button>
+          </div>
+          {pwMsg && <div className="row muted">{pwMsg}</div>}
           <div className="row">
             <label>Активный аккаунт используется для всех запросов к ExHentai (обычный режим).</label>
           </div>

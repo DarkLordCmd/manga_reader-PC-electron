@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createServer } from 'http'
-import { searchSimpleSite, searchNhentai, extractGid, searchMangaShi } from '../src/main/services/catalog-search'
+import { searchSimpleSite, searchNhentai, extractGid, searchMangaShi, ehErrorFromResponse } from '../src/main/services/catalog-search'
 
 function serve(fn: (req: any, res: any) => void): Promise<{ port: number; close: () => void }> {
   return new Promise((resolve) => {
@@ -66,6 +66,23 @@ describe('searchMangaShi', () => {
     expect(results[1].kind).toBe('Манга')
     expect(results[1].score).toBeNull()
     close()
+  })
+})
+
+describe('ehErrorFromResponse', () => {
+  it('detects sad panda blank body', () => {
+    const err = ehErrorFromResponse(200, '')
+    expect(err).toMatch(/пустым телом|sad panda/)
+  })
+  it('detects banned IP and image limit', () => {
+    expect(ehErrorFromResponse(200, 'Your IP address has been banned.')).toMatch(/IP забанен/)
+    expect(ehErrorFromResponse(200, 'You have exceeded your image viewing limits.')).toMatch(/лимит/)
+  })
+  it('detects cloudflare 403', () => {
+    expect(ehErrorFromResponse(403, 'html')).toMatch(/Cloudflare/)
+  })
+  it('returns null for a normal page', () => {
+    expect(ehErrorFromResponse(200, '<html>normal listing</html>')).toBeNull()
   })
 })
 

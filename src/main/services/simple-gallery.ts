@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio'
 import { httpFetch } from './http'
+import { ehErrorFromResponse } from './catalog-search'
 
 export interface SimpleGallery {
   title: string
@@ -118,6 +119,10 @@ export async function fetchSimpleGallery(
   }, opts.proxy)
 
   if (r.status >= 400) throw new Error(`HTTP ${r.status}`)
+  if (url.includes('exhentai') || url.includes('e-hentai.org')) {
+    const ehErr = ehErrorFromResponse(r.status, r.text)
+    if (ehErr) throw new Error(ehErr)
+  }
   const html = r.text
   const $ = cheerio.load(html)
 
