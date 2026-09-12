@@ -69,3 +69,9 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .bar-fill.chapter { background: var(--accent); }
 .bar-fill.series { background: #38bdf8; }
 .bar-label { font-size: 10px; }
+.settings-scroll { display: flex; flex-direction: column; gap: 10px; max-width: 640px; }
+.settings-section { background: #0a0a16; border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; }
+.settings-heading { margin: 0 0 10px; font-size: 16px; color: var(--accent); }
+.settings-section .row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.settings-section .row label { min-width: 200px; color: var(--text); }
+.settings-section input[type="range"] { flex: 1; max-width: 260px; }
