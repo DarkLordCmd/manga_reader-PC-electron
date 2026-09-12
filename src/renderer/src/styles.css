@@ -93,7 +93,12 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .fav-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .fav-tag { background: #14141f; border: 1px solid var(--border); border-radius: 12px; color: var(--accent); padding: 2px 10px; cursor: pointer; font-size: 12px; }
 .fav-tag.add { color: var(--muted); }
-.filter-panel { border: 1px solid var(--border); border-radius: 6px; background: #0a0a16; padding: 10px 12px; margin-bottom: 12px; }
+.filter-panel { width: 260px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 6px; background: #0a0a16; padding: 10px 12px; overflow-y: auto; }
+.filter-panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.filter-title-lg { font-size: 14px; font-weight: 700; color: var(--accent); }
+.catalog-body { flex: 1; display: flex; gap: 14px; min-height: 0; }
+.catalog-content { flex: 1; min-width: 0; overflow-y: auto; padding-right: 4px; }
+.catalog.screen { display: flex; flex-direction: column; overflow: hidden; }
 .filter-title { font-size: 13px; font-weight: 600; color: var(--accent); margin: 8px 0 6px; }
 .filter-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
 .filter-label { min-width: 130px; color: var(--muted); font-size: 12px; }

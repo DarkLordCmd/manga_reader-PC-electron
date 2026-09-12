@@ -301,86 +301,92 @@ export default function Catalog(): JSX.Element {
         </div>
       )}
 
-      {showFilters && (
-        <div className="filter-panel">
-          {tagSource && (
-            <>
-              <div className="filter-title">Категории</div>
-              <div className="filter-cats">
-                {EH_CATEGORIES.map(([label, bit]) => {
-                  const enabled = (ehExcludedCats & bit) === 0
-                  return (
-                    <label key={label} className="filter-check">
-                      <input
-                        type="checkbox"
-                        checked={enabled}
-                        onChange={() => toggleCat(bit)}
-                      /> {label}
-                    </label>
-                  )
-                })}
-              </div>
-            </>
+      <div className="catalog-body">
+        <div className="catalog-content">
+          {error && <div className="error-text">{error}</div>}
+          {loading && cards.length === 0 && <div className="muted">Поиск…</div>}
+          {!loading && cards.length > 0 && (
+            <MangaCardGrid
+              cards={cards}
+              onSelect={(c) => void openChapters(c)}
+              progress={source === 'mangadex' ? settings.read_progress : undefined}
+            />
           )}
 
-          {source === 'mangashi' && (
-            <>
-              <FilterRow label="Сортировка"><SelectFilter options={MS_SORTS} value={msSort} onChange={(v) => { setMsSort(v); setPage(0); void search(0) }} /></FilterRow>
-              <FilterRow label="Статус"><SelectFilter options={MS_STATUS} value={msStatus} onChange={(v) => { setMsStatus(v); setPage(0); void search(0) }} /></FilterRow>
-              <FilterRow label="Тип"><SelectFilter options={MS_TYPES} value={msType} onChange={(v) => { setMsType(v); setPage(0); void search(0) }} /></FilterRow>
-              <FilterRow label="Год выпуска">
-                <input className="filter-input" value={msYear} placeholder="Напр. 2024" onChange={(e) => setMsYear(e.target.value)} onBlur={() => void search(0)} />
-              </FilterRow>
-              <FilterRow label="Возрастной рейтинг"><SelectFilter options={MS_AGES} value={msAge} onChange={(v) => { setMsAge(v); setPage(0); void search(0) }} /></FilterRow>
-              <FilterRow label="Кол-во глав">
-                <div className="filter-range">
-                  <input className="filter-input narrow" value={msChaptersMin} placeholder="От" onChange={(e) => setMsChaptersMin(e.target.value)} onBlur={() => void search(0)} />
-                  <span>—</span>
-                  <input className="filter-input narrow" value={msChaptersMax} placeholder="До" onChange={(e) => setMsChaptersMax(e.target.value)} onBlur={() => void search(0)} />
+          {cards.length > 0 && infiniteScroll && (
+            <div ref={sentinelRef} className="catalog-sentinel">
+              {loading ? <span className="muted">Загрузка…</span> : null}
+            </div>
+          )}
+
+          {cards.length > 0 && !infiniteScroll && (
+            <div className="catalog-pager">
+              <button disabled={page === 0 || loading} onClick={() => void search(page - 1)}>Пред.</button>
+              <span className="muted">Стр. {page + 1}</span>
+              <button disabled={loading} onClick={() => void search(page + 1, true)}>След.</button>
+            </div>
+          )}
+        </div>
+
+        {showFilters && (
+          <div className="filter-panel">
+            <div className="filter-panel-head">
+              <div className="filter-title-lg">Фильтры</div>
+              <button className="filter-reset" onClick={() => { resetFilters(); setPage(0); void search(0) }}>Сбросить ↺</button>
+            </div>
+            {tagSource && (
+              <>
+                <div className="filter-title">Категории</div>
+                <div className="filter-cats">
+                  {EH_CATEGORIES.map(([label, bit]) => {
+                    const enabled = (ehExcludedCats & bit) === 0
+                    return (
+                      <label key={label} className="filter-check">
+                        <input
+                          type="checkbox"
+                          checked={enabled}
+                          onChange={() => toggleCat(bit)}
+                        /> {label}
+                      </label>
+                    )
+                  })}
                 </div>
-              </FilterRow>
-              <div className="filter-title">Жанры</div>
-              <TagChecklist items={MANGASHI_TAGS} selected={msTags} onToggle={(v) => { setMsTags((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]); setPage(0); void search(0) }} />
-            </>
-          )}
+              </>
+            )}
 
-          {source === 'remanga' && (
-            <>
-              <FilterRow label="Сортировка"><SelectFilter options={RM_ORDERING} value={rmOrdering} onChange={(v) => { setRmOrdering(v); setPage(0); void search(0) }} /></FilterRow>
-              <FilterRow label="Статус"><SelectFilter options={RM_STATUS} value={rmStatus} onChange={(v) => { setRmStatus(v); setPage(0); void search(0) }} /></FilterRow>
-              <FilterRow label="Тип"><SelectFilter options={RM_TYPES} value={rmTypes} onChange={(v) => { setRmTypes(v); setPage(0); void search(0) }} /></FilterRow>
-              <div className="filter-title">Жанры</div>
-              <TagChecklist items={REMANGA_GENRES} selected={rmGenres} onToggle={(v) => { setRmGenres((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]); setPage(0); void search(0) }} />
-            </>
-          )}
+            {source === 'mangashi' && (
+              <>
+                <FilterRow label="Сортировка"><SelectFilter options={MS_SORTS} value={msSort} onChange={(v) => { setMsSort(v); setPage(0); void search(0) }} /></FilterRow>
+                <FilterRow label="Статус"><SelectFilter options={MS_STATUS} value={msStatus} onChange={(v) => { setMsStatus(v); setPage(0); void search(0) }} /></FilterRow>
+                <FilterRow label="Тип"><SelectFilter options={MS_TYPES} value={msType} onChange={(v) => { setMsType(v); setPage(0); void search(0) }} /></FilterRow>
+                <FilterRow label="Год выпуска">
+                  <input className="filter-input" value={msYear} placeholder="Напр. 2024" onChange={(e) => setMsYear(e.target.value)} onBlur={() => void search(0)} />
+                </FilterRow>
+                <FilterRow label="Возрастной рейтинг"><SelectFilter options={MS_AGES} value={msAge} onChange={(v) => { setMsAge(v); setPage(0); void search(0) }} /></FilterRow>
+                <FilterRow label="Кол-во глав">
+                  <div className="filter-range">
+                    <input className="filter-input narrow" value={msChaptersMin} placeholder="От" onChange={(e) => setMsChaptersMin(e.target.value)} onBlur={() => void search(0)} />
+                    <span>—</span>
+                    <input className="filter-input narrow" value={msChaptersMax} placeholder="До" onChange={(e) => setMsChaptersMax(e.target.value)} onBlur={() => void search(0)} />
+                  </div>
+                </FilterRow>
+                <div className="filter-title">Жанры</div>
+                <TagChecklist items={MANGASHI_TAGS} selected={msTags} onToggle={(v) => { setMsTags((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]); setPage(0); void search(0) }} />
+              </>
+            )}
 
-          <button className="filter-reset" onClick={() => { resetFilters(); setPage(0); void search(0) }}>Сбросить ↺</button>
-        </div>
-      )}
-
-      {error && <div className="error-text">{error}</div>}
-      {loading && cards.length === 0 && <div className="muted">Поиск…</div>}
-      {!loading && cards.length > 0 && (
-        <MangaCardGrid
-          cards={cards}
-          onSelect={(c) => void openChapters(c)}
-          progress={source === 'mangadex' ? settings.read_progress : undefined}
-        />
-      )}
-
-      {cards.length > 0 && infiniteScroll && (
-        <div ref={sentinelRef} className="catalog-sentinel">
-          {loading ? <span className="muted">Загрузка…</span> : null}
-        </div>
-      )}
-
-      {cards.length > 0 && !infiniteScroll && (
-        <div className="catalog-pager">
-          <button disabled={page === 0 || loading} onClick={() => void search(page - 1)}>Пред.</button>
-          <span className="muted">Стр. {page + 1}</span>
-          <button disabled={loading} onClick={() => void search(page + 1, true)}>След.</button>
-        </div>
-      )}
+            {source === 'remanga' && (
+              <>
+                <FilterRow label="Сортировка"><SelectFilter options={RM_ORDERING} value={rmOrdering} onChange={(v) => { setRmOrdering(v); setPage(0); void search(0) }} /></FilterRow>
+                <FilterRow label="Статус"><SelectFilter options={RM_STATUS} value={rmStatus} onChange={(v) => { setRmStatus(v); setPage(0); void search(0) }} /></FilterRow>
+                <FilterRow label="Тип"><SelectFilter options={RM_TYPES} value={rmTypes} onChange={(v) => { setRmTypes(v); setPage(0); void search(0) }} /></FilterRow>
+                <div className="filter-title">Жанры</div>
+                <TagChecklist items={REMANGA_GENRES} selected={rmGenres} onToggle={(v) => { setRmGenres((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]); setPage(0); void search(0) }} />
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {picked && (
         <div className="overlay" onClick={() => setPicked(null)}>
