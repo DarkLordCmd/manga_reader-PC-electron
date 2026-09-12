@@ -18,7 +18,7 @@ export default function Reader(): JSX.Element {
   const pageCount = opened?.pageCount ?? 0
 
   useEffect(() => {
-    setCurrentIndex(opened?.kind === 'online' ? opened.startPage : 0)
+    setCurrentIndex(opened?.startPage ?? 0)
     setJumpTo(null)
   }, [opened])
 
@@ -53,7 +53,7 @@ export default function Reader(): JSX.Element {
 
   const openFolder = useCallback(async () => {
     const g = await window.api.pickFolder()
-    if (g) setOpened({ kind: 'local', ...g })
+    if (g) setOpened({ kind: 'local', ...g, startPage: 0 })
   }, [setOpened])
 
   return (
