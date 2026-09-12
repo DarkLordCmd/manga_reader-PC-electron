@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { buildSocksDispatcher } from './http'
 
 export const MAX_CONCURRENT = 6
 export const LOAD_AHEAD = 32
@@ -17,6 +18,7 @@ interface OnlineGallery {
   title: string
   entries: Entry[]
   position: number
+  proxy?: string
 }
 
 const galleries = new Map<string, OnlineGallery>()
@@ -31,12 +33,13 @@ function pump(): void {
   }
 }
 
-export function createOnlineGallery(title: string, urls: string[]): string {
+export function createOnlineGallery(title: string, urls: string[], proxy?: string): string {
   const gid = randomUUID()
   galleries.set(gid, {
     title,
     entries: urls.map((url, index) => ({ index, url, buffer: null, state: 'idle', error: null, promise: null })),
-    position: 0
+    position: 0,
+    proxy
   })
   return gid
 }
@@ -58,10 +61,12 @@ async function loadOne(g: OnlineGallery, e: Entry, headers: Record<string, strin
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 30_000)
     try {
+      const dispatch = g.proxy ? { dispatcher: buildSocksDispatcher(g.proxy) } : {}
       const res = await fetch(e.url, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', ...headers },
-        signal: controller.signal
-      })
+        signal: controller.signal,
+        ...dispatch
+      } as any)
       if (!res.ok) throw new Error(`HTTP ${res.status} for ${e.url}`)
       e.buffer = Buffer.from(await res.arrayBuffer())
       e.state = 'done'
