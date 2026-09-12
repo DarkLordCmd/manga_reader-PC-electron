@@ -228,14 +228,15 @@ export default function Catalog(): JSX.Element {
 
   const openChapter = async (chapterId: string, chapterIndex: number): Promise<void> => {
     const mangaId = picked?.url ?? null
-    const r = await window.api.openUrl(chapterId, 0, mangaId)
+    const coverUrl = picked?.coverUrl ?? null
+    const r = await window.api.openUrl(chapterId, 0, mangaId, coverUrl)
     if (r) {
       if (source === 'mangadex' && mangaId && chapters) {
         const total = chapters.length
         const progress = { ...settings.read_progress, [mangaId]: [chapterIndex + 1, total] as [number, number] }
         setSettings({ ...settings, read_progress: progress })
       }
-      setOpened({ kind: 'online', ...r, startPage: 0, chapterList: chapters, chapterIndex })
+      setOpened({ kind: 'online', ...r, startPage: 0, coverUrl, chapterList: chapters, chapterIndex })
       setPicked(null)
       setScreen('Reader')
     }

@@ -80,12 +80,13 @@ export default function Reader(): JSX.Element {
     if (!next) return
     advancedRef.current = true
     const mangaId = opened.mangaId
+    const coverUrl = opened.coverUrl
     const t = setTimeout(() => {
       void (async () => {
-        const r = await window.api.openUrl(next.chapter_id, 0, mangaId)
+        const r = await window.api.openUrl(next.chapter_id, 0, mangaId, coverUrl)
         if (r) {
           setOpened({
-            kind: 'online', ...r, startPage: 0,
+            kind: 'online', ...r, startPage: 0, coverUrl,
             chapterList: list, chapterIndex: idx + 1
           })
         }
@@ -132,9 +133,10 @@ export default function Reader(): JSX.Element {
   }, [urlText, setOpened])
 
   const openChapter = useCallback(async (chapterId: string, chapterList: import('@shared/ipc').ChapterListItem[], chapterIndex: number) => {
-    const r = await window.api.openUrl(chapterId, 0, opened?.kind === 'online' ? opened.mangaId : null)
+    const current = opened?.kind === 'online' ? opened : null
+    const r = await window.api.openUrl(chapterId, 0, current?.mangaId ?? null, current?.coverUrl ?? null)
     if (r) {
-      setOpened({ kind: 'online', ...r, startPage: 0, chapterList, chapterIndex })
+      setOpened({ kind: 'online', ...r, startPage: 0, coverUrl: current?.coverUrl ?? null, chapterList, chapterIndex })
       setShowChapters(false)
     }
   }, [opened, setOpened])

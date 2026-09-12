@@ -32,9 +32,9 @@ export default function History(): JSX.Element {
       }
       return
     }
-    const r = await window.api.openUrl(e.url, Math.max(0, e.current_page - 1), e.series_id)
+    const r = await window.api.openUrl(e.url, Math.max(0, e.current_page - 1), e.series_id, e.cover_url ?? null)
     if (r) {
-      setOpened({ kind: 'online', ...r, startPage: Math.max(0, e.current_page - 1) })
+      setOpened({ kind: 'online', ...r, startPage: Math.max(0, e.current_page - 1), coverUrl: e.cover_url ?? null })
       setScreen('Reader')
       // Fetch the chapter list so the reader can show chapters and
       // auto-advance to the next one (mirrors the original app's

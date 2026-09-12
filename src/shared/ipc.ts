@@ -91,7 +91,7 @@ export interface Api {
   getHistory(): Promise<HistoryEntry[]>
   recordProgress(url: string, page: number, total: number): Promise<void>
   clearHistory(): Promise<void>
-  openUrl(url: string, startPage?: number, mangaId?: string | null): Promise<OpenResult | null>
+  openUrl(url: string, startPage?: number, mangaId?: string | null, coverUrl?: string | null): Promise<OpenResult | null>
   fetchChapterList(mangaId: string): Promise<ChapterListItem[]>
   searchCatalog(source: string, query: string, page: number, sort: string, filters?: CatalogFilters, cursor?: CatalogCursor): Promise<CatalogCard[]>
   loginSite(url: string): Promise<string | null>

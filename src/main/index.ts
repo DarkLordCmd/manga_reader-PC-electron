@@ -170,7 +170,7 @@ app.whenReady().then(() => {
     return openFolder(r.filePaths[0])
   })
   ipcMain.handle(CH.openFolder, (_e, path: string) => openFolder(path))
-  ipcMain.handle(CH.openUrl, async (_e, url: string, startPage?: number, mangaId?: string | null) => {
+  ipcMain.handle(CH.openUrl, async (_e, url: string, startPage?: number, mangaId?: string | null, coverUrl?: string | null) => {
     const trimmed = url.trim()
     const s = settings.get()
     const torSocks = s.tor_socks_addr || '127.0.0.1:9150'
@@ -223,7 +223,7 @@ app.whenReady().then(() => {
 
     history.addOrUpdate({
       url: trimmed, series_id: seriesId, title: result.title,
-      cover_url: result.coverUrl, source: result.source, chapter_label: null,
+      cover_url: coverUrl ?? result.coverUrl, source: result.source, chapter_label: null,
       chapter_index: null, chapter_total: null, total_pages: result.pageUrls.length,
       category: trimmed.includes('nhentai') || trimmed.includes('exhentai') || trimmed.includes('e-hentai.org') ? 'r34' : 'main'
     })

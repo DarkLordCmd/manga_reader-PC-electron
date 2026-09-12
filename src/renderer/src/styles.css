@@ -42,8 +42,9 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .manga-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .cover-placeholder { width: 100%; height: 100%; background: #1a1a2e; }
 .manga-title { padding: 6px 8px 2px; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.manga-meta { padding: 0 8px 8px; display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
-.manga-meta .score { color: var(--accent); }
+.manga-meta { padding: 0 8px 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+.manga-meta .manga-kind { color: var(--text); }
+.manga-meta .score { color: var(--accent); margin-left: auto; }
 .catalog-pager { display: flex; gap: 12px; align-items: center; justify-content: center; margin: 16px 0; }
 .error-text { color: #ef4444; padding: 8px 0; }
 .overlay-card.chapters { width: 460px; max-height: 70vh; display: flex; flex-direction: column; }
