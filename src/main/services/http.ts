@@ -91,41 +91,82 @@ function extractSetCookies(res: Response): string[] {
   }
 }
 
-export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise<HttpResult> {
-  const { dispatcher, frontHost, frontIp } = buildDispatcherFor(opts.url, proxy)
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30_000)
-  try {
-    const headers = normalizeHeaders({
+function buildInit(opts: HttpFetchOptions): any {
+  return {
+    method: opts.method ?? 'GET',
+    headers: normalizeHeaders({
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
       ...(opts.headers ?? {})
-    })
-    const init = {
-      method: opts.method ?? 'GET',
-      headers,
-      body: opts.body,
-      signal: controller.signal,
-      redirect: opts.redirect
-    } as any
-    // `redirect:'manual'` must stay on undici: Chromium returns an opaque
-    // redirect response (status 0, no headers), so Set-Cookie would be lost.
-    const res = (dispatcher || opts.redirect === 'manual')
-      ? await fetch(opts.url, { ...init, dispatcher } as any)
-      : await defaultFetch(opts.url, init)
-    const setCookies = extractSetCookies(res)
-    if (setCookies.length > 0) {
-      try {
-        const host = new URL(opts.url).hostname
-        if (isEhHost(host)) notifyEhSetCookies(host, setCookies)
-      } catch { /* ignore */ }
-    }
-    return { status: res.status, text: await res.text(), setCookies }
-  } catch (e) {
-    if (frontHost && frontIp) markUnavailable(frontHost, frontIp)
-    throw e
+    }),
+    body: opts.body,
+    redirect: opts.redirect
+  }
+}
+
+async function fetchWithTimeout(url: string, init: any, ms: number, dispatcher?: Agent, forceUndici = false): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), ms)
+  try {
+    const full = { ...init, signal: controller.signal }
+    if (dispatcher) return await fetch(url, { ...full, dispatcher } as any)
+    if (forceUndici) return await fetch(url, full)
+    return await defaultFetch(url, full)
   } finally {
     clearTimeout(timer)
   }
+}
+
+/**
+ * Performs one request.
+ * - Plain proxy (Tor): goes straight through the proxy dispatcher.
+ * - Domain-fronting mode: tries the direct path first (fast when the domain
+ *   resolves, which is the common case), and only falls back to fronting
+ *   (undici → hardcoded IP) when the direct attempt fails. Failed fronting
+ *   IPs are marked unavailable for a while.
+ * - Otherwise: direct path only (Chromium net.fetch, undici outside Electron).
+ */
+async function performFetch(
+  opts: HttpFetchOptions,
+  dispatcher: Agent | undefined,
+  frontHost: string | undefined,
+  frontIp: string | undefined
+): Promise<Response> {
+  const baseTimeout = opts.timeoutMs ?? 30_000
+  const init = buildInit(opts)
+  // `redirect:'manual'` must stay on undici: Chromium returns an opaque
+  // redirect response (status 0, no headers), so Set-Cookie would be lost.
+  const forceUndici = opts.redirect === 'manual'
+
+  if (!dispatcher || !frontHost) {
+    return fetchWithTimeout(opts.url, init, baseTimeout, dispatcher, forceUndici)
+  }
+
+  // Domain-fronting mode: direct first, fronting as fallback.
+  try {
+    if (!forceUndici) {
+      return await fetchWithTimeout(opts.url, init, Math.min(baseTimeout, 12_000))
+    }
+  } catch { /* direct failed, fall through to fronting */ }
+
+  try {
+    return await fetchWithTimeout(opts.url, init, baseTimeout, dispatcher, forceUndici)
+  } catch (e) {
+    markUnavailable(frontHost, frontIp!)
+    throw e
+  }
+}
+
+export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise<HttpResult> {
+  const { dispatcher, frontHost, frontIp } = buildDispatcherFor(opts.url, proxy)
+  const res = await performFetch(opts, dispatcher, frontHost, frontIp)
+  const setCookies = extractSetCookies(res)
+  if (setCookies.length > 0) {
+    try {
+      const host = new URL(opts.url).hostname
+      if (isEhHost(host)) notifyEhSetCookies(host, setCookies)
+    } catch { /* ignore */ }
+  }
+  return { status: res.status, text: await res.text(), setCookies }
 }
 
 export async function httpGetText(
@@ -144,28 +185,9 @@ export async function httpFetchBinary(
   timeoutMs = 30_000
 ): Promise<Uint8Array> {
   const { dispatcher, frontHost, frontIp } = buildDispatcherFor(url, proxy)
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const init = {
-      method: 'GET',
-      headers: normalizeHeaders({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-        ...headers
-      }),
-      signal: controller.signal
-    } as any
-    const res = dispatcher
-      ? await fetch(url, { ...init, dispatcher } as any)
-      : await defaultFetch(url, init)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return new Uint8Array(await res.arrayBuffer())
-  } catch (e) {
-    if (frontHost && frontIp) markUnavailable(frontHost, frontIp)
-    throw e
-  } finally {
-    clearTimeout(timer)
-  }
+  const res = await performFetch({ url, headers, timeoutMs, method: 'GET' }, dispatcher, frontHost, frontIp)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return new Uint8Array(await res.arrayBuffer())
 }
 
 export async function httpGetJson(
