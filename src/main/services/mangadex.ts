@@ -1,13 +1,7 @@
 import { httpGetJson } from './http'
+import type { MangaCard } from '@shared/mangadex'
 
-export interface MangaCard {
-  manga_id: string
-  title: string
-  cover_url: string | null
-  kind: string
-  score: number | null
-  tags: string[]
-}
+export type { MangaCard }
 
 export interface ChapterInfo {
   chapter_id: string

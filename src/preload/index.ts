@@ -7,7 +7,12 @@ const api: Api = {
   pickFolder: () => ipcRenderer.invoke(CH.pickFolder),
   openFolder: (path) => ipcRenderer.invoke(CH.openFolder, path),
   getHistory: () => ipcRenderer.invoke(CH.getHistory),
-  recordProgress: (url, page, total) => ipcRenderer.invoke(CH.recordProgress, url, page, total)
+  recordProgress: (url, page, total) => ipcRenderer.invoke(CH.recordProgress, url, page, total),
+  clearHistory: () => ipcRenderer.invoke(CH.clearHistory),
+  openUrl: (url, startPage) => ipcRenderer.invoke(CH.openUrl, url, startPage),
+  fetchChapterList: (mangaId) => ipcRenderer.invoke(CH.fetchChapterList, mangaId),
+  searchMangaDex: (query, sort, page) => ipcRenderer.invoke(CH.searchMangaDex, query, sort, page),
+  setReadingPosition: (id, index) => ipcRenderer.invoke(CH.setReadingPosition, id, index)
 }
 
 contextBridge.exposeInMainWorld('api', api)
