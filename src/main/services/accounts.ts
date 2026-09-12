@@ -234,17 +234,20 @@ export class ExAccountsService {
   }
 
   private static parseProfileUsername(html: string): string | null {
-    const title = html.match(/<title>\s*Profile\s*[-–]\s*([^<]+?)\s*[-–]/i)
-    if (title && title[1].trim()) return title[1].trim()
-    const popup = html.match(/<span[^>]*class="[^"]*popupctrl[^"]*"[^>]*>([^<]+)<\/span>/i)
-    if (popup && popup[1].trim()) return popup[1].trim()
+    const profilename = html.match(/id="profilename"[^>]*>([^<]+)</)
+    if (profilename && profilename[1].trim()) return profilename[1].trim()
+    const home = html.match(/<div class="home">\s*<b>\s*<a[^>]*>([^<]+)</)
+    if (home && home[1].trim()) return home[1].trim()
     return null
   }
 
   /**
    * JHenTai-style cookie login: store ipb_member_id / ipb_pass_hash (and
    * igneous if provided), fetch home.php to obtain the session `sk` cookie,
-   * then verify via the forums profile page. Removes the cookies on failure.
+   * then verify via the forums profile page. Cookies are only removed on a
+   * *definite* "not logged in" answer (`.pcen` on a real profile page); when
+   * the check is inconclusive (Cloudflare 403, "Just a moment…", network
+   * failure) the cookies are kept and a warning is returned instead.
    */
   async cookieLogin(opts: { ipbMemberId: string; ipbPassHash: string; igneous?: string | null; verify?: boolean }): Promise<{ ok: boolean; message: string }> {
     const ipbMemberId = opts.ipbMemberId?.trim()
@@ -267,25 +270,35 @@ export class ExAccountsService {
       this.mergeSetCookies(home.setCookies)
     } catch { /* sk is best-effort */ }
 
+    let forums: Awaited<ReturnType<typeof httpFetch>> | null = null
     try {
-      const forums = await httpFetch({
+      forums = await httpFetch({
         url: `https://forums.e-hentai.org/index.php?showuser=${ipbMemberId}`,
         headers: this.headerFor(this.current() ?? acc),
         timeoutMs: 20_000
       })
-      this.mergeSetCookies(forums.setCookies)
-      const guest = forums.text.includes('userlinksguest')
-      const username = ExAccountsService.parseProfileUsername(forums.text)
-      if (guest || !username) {
-        this.removeCookies(['ipb_member_id', 'ipb_pass_hash', 'igneous', 'sk'])
-        return { ok: false, message: 'Куки недействительны — вход не выполнен' }
-      }
-      this.mergeCookies([['__userName', username]])
-      return { ok: true, message: `Вход выполнен: ${username}` }
     } catch (e: any) {
-      this.removeCookies(['ipb_member_id', 'ipb_pass_hash', 'igneous', 'sk'])
-      return { ok: false, message: `Ошибка проверки: ${e?.message ?? e}` }
+      // Network unreachable (DNS/TLS block, no VPN/fronting) — inconclusive.
+      return { ok: true, message: `Куки сохранены. Проверка недоступна (${e?.message ?? e}). Проверь вход в каталоге.` }
     }
+
+    this.mergeSetCookies(forums.setCookies)
+
+    // Cloudflare JS challenge / bot-wall — inconclusive, keep the cookies.
+    if (forums.status === 403 || forums.status === 429 || forums.text.includes('Just a moment')) {
+      return { ok: true, message: 'Куки сохранены. Проверка недоступна (Cloudflare блокирует запрос) — включи Domain Fronting или VPN и проверь вход в каталоге.' }
+    }
+
+    // A real forums page: `.pcen` means "not logged in", a username in the
+    // profile header means the login is valid.
+    const isGuest = /class="[^"]*\bpcen\b/.test(forums.text)
+    const username = ExAccountsService.parseProfileUsername(forums.text)
+    if (isGuest || (!username && forums.status < 400)) {
+      this.removeCookies(['ipb_member_id', 'ipb_pass_hash', 'igneous', 'sk'])
+      return { ok: false, message: 'Куки недействительны — вход не выполнен' }
+    }
+    if (username) this.mergeCookies([['__userName', username]])
+    return { ok: true, message: `Вход выполнен: ${username ?? ipbMemberId}` }
   }
 
   /**
