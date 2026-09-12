@@ -75,3 +75,8 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .settings-section .row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .settings-section .row label { min-width: 200px; color: var(--text); }
 .settings-section input[type="range"] { flex: 1; max-width: 260px; }
+.settings-section .text-input { flex: 1; max-width: 420px; padding: 4px 8px; background: #14141f; color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
+.settings-section .cookie-input { width: 100%; background: #14141f; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px; font-family: monospace; font-size: 12px; }
+.tor-toggles { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 10px; }
+.tor-toggle { color: var(--text); display: flex; align-items: center; gap: 4px; }
+.login-msg { margin-top: 6px; }

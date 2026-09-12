@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useStore } from '../state/store'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
@@ -9,10 +10,38 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
+const TOR_SITES: { key: string; label: string }[] = [
+  { key: 'ehentai', label: 'E-Hentai' },
+  { key: 'nhentai', label: 'NHentai' },
+  { key: 'comx', label: 'Com-X' },
+  { key: 'senkuro', label: 'Senkuro' },
+  { key: 'mangashi', label: 'Manga-shi' },
+  { key: 'remanga', label: 'Remanga' },
+  { key: 'mangalib', label: 'Mangalib' }
+]
+
 export default function Settings(): JSX.Element {
   const { settings, setSettings } = useStore()
+  const [loginMsg, setLoginMsg] = useState<string | null>(null)
 
   const upd = (patch: Partial<typeof settings>): void => setSettings({ ...settings, ...patch })
+
+  const toggleTorSite = (key: string, on: boolean): void => {
+    const set = new Set(settings.tor_proxied_sites)
+    if (on) set.add(key)
+    else set.delete(key)
+    upd({ tor_proxied_sites: [...set] })
+  }
+
+  const doLogin = async (url: string, label: string): Promise<void> => {
+    setLoginMsg(`${label}: открываю окно логина…`)
+    try {
+      const cookies = await window.api.loginSite(url)
+      setLoginMsg(cookies ? `${label}: куки сохранены` : `${label}: отменено`)
+    } catch (e: any) {
+      setLoginMsg(`${label}: ошибка — ${e?.message ?? e}`)
+    }
+  }
 
   return (
     <div className="screen">
@@ -88,6 +117,79 @@ export default function Settings(): JSX.Element {
               onChange={(e) => upd({ thumb_size: Number(e.target.value) })}
             />
           </div>
+        </Section>
+
+        <Section title="Network & Accounts">
+          <div className="row">
+            <label>Tor SOCKS-адрес:</label>
+            <input
+              className="text-input"
+              value={settings.tor_socks_addr}
+              onChange={(e) => upd({ tor_socks_addr: e.target.value })}
+            />
+          </div>
+          <div className="row">
+            <label>Трафик сайтов через Tor:</label>
+          </div>
+          <div className="tor-toggles">
+            {TOR_SITES.map((s) => (
+              <label key={s.key} className="tor-toggle">
+                <input
+                  type="checkbox"
+                  checked={settings.tor_proxied_sites.includes(s.key)}
+                  onChange={(e) => toggleTorSite(s.key, e.target.checked)}
+                /> {s.label}
+              </label>
+            ))}
+          </div>
+          <div className="row">
+            <label>ExHentai (onion) куки:</label>
+            <textarea
+              className="cookie-input"
+              rows={4}
+              value={settings.onion_cookies_raw}
+              placeholder={'name=value по одной на строку'}
+              onChange={(e) => upd({ onion_cookies_raw: e.target.value })}
+            />
+          </div>
+          <div className="row">
+            <button onClick={() => void doLogin('http://exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion', 'ExHentai onion')}>
+              Войти в ExHentai (onion)
+            </button>
+          </div>
+          <div className="row">
+            <label>NHentai (onion) куки:</label>
+            <textarea
+              className="cookie-input"
+              rows={4}
+              value={settings.nhentai_onion_cookies_raw}
+              placeholder={'name=value по одной на строку'}
+              onChange={(e) => upd({ nhentai_onion_cookies_raw: e.target.value })}
+            />
+          </div>
+          <div className="row">
+            <button onClick={() => void doLogin('http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion', 'NHentai onion')}>
+              Войти в NHentai (onion)
+            </button>
+          </div>
+          <div className="row">
+            <label>NHentai onion base:</label>
+            <input
+              className="text-input"
+              value={settings.nhentai_onion_base}
+              placeholder="http://...onion"
+              onChange={(e) => upd({ nhentai_onion_base: e.target.value })}
+            />
+          </div>
+          <div className="row">
+            <label>ExHentai прокси (обычный):</label>
+            <input
+              className="text-input"
+              value={settings.exhentai_proxy_addr}
+              onChange={(e) => upd({ exhentai_proxy_addr: e.target.value })}
+            />
+          </div>
+          {loginMsg && <div className="login-msg muted">{loginMsg}</div>}
         </Section>
 
         <Section title="🔒 Приватность">
