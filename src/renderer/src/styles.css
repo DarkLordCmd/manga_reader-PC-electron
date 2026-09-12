@@ -13,3 +13,17 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .topbar { padding: 8px 12px; border-bottom: 1px solid var(--border); font-weight: 600; }
 .screen { flex: 1; overflow: auto; padding: 12px; }
+.reader { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.reader-toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.reader-title { font-weight: 600; }
+.spacer { flex: 1; }
+.muted { color: var(--muted); }
+.scroll-view { flex: 1; overflow-y: auto; display: flex; flex-direction: column; align-items: center; }
+.scroll-item { width: 100%; display: flex; justify-content: center; }
+.scroll-item img { display: block; max-width: 100%; }
+.book-view { flex: 1; display: flex; min-height: 0; }
+.book-pages { flex: 1; display: flex; justify-content: center; align-items: center; gap: 2px; min-width: 0; }
+.book-pages img { max-height: 100%; max-width: 50%; object-fit: contain; }
+.book-zone { width: 15%; cursor: pointer; }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; }
+.overlay-card { background: #080812; border: 1px solid var(--border); border-radius: 8px; padding: 20px 24px; }
