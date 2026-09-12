@@ -64,29 +64,55 @@ function normalizeHeaders(headers: Record<string, string>): Record<string, strin
   return out
 }
 
+/**
+ * When no explicit proxy / domain-fronting dispatcher is needed, run the
+ * request through Chromium's network stack (`net.fetch`) instead of undici:
+ * it has a browser-grade TLS fingerprint, honors the system proxy, HTTP/2,
+ * and passes Cloudflare — exactly how JHenTai's native HTTP behaves. Falls
+ * back to undici's `fetch` outside Electron (e.g. unit tests).
+ */
+async function defaultFetch(url: string, init: RequestInit): Promise<Response> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const electron = require('electron')
+    if (electron?.net?.fetch) return await electron.net.fetch(url, init)
+  } catch { /* not inside Electron main */ }
+  return fetch(url, init)
+}
+
+function extractSetCookies(res: Response): string[] {
+  try {
+    const getSetCookie = (res.headers as any).getSetCookie
+    return typeof getSetCookie === 'function'
+      ? (getSetCookie.call(res.headers) ?? [])
+      : ((res.headers.get('set-cookie') ?? '').split(/,(?=\s*[^=\s]+=)/).map((s) => s.trim()).filter(Boolean))
+  } catch {
+    return []
+  }
+}
+
 export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise<HttpResult> {
   const { dispatcher, frontHost, frontIp } = buildDispatcherFor(opts.url, proxy)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 30_000)
   try {
-    const res = await fetch(opts.url, {
+    const headers = normalizeHeaders({
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      ...(opts.headers ?? {})
+    })
+    const init = {
       method: opts.method ?? 'GET',
-      headers: normalizeHeaders({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-        ...(opts.headers ?? {})
-      }),
+      headers,
       body: opts.body,
       signal: controller.signal,
-      redirect: opts.redirect,
-      ...(dispatcher ? { dispatcher } : {})
-    } as any)
-    let setCookies: string[] = []
-    try {
-      const getSetCookie = (res.headers as any).getSetCookie
-      setCookies = typeof getSetCookie === 'function'
-        ? (getSetCookie.call(res.headers) ?? [])
-        : ((res.headers.get('set-cookie') ?? '').split(/,(?=\s*[^=\s]+=)/).map((s) => s.trim()).filter(Boolean))
-    } catch { /* ignore */ }
+      redirect: opts.redirect
+    } as any
+    // `redirect:'manual'` must stay on undici: Chromium returns an opaque
+    // redirect response (status 0, no headers), so Set-Cookie would be lost.
+    const res = (dispatcher || opts.redirect === 'manual')
+      ? await fetch(opts.url, { ...init, dispatcher } as any)
+      : await defaultFetch(opts.url, init)
+    const setCookies = extractSetCookies(res)
     if (setCookies.length > 0) {
       try {
         const host = new URL(opts.url).hostname
@@ -121,15 +147,17 @@ export async function httpFetchBinary(
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const res = await fetch(url, {
+    const init = {
       method: 'GET',
       headers: normalizeHeaders({
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         ...headers
       }),
-      signal: controller.signal,
-      ...(dispatcher ? { dispatcher } : {})
-    } as any)
+      signal: controller.signal
+    } as any
+    const res = dispatcher
+      ? await fetch(url, { ...init, dispatcher } as any)
+      : await defaultFetch(url, init)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return new Uint8Array(await res.arrayBuffer())
   } catch (e) {
