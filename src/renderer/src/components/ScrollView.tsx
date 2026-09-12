@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 
 interface Props {
   galleryId: string
-  pages: string[]
+  pageCount: number
   widthScale: number
   currentIndex: number
   jumpTo: number | null
@@ -10,7 +10,7 @@ interface Props {
   onJumpDone: () => void
 }
 
-export default function ScrollView({ galleryId, pages, widthScale, currentIndex, jumpTo, onVisible, onJumpDone }: Props): JSX.Element {
+export default function ScrollView({ galleryId, pageCount, widthScale, currentIndex, jumpTo, onVisible, onJumpDone }: Props): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
 
@@ -29,7 +29,7 @@ export default function ScrollView({ galleryId, pages, widthScale, currentIndex,
     )
     itemRefs.current.forEach((el) => el && observer.observe(el))
     return () => observer.disconnect()
-  }, [pages.length, onVisible])
+  }, [pageCount, onVisible])
 
   useEffect(() => {
     if (jumpTo == null) return
@@ -39,7 +39,7 @@ export default function ScrollView({ galleryId, pages, widthScale, currentIndex,
 
   return (
     <div className="scroll-view" ref={containerRef}>
-      {pages.map((_, i) => (
+      {Array.from({ length: pageCount }, (_, i) => (
         <div
           key={i}
           data-index={i}

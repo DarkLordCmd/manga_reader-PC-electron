@@ -145,7 +145,7 @@ app.whenReady().then(() => {
     return openFolder(r.filePaths[0])
   })
   ipcMain.handle(CH.openFolder, (_e, path: string) => openFolder(path))
-  ipcMain.handle(CH.openUrl, async (_e, url: string, startPage?: number) => {
+  ipcMain.handle(CH.openUrl, async (_e, url: string, startPage?: number, mangaId?: string | null) => {
     const chapterId = extractMangaDexChapterId(url)
     if (!chapterId) return null
     const atHome = await resolveAtHome(chapterId)
@@ -154,14 +154,14 @@ app.whenReady().then(() => {
     onlineHeaders.set(gid, { Referer: 'https://mangadex.org/' })
     const title = `MangaDex Chapter ${chapterId}`
     history.addOrUpdate({
-      url: url.trim(), series_id: url.trim(), title,
+      url: url.trim(), series_id: mangaId ?? url.trim(), title,
       cover_url: null, source: 'MangaDex', chapter_label: null,
       chapter_index: null, chapter_total: null, total_pages: pageUrls.length,
       category: 'main'
     })
     settings.save({ ...settings.get(), viewing_history: history.toVec() })
     if (startPage && startPage > 0 && startPage < pageUrls.length) setReadingPosition(gid, startPage)
-    return { id: gid, title, pageCount: pageUrls.length, source: 'MangaDex', url: url.trim() }
+    return { id: gid, title, pageCount: pageUrls.length, source: 'MangaDex', url: url.trim(), mangaId: mangaId ?? null }
   })
   ipcMain.handle(CH.fetchChapterList, async (_e, mangaId: string) => {
     const chapters = await fetchChapterList(mangaId)
@@ -179,13 +179,20 @@ app.whenReady().then(() => {
   })
 })
 
-function openFolder(path: string): { id: string; title: string; pageCount: number; pages: string[] } | null {
+function openFolder(path: string): { id: string; title: string; pageCount: number; pages: string[]; url: string } | null {
   const g = galleryFromFolder(path)
   if (!g) return null
   galleries.set(g.id, g)
   const s = settings.get()
   settings.save({ ...s, last_folder: path })
-  return { id: g.id, title: g.title, pageCount: g.pages.length, pages: g.pages }
+  const url = `file://${path}`
+  history.addOrUpdate({
+    url, series_id: url, title: g.title, cover_url: null,
+    source: 'Локальная папка', chapter_label: null, chapter_index: null,
+    chapter_total: null, total_pages: g.pages.length, category: 'main'
+  })
+  settings.save({ ...settings.get(), viewing_history: history.toVec() })
+  return { id: g.id, title: g.title, pageCount: g.pages.length, pages: g.pages, url }
 }
 
 app.on('window-all-closed', () => {

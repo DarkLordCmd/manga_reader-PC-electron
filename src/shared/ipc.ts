@@ -7,6 +7,7 @@ export interface OpenFolderResult {
   title: string
   pageCount: number
   pages: string[]
+  url: string
 }
 
 export interface OpenResult {
@@ -15,6 +16,7 @@ export interface OpenResult {
   pageCount: number
   source: string
   url: string
+  mangaId: string | null
 }
 
 export interface ChapterListItem {
@@ -31,7 +33,7 @@ export interface Api {
   getHistory(): Promise<HistoryEntry[]>
   recordProgress(url: string, page: number, total: number): Promise<void>
   clearHistory(): Promise<void>
-  openUrl(url: string, startPage?: number): Promise<OpenResult | null>
+  openUrl(url: string, startPage?: number, mangaId?: string | null): Promise<OpenResult | null>
   fetchChapterList(mangaId: string): Promise<ChapterListItem[]>
   searchMangaDex(query: string, sort: string, page: number): Promise<MangaCard[]>
   setReadingPosition(id: string, index: number): Promise<void>
