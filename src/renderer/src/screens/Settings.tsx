@@ -38,9 +38,32 @@ export default function Settings(): JSX.Element {
   const [pwPass, setPwPass] = useState('')
   const [pwMsg, setPwMsg] = useState<string | null>(null)
   const [pwBusy, setPwBusy] = useState(false)
+  const [ckMember, setCkMember] = useState('')
+  const [ckHash, setCkHash] = useState('')
+  const [ckIgneous, setCkIgneous] = useState('')
+  const [ckVerify, setCkVerify] = useState(true)
+  const [ckMsg, setCkMsg] = useState<string | null>(null)
+  const [ckBusy, setCkBusy] = useState(false)
+  const [ckText, setCkText] = useState('')
+  const [ignMsg, setIgnMsg] = useState<string | null>(null)
+  const [ignBusy, setIgnBusy] = useState(false)
 
   useEffect(() => {
     window.api.getExAccounts().then(setExAcc)
+  }, [])
+
+  // Auto-detect E-Hentai cookies from the clipboard on open (like JHenTai).
+  useEffect(() => {
+    navigator.clipboard?.readText?.().then((t) => {
+      if (!t) return
+      window.api.parseCookieText(t).then((p) => {
+        if (p.ipbMemberId || p.ipbPassHash || p.igneous) {
+          if (p.ipbMemberId) setCkMember(p.ipbMemberId)
+          if (p.ipbPassHash) setCkHash(p.ipbPassHash)
+          if (p.igneous) setCkIgneous(p.igneous)
+        }
+      }).catch(() => {})
+    }).catch(() => {})
   }, [])
 
   const upd = (patch: Partial<typeof settings>): void => setSettings({ ...settings, ...patch })
@@ -296,6 +319,94 @@ export default function Settings(): JSX.Element {
         </Section>
 
         <Section title="Аккаунты ExHentai">
+          <div className="row">
+            <label>Вход по куки (E-Hentai/ExHentai):</label>
+          </div>
+          <div className="row">
+            <textarea
+              className="cookie-input"
+              rows={2}
+              value={ckText}
+              placeholder="Вставь куки (например, из буфера обмена) и нажми «Распознать»"
+              onChange={(e) => setCkText(e.target.value)}
+            />
+          </div>
+          <div className="row">
+            <button onClick={async () => {
+              if (!ckText.trim()) return
+              const p = await window.api.parseCookieText(ckText)
+              if (p.ipbMemberId) setCkMember(p.ipbMemberId)
+              if (p.ipbPassHash) setCkHash(p.ipbPassHash)
+              if (p.igneous) setCkIgneous(p.igneous)
+              setCkText('')
+            }}>Распознать</button>
+            <button onClick={async () => {
+              try {
+                const t = await navigator.clipboard?.readText?.()
+                if (t) {
+                  const p = await window.api.parseCookieText(t)
+                  if (p.ipbMemberId) setCkMember(p.ipbMemberId)
+                  if (p.ipbPassHash) setCkHash(p.ipbPassHash)
+                  if (p.igneous) setCkIgneous(p.igneous)
+                }
+              } catch { /* clipboard blocked */ }
+            }}>📋 Из буфера</button>
+            <label className="filter-check">
+              <input type="checkbox" checked={ckVerify} onChange={(e) => setCkVerify(e.target.checked)} /> Проверять вход
+            </label>
+          </div>
+          <div className="row">
+            <label>ipb_member_id</label>
+            <input className="text-input" value={ckMember} onChange={(e) => setCkMember(e.target.value)} style={{ width: 180 }} />
+          </div>
+          <div className="row">
+            <label>ipb_pass_hash</label>
+            <input className="text-input" value={ckHash} onChange={(e) => setCkHash(e.target.value)} style={{ width: 220 }} />
+          </div>
+          <div className="row">
+            <label>igneous (для ExHentai, необязательно)</label>
+            <input className="text-input" value={ckIgneous} onChange={(e) => setCkIgneous(e.target.value)} style={{ width: 220 }} />
+          </div>
+          <div className="row">
+            <button
+              disabled={ckBusy}
+              onClick={async () => {
+                setCkBusy(true)
+                setCkMsg(null)
+                try {
+                  const r = await window.api.cookieLogin({
+                    ipbMemberId: ckMember, ipbPassHash: ckHash, igneous: ckIgneous || null, verify: ckVerify
+                  })
+                  setCkMsg(r.message)
+                  if (r.ok) setExAcc(await window.api.getExAccounts())
+                } catch (e: any) {
+                  setCkMsg(`Ошибка: ${e?.message ?? e}`)
+                } finally {
+                  setCkBusy(false)
+                }
+              }}
+            >🍪 Войти по куки</button>
+            <button
+              disabled={ignBusy}
+              title="Получить igneous из Set-Cookie exhentai.org"
+              onClick={async () => {
+                setIgnBusy(true)
+                setIgnMsg(null)
+                try {
+                  const r = await window.api.refreshIgneous()
+                  setIgnMsg(r.message)
+                  if (r.ok) setExAcc(await window.api.getExAccounts())
+                } catch (e: any) {
+                  setIgnMsg(`Ошибка: ${e?.message ?? e}`)
+                } finally {
+                  setIgnBusy(false)
+                }
+              }}
+            >🔄 Получить igneous (доступ к EX)</button>
+          </div>
+          {(ckMsg || ignMsg) && (
+            <div className="row muted">{ckMsg ?? ignMsg}</div>
+          )}
           <div className="row">
             <label>Вход по логину/паролю (E-Hentai):</label>
           </div>

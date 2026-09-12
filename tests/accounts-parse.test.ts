@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseAccountsFromJson, accountCookieHeader } from '../src/main/services/accounts-parse'
+import { parseAccountsFromJson, accountCookieHeader, parseCookieLogin } from '../src/main/services/accounts-parse'
 
 describe('parseAccountsFromJson', () => {
   it('parses a bare cookie array', () => {
@@ -33,6 +33,22 @@ describe('parseAccountsFromJson', () => {
     expect(parseAccountsFromJson('not json')).toEqual([])
     const accounts = parseAccountsFromJson('[{"key":"k","value":"v"}]')
     expect(accounts[0].cookies).toContainEqual(['k', 'v'])
+  })
+})
+
+describe('parseCookieLogin', () => {
+  it('extracts ipb_member_id, ipb_pass_hash and igneous from clipboard text', () => {
+    const p = parseCookieLogin('ipb_member_id=12345; ipb_pass_hash=abc; igneous=xyz; nw=1')
+    expect(p).toEqual({ ipbMemberId: '12345', ipbPassHash: 'abc', igneous: 'xyz' })
+  })
+  it('tolerates ":" colon and quoted values', () => {
+    const p = parseCookieLogin('ipb_member_id: "67890", ipb_pass_hash: "def"')
+    expect(p.ipbMemberId).toBe('67890')
+    expect(p.ipbPassHash).toBe('def')
+    expect(p.igneous).toBeNull()
+  })
+  it('returns nulls when nothing matches', () => {
+    expect(parseCookieLogin('hello world')).toEqual({ ipbMemberId: null, ipbPassHash: null, igneous: null })
   })
 })
 

@@ -83,6 +83,19 @@ export interface PasswordLoginResult {
   message: string
 }
 
+export interface ParsedCookieLogin {
+  ipbMemberId: string | null
+  ipbPassHash: string | null
+  igneous: string | null
+}
+
+export interface CookieLoginInput {
+  ipbMemberId: string
+  ipbPassHash: string
+  igneous?: string | null
+  verify?: boolean
+}
+
 export interface CatalogCursor {
   dir: 'next' | 'prev'
   cursor: string
@@ -102,6 +115,9 @@ export interface Api {
   searchCatalog(source: string, query: string, page: number, sort: string, filters?: CatalogFilters, cursor?: CatalogCursor): Promise<CatalogCard[]>
   loginSite(url: string): Promise<string | null>
   loginPassword(user: string, pass: string): Promise<PasswordLoginResult>
+  cookieLogin(input: CookieLoginInput): Promise<PasswordLoginResult>
+  refreshIgneous(): Promise<PasswordLoginResult>
+  parseCookieText(text: string): Promise<ParsedCookieLogin>
   setReadingPosition(id: string, index: number): Promise<void>
   ehTagSuggest(text: string): Promise<EhTagSuggestion[]>
   nhentaiTagSuggest(text: string): Promise<NhentaiTagSuggestion[]>
@@ -130,6 +146,9 @@ export const CH = {
   searchCatalog: 'catalog:search',
   loginSite: 'login:site',
   loginPassword: 'ex:passwordlogin',
+  cookieLogin: 'ex:cookielogin',
+  refreshIgneous: 'ex:refreshingenous',
+  parseCookieText: 'ex:parsecookie',
   setReadingPosition: 'reader:position',
   ehTagSuggest: 'tags:eh',
   nhentaiTagSuggest: 'tags:nhentai',

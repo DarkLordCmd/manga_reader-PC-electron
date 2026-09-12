@@ -9,6 +9,25 @@ export function accountCookieHeader(a: ExAccount | null): string {
   return a.cookies.map(([k, v]) => `${k}=${v}`).join('; ')
 }
 
+export interface ParsedCookieLogin {
+  ipbMemberId: string | null
+  ipbPassHash: string | null
+  igneous: string | null
+}
+
+/** Extracts E-Hentai login cookies from a pasted string/clipboard (JHenTai's regexes). */
+export function parseCookieLogin(text: string): ParsedCookieLogin {
+  const grab = (name: string): string | null => {
+    const m = text.match(new RegExp(`${name}[=:]\\s?"?([^;"\\s]+)`))
+    return m ? m[1] : null
+  }
+  return {
+    ipbMemberId: grab('ipb_member_id'),
+    ipbPassHash: grab('ipb_pass_hash'),
+    igneous: grab('igneous')
+  }
+}
+
 function cookiePairFromJson(entry: any): [string, string] | null {
   const name = entry?.name ?? entry?.key
   const value = entry?.value

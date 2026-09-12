@@ -20,7 +20,8 @@ import { fetchEhTagSuggest, fetchNhentaiTagSuggestions } from './services/tags'
 import { fetchCoverBuffer } from './services/covers'
 import { setFrontingEnabled } from './services/domain-fronting'
 import { parseMangaPageUrl } from './services/page-url'
-import { ExAccountsService } from './services/accounts'
+import { ExAccountsService, parseCookieLogin } from './services/accounts'
+import { setEhSetCookieHandler } from './services/eh-session'
 import { CH } from '@shared/ipc'
 
 const galleries = new Map<string, Gallery>()
@@ -104,6 +105,7 @@ app.whenReady().then(() => {
   setFrontingEnabled(settings.get().enable_domain_fronting)
   exAccounts = new ExAccountsService(app.getPath('userData'))
   exAccounts.init()
+  setEhSetCookieHandler((_host, setCookies) => exAccounts.mergeSetCookies(setCookies))
   history = new HistoryManager()
   history.load(settings.get().viewing_history)
 
@@ -335,6 +337,16 @@ app.whenReady().then(() => {
     }
     return r
   })
+  ipcMain.handle(CH.cookieLogin, async (_e, input: any) => {
+    return await exAccounts.cookieLogin({
+      ipbMemberId: String(input?.ipbMemberId ?? ''),
+      ipbPassHash: String(input?.ipbPassHash ?? ''),
+      igneous: input?.igneous ?? null,
+      verify: input?.verify !== false
+    })
+  })
+  ipcMain.handle(CH.refreshIgneous, async () => await exAccounts.refreshIgneous())
+  ipcMain.handle(CH.parseCookieText, (_e, text: string) => parseCookieLogin(String(text ?? '')))
   ipcMain.handle(CH.ehTagSuggest, async (_e, text: string) => {
     const s = settings.get()
     const proxy = s.tor_proxied_sites.includes('ehentai') ? (s.tor_socks_addr || '127.0.0.1:9150') : (s.exhentai_proxy_addr.trim() || undefined)

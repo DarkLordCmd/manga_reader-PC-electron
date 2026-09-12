@@ -1,6 +1,7 @@
 import { Agent } from 'undici'
 import { SocksProxyAgent } from 'socks-proxy-agent'
 import { isFrontingEnabled, supportsFronting, frontingIpFor, buildFrontingDispatcher, markUnavailable } from './domain-fronting'
+import { isEhHost, notifyEhSetCookies } from './eh-session'
 
 export interface HttpFetchOptions {
   url: string
@@ -86,6 +87,12 @@ export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise
         ? (getSetCookie.call(res.headers) ?? [])
         : ((res.headers.get('set-cookie') ?? '').split(/,(?=\s*[^=\s]+=)/).map((s) => s.trim()).filter(Boolean))
     } catch { /* ignore */ }
+    if (setCookies.length > 0) {
+      try {
+        const host = new URL(opts.url).hostname
+        if (isEhHost(host)) notifyEhSetCookies(host, setCookies)
+      } catch { /* ignore */ }
+    }
     return { status: res.status, text: await res.text(), setCookies }
   } catch (e) {
     if (frontHost && frontIp) markUnavailable(frontHost, frontIp)
