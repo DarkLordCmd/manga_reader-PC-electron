@@ -154,6 +154,27 @@ describe('parseExHentaiListing', () => {
     expect(rows[1].category).toBe('Doujinshi')
     expect(rows[1].pages).toBe(30)
   })
+
+  it('parses thumbnail mode (e-hentai with inline_set=dm_t)', () => {
+    const thumbHtml = `<div class="itg gld">
+      <div class="gl1t">
+        <a href="/g/3000/ghi789/"><div class="gl5t glname glink">Thumb Title</div></a>
+        <div class="gl3t"><img src="/t/3.jpg"></div>
+        <div class="gl5t">
+          <div><div class="cs ct3">Manga</div><div class="glnew">2024-01-01</div></div>
+          <div><div class="ir" style="background-position:0px -1px"></div><div>88 pages</div></div>
+        </div>
+      </div>
+    </div>`
+    const rows = parseExHentaiListing(thumbHtml, 'https://e-hentai.org')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      url: 'https://e-hentai.org/g/3000/ghi789/',
+      title: 'Thumb Title',
+      category: 'Manga',
+      pages: 88
+    })
+  })
 })
 
 describe('searchNhentai', () => {

@@ -160,10 +160,28 @@ export interface ExSearchResult extends CatalogItem {
   thumbUrl: string | null
 }
 
-/** Parses an E-Hentai/ExHentai listing page (compact markup, JHenTai-style). */
+/** Parses an E-Hentai/ExHentai listing page. Handles both the compact
+ * listing (`.itg.gltc > tbody > tr`, JHenTai-style) and the thumbnail mode
+ * (`.itg.gld > div`) that e-hentai serves with `inline_set=dm_t`. */
 export function parseExHentaiListing(html: string, base: string): ExSearchResult[] {
   const $ = cheerio.load(html)
   const results: ExSearchResult[] = []
+  const seen = new Set<string>()
+
+  const push = (item: ExSearchResult): void => {
+    if (seen.has(item.url)) return
+    seen.add(item.url)
+    results.push(item)
+  }
+
+  const parseCover = ($el: cheerio.Cheerio<any>): string | null => {
+    const img = $el.find('img').first()
+    const cover = img.attr('data-src') || img.attr('src') || null
+    return cover ? resolve(base, cover) : null
+  }
+
+  // Compact rows: `.itg.gltc > tbody > tr`, each with `.gl3c.glname > a`,
+  // `.glink` (title), `.cn` (category) and `.gl4c.glhide > div` (pages).
   $('table.itg tr').each((_i, el) => {
     const $el = $(el)
     const a = $el.find('.gl3c.glname a, td.glname a').first()
@@ -171,23 +189,47 @@ export function parseExHentaiListing(html: string, base: string): ExSearchResult
     if (!href.includes('/g/')) return
     const full = resolve(base, href)
     if (!full) return
-    const title = $el.find('.glink').first().text().trim()
-      || a.text().trim() || (a.attr('title') ?? '')
-    const cover = $el.find('img').first().attr('data-src') || $el.find('img').first().attr('src') || null
-    const coverUrl = cover ? resolve(base, cover) : null
-    const category = $el.find('.cn').first().text().trim() || $el.find('td.glcat').first().text().trim() || null
+    const title = $el.find('.glink').first().text().trim() || a.text().trim() || (a.attr('title') ?? '')
     const pageDivs = $el.find('.gl4c.glhide > div')
     const pagesText = pageDivs.length >= 2 ? pageDivs.eq(1).text() : $el.text()
     const pagesM = pagesText.match(/(\d+)\s+(?:pages?|страниц)/i)
     const rowText = $el.text()
     const ratingM = rowText.match(/(\d(?:\.\d+)?)\s*\/\s*5/)
-    results.push({
-      url: full, title, coverUrl,
-      thumbUrl: coverUrl,
-      category, rating: ratingM ? Number(ratingM[1]) : null,
+    push({
+      url: full, title,
+      coverUrl: parseCover($el),
+      thumbUrl: null,
+      category: $el.find('.cn').first().text().trim() || $el.find('td.glcat').first().text().trim() || null,
+      rating: ratingM ? Number(ratingM[1]) : null,
       pages: pagesM ? Number(pagesM[1]) : null, chapterTotal: null
     })
   })
+
+  // Thumbnail mode: `.itg.gld > div` — each block has a `/g/` link,
+  // `.glink` (title), `.cs` (category), cover and page count in `.gl5t`.
+  if (results.length === 0) {
+    $('.itg.gld > div').each((_i, el) => {
+      const $el = $(el)
+      const a = $el.find('a[href*="/g/"]').first()
+      const href = a.attr('href') ?? ''
+      if (!href.includes('/g/')) return
+      const full = resolve(base, href)
+      if (!full) return
+      const title = $el.find('.glink').first().text().trim() || $el.find('.gl1t').first().text().trim() || a.text().trim() || ''
+      const pagesM = $el.text().match(/(\d+)\s+(?:pages?|страниц)/i)
+      const rowText = $el.text()
+      const ratingM = rowText.match(/(\d(?:\.\d+)?)\s*\/\s*5/)
+      push({
+        url: full, title,
+        coverUrl: parseCover($el),
+        thumbUrl: null,
+        category: $el.find('.cs').first().text().trim() || null,
+        rating: ratingM ? Number(ratingM[1]) : null,
+        pages: pagesM ? Number(pagesM[1]) : null, chapterTotal: null
+      })
+    })
+  }
+
   return results
 }
 
