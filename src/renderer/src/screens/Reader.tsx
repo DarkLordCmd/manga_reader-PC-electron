@@ -33,11 +33,15 @@ export default function Reader(): JSX.Element {
   }, [showHelp])
 
   const goNext = useCallback(() => {
-    setCurrentIndex((i) => Math.min(i + perScreen, Math.max(0, pageCount - 1)))
-  }, [perScreen, pageCount])
+    const next = Math.min(currentIndex + perScreen, Math.max(0, pageCount - 1))
+    setCurrentIndex(next)
+    if (settings.reading_mode === 'Scroll') setJumpTo(next)
+  }, [currentIndex, perScreen, pageCount, settings.reading_mode])
   const goPrev = useCallback(() => {
-    setCurrentIndex((i) => Math.max(0, i - perScreen))
-  }, [perScreen])
+    const next = Math.max(0, currentIndex - perScreen)
+    setCurrentIndex(next)
+    if (settings.reading_mode === 'Scroll') setJumpTo(next)
+  }, [currentIndex, perScreen, settings.reading_mode])
 
   useHotkeys({
     onPrev: goPrev,
