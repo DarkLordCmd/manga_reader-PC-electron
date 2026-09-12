@@ -137,6 +137,11 @@ export interface ExSearchResult extends CatalogItem {
   thumbUrl: string | null
 }
 
+export function extractGid(url: string): string | null {
+  const m = url.match(/\/g\/(\d+)\//)
+  return m ? m[1] : null
+}
+
 export async function searchExHentai(
   query: string,
   opts: {
@@ -147,25 +152,29 @@ export async function searchExHentai(
     page?: number
     forceTor?: boolean
     excludedCats?: number
+    domainOverride?: string
+    cursor?: { dir: 'next' | 'prev'; gid: string }
   },
   exProxy?: string
 ): Promise<ExSearchResult[]> {
   const useProxy = opts.useOnion || opts.forceTor
   const proxy = exProxy ?? (useProxy ? opts.torSocksAddr : undefined)
   const ua = useProxy ? TOR_UA : UA
-  const base = opts.useOnion
-    ? 'http://exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion'
-    : 'https://exhentai.org'
+  const base = opts.domainOverride
+    ? opts.domainOverride
+    : opts.useOnion
+      ? 'http://exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion'
+      : 'https://exhentai.org'
 
+  const params: string[] = []
+  if (query.trim()) params.push(`f_search=${encodeURIComponent(query)}`)
   const cats = opts.excludedCats ?? 0
-  const catsParam = cats > 0 ? `&f_cats=${cats}` : ''
-
-  let url: string
-  if (opts.useOnion) {
-    url = `${base}/?f_search=${encodeURIComponent(query)}&page=${opts.page ?? 0}${catsParam}`
-  } else {
-    url = `${base}/?f_search=${encodeURIComponent(query)}&page=${opts.page ?? 0}${catsParam}`
-  }
+  if (cats > 0) params.push(`f_cats=${cats}`)
+  // E-Hentai is fetched without a login cookie, so the site defaults to a
+  // plain text listing the parser can't read — force thumbnail display mode.
+  if (opts.domainOverride) params.push('inline_set=dm_t')
+  if (opts.cursor) params.push(`${opts.cursor.dir}=${opts.cursor.gid}`)
+  const url = params.length ? `${base}/?${params.join('&')}` : `${base}/`
 
   const r = await httpFetch({
     url,

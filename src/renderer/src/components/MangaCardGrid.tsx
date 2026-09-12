@@ -34,7 +34,11 @@ export default function MangaCardGrid({ cards, onSelect, progress }: Props): JSX
             </div>
             <div className="manga-title" title={c.title}>{c.title}</div>
             <div className="manga-meta">
-              <span>{c.kind ?? (c.pages != null ? `${c.pages} стр.` : '')}</span>
+              <span>
+                {c.chapterCount != null
+                  ? `${c.chapterCount} гл.`
+                  : c.kind ?? (c.pages != null ? `${c.pages} стр.` : '')}
+              </span>
               {c.score != null && <span className="score">★ {c.score.toFixed(1)}</span>}
             </div>
           </div>

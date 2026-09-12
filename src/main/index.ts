@@ -5,7 +5,7 @@ import { readFileSync } from 'fs'
 import { SettingsService } from './services/settings'
 import { HistoryManager } from './services/history'
 import { galleryFromFolder, type Gallery } from './services/gallery'
-import { resolveAtHome, fetchChapterList, searchMangaDex } from './services/mangadex'
+import { resolveAtHome, fetchChapterList, searchMangaDex, fetchChapterCount } from './services/mangadex'
 import { createOnlineGallery, requestPage, setReadingPosition, getGalleryPages } from './services/online-gallery'
 import { fetchSimpleGallery } from './services/simple-gallery'
 import {
@@ -241,15 +241,33 @@ app.whenReady().then(() => {
     }
     return chapters.map((c) => ({ chapter_id: c.chapter_id, chapter_num: c.chapter_num, title: c.title }))
   })
-  ipcMain.handle(CH.searchCatalog, async (_e, source: string, query: string, page: number, sort: string, filters: any = {}) => {
+  ipcMain.handle(CH.searchCatalog, async (_e, source: string, query: string, page: number, sort: string, filters: any = {}, cursor: any = null) => {
     const s = settings.get()
     const torSocks = s.tor_socks_addr || '127.0.0.1:9150'
     const siteKey = source === 'nhentai_onion' ? 'nhentai' : source
     const proxy = s.tor_proxied_sites.includes(siteKey) || source.endsWith('_onion') ? torSocks : undefined
 
     if (source === 'mangadex') {
-      return (await searchMangaDex(query, sort as any, page, filters.mangadexTags ?? [], filters.mangadexLangs ?? [])).map((c) => ({
-        url: c.manga_id, title: c.title, coverUrl: c.cover_url, pages: null, kind: c.kind, score: c.score
+      const cards = await searchMangaDex(query, sort as any, page, filters.mangadexTags ?? [], filters.mangadexLangs ?? [])
+      // Fetch chapter counts in the background with limited concurrency
+      // (mirrors the original app's async card enrichment).
+      const enriched: any[] = []
+      let next = 0
+      async function worker(): Promise<void> {
+        while (next < cards.length) {
+          const i = next++
+          try {
+            const count = await fetchChapterCount(cards[i].manga_id)
+            enriched[i] = { ...cards[i], chapterCount: count }
+          } catch {
+            enriched[i] = cards[i]
+          }
+        }
+      }
+      await Promise.all(Array.from({ length: 6 }, () => worker()))
+      return enriched.map((c) => ({
+        url: c.manga_id, title: c.title, coverUrl: c.cover_url, pages: null,
+        kind: c.kind, score: c.score, chapterCount: c.chapterCount ?? null
       }))
     }
     if (source === 'remanga') return await searchRemanga(query, page, filters)
@@ -272,7 +290,9 @@ app.whenReady().then(() => {
         useOnion,
         page,
         forceTor: source === 'ehentai' && s.tor_proxied_sites.includes('ehentai'),
-        excludedCats: filters.ehExcludedCats
+        excludedCats: filters.ehExcludedCats,
+        domainOverride: source === 'ehentai' ? 'https://e-hentai.org' : undefined,
+        cursor
       }, exProxy)
       return ex.map((c) => ({ url: c.url, title: c.title, coverUrl: c.coverUrl, pages: c.pages, score: c.rating }))
     }

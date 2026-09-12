@@ -163,6 +163,7 @@ export default function Settings(): JSX.Element {
               value={settings.tor_socks_addr}
               onChange={(e) => upd({ tor_socks_addr: e.target.value })}
             />
+            <button title="Сбросить на 127.0.0.1:9150" onClick={() => upd({ tor_socks_addr: '127.0.0.1:9150' })}>↺</button>
             <button
               disabled={torChecking}
               onClick={async () => {
@@ -268,6 +269,7 @@ export default function Settings(): JSX.Element {
               placeholder="http://...onion"
               onChange={(e) => upd({ nhentai_onion_base: e.target.value })}
             />
+            <button title="Очистить (вернуть встроенный дефолт)" onClick={() => upd({ nhentai_onion_base: '' })}>↺</button>
           </div>
           <div className="row">
             <label>ExHentai прокси (обычный):</label>

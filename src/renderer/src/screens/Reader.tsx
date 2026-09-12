@@ -25,6 +25,13 @@ export default function Reader(): JSX.Element {
     setJumpTo(null)
   }, [opened])
 
+  useEffect(() => {
+    if (!showHelp) return
+    const fn = (e: KeyboardEvent): void => { if (e.key === 'Escape') setShowHelp(false) }
+    window.addEventListener('keydown', fn)
+    return () => window.removeEventListener('keydown', fn)
+  }, [showHelp])
+
   const goNext = useCallback(() => {
     setCurrentIndex((i) => Math.min(i + perScreen, Math.max(0, pageCount - 1)))
   }, [perScreen, pageCount])

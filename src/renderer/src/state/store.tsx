@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import type { Settings } from '@shared/settings'
 import { defaultSettings } from '@shared/settings'
 import type { ChapterListItem } from '@shared/ipc'
@@ -15,7 +15,7 @@ interface Store {
   settings: Settings
   setSettings: (s: Settings) => void
   opened: OpenedGallery | null
-  setOpened: (g: OpenedGallery | null) => void
+  setOpened: Dispatch<SetStateAction<OpenedGallery | null>>
   pendingChapterList: { mangaId: string; title: string } | null
   setPendingChapterList: (v: { mangaId: string; title: string } | null) => void
 }

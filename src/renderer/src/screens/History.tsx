@@ -36,6 +36,15 @@ export default function History(): JSX.Element {
     if (r) {
       setOpened({ kind: 'online', ...r, startPage: Math.max(0, e.current_page - 1) })
       setScreen('Reader')
+      // Fetch the chapter list so the reader can show chapters and
+      // auto-advance to the next one (mirrors the original app's
+      // background chapter fetch on "Continue").
+      void window.api.fetchChapterList(e.series_id).then((chapters) => {
+        const idx = chapters.findIndex((c) => c.chapter_id === e.url)
+        setOpened((prev) => (prev && prev.kind === 'online' && prev.url === e.url
+          ? { ...prev, chapterList: chapters, chapterIndex: idx >= 0 ? idx : null }
+          : prev))
+      }).catch(() => { /* leave as-is */ })
     }
   }
 

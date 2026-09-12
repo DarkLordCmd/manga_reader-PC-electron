@@ -32,6 +32,7 @@ export interface CatalogCard {
   pages: number | null
   kind?: string
   score?: number | null
+  chapterCount?: number | null
 }
 
 export interface EhTagSuggestion { ns: string; tn: string; display: string }
@@ -76,6 +77,11 @@ export interface ImportAccountsResult {
   accounts: ExAccountsResult
 }
 
+export interface CatalogCursor {
+  dir: 'next' | 'prev'
+  gid: string
+}
+
 export interface Api {
   getSettings(): Promise<Settings>
   setSettings(s: Settings): Promise<void>
@@ -87,7 +93,7 @@ export interface Api {
   clearHistory(): Promise<void>
   openUrl(url: string, startPage?: number, mangaId?: string | null): Promise<OpenResult | null>
   fetchChapterList(mangaId: string): Promise<ChapterListItem[]>
-  searchCatalog(source: string, query: string, page: number, sort: string, filters?: CatalogFilters): Promise<CatalogCard[]>
+  searchCatalog(source: string, query: string, page: number, sort: string, filters?: CatalogFilters, cursor?: CatalogCursor): Promise<CatalogCard[]>
   loginSite(url: string): Promise<string | null>
   setReadingPosition(id: string, index: number): Promise<void>
   ehTagSuggest(text: string): Promise<EhTagSuggestion[]>

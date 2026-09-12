@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '../state/store'
-import type { CatalogCard, CatalogFilters, ChapterListItem, ExAccount } from '@shared/ipc'
+import type { CatalogCard, CatalogCursor, CatalogFilters, ChapterListItem, ExAccount } from '@shared/ipc'
 import { EH_CATEGORIES, MANGASHI_TAGS, REMANGA_GENRES, MD_LANGS, MD_POPULAR_TAGS, NH_POPULAR_TAGS } from '@shared/filters'
 import MangaCardGrid from '../components/MangaCardGrid'
 
@@ -146,6 +146,12 @@ export default function Catalog(): JSX.Element {
     window.api.getExAccounts().then((r) => { setExAccounts(r.accounts); setExCurrentId(r.currentId) })
   }, [])
 
+  // ensure_searched: auto-load the popular/trending MangaDex feed on open.
+  useEffect(() => {
+    if (source === 'mangadex') void search(0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const exIsAccountSource = source === 'exhentai' || source === 'ehentai'
 
   const appendTag = (tag: string): void => {
@@ -155,11 +161,20 @@ export default function Catalog(): JSX.Element {
     setNhTags([])
   }
 
+  const exSource = source === 'exhentai' || source === 'exhentai_onion' || source === 'ehentai'
+
   const search = useCallback(async (p: number, append = false): Promise<void> => {
     setLoading(true)
     setError(null)
+    let cursor: CatalogCursor | undefined
+    if (exSource && p !== 0) {
+      const dir: 'next' | 'prev' = p < page ? 'prev' : 'next'
+      const ref = dir === 'next' ? cards[cards.length - 1] : cards[0]
+      const m = ref?.url.match(/\/g\/(\d+)\//)
+      if (m) cursor = { dir, gid: m[1] }
+    }
     try {
-      const res = await window.api.searchCatalog(source, query.trim(), p, sort, filters)
+      const res = await window.api.searchCatalog(source, query.trim(), p, sort, filters, cursor)
       setCards((prev) => (append ? [...prev, ...res] : res))
       setPage(p)
     } catch (e: any) {
@@ -168,7 +183,7 @@ export default function Catalog(): JSX.Element {
     } finally {
       setLoading(false)
     }
-  }, [source, query, sort, filters])
+  }, [source, query, sort, filters, exSource, page, cards])
 
   // Reset scroll page when filters change
   const changeSource = (s: string): void => {

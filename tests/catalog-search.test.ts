@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createServer } from 'http'
-import { searchSimpleSite, searchNhentai } from '../src/main/services/catalog-search'
+import { searchSimpleSite, searchNhentai, extractGid } from '../src/main/services/catalog-search'
 
 function serve(fn: (req: any, res: any) => void): Promise<{ port: number; close: () => void }> {
   return new Promise((resolve) => {
@@ -29,6 +29,14 @@ describe('searchSimpleSite', () => {
     expect(results[0].coverUrl).toContain('/thumb1.webp')
     expect(results[0].pages).toBe(34)
     close()
+  })
+})
+
+describe('extractGid', () => {
+  it('pulls the gallery id out of an ExHentai URL', () => {
+    expect(extractGid('https://exhentai.org/g/123456/abcdef/')).toBe('123456')
+    expect(extractGid('https://e-hentai.org/g/99/x/')).toBe('99')
+    expect(extractGid('https://exhentai.org/')).toBeNull()
   })
 })
 
