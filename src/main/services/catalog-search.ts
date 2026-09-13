@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio'
 import { httpFetch, httpGetJson, httpPostJson } from './http'
+import { ehBlockedMessage } from './eh-limits-hook'
 import type { CookieJar } from './cookies'
 import type { ChapterInfo } from './sources'
 
@@ -135,6 +136,8 @@ function looksRateLimited(status: number, html: string): boolean {
 
 /** Maps E-Hentai/ExHentai responses to user-friendly errors (same checks as JHenTai). */
 export function ehErrorFromResponse(status: number, text: string): string | null {
+  const blockedMsg = ehBlockedMessage()
+  if (blockedMsg) return blockedMsg
   if (status === 403) return 'Cloudflare блокирует запрос (403). Попробуй другой IP/VPN или подожди.'
   if (status === 429) return 'Слишком много запросов (429). Подожди минуту-другую.'
   if (!text || text.trim().length === 0) {

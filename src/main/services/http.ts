@@ -2,6 +2,8 @@ import { Agent, buildConnector } from 'undici'
 import { connect as netConnect } from 'net'
 import { isFrontingEnabled, supportsFronting, frontingIpFor, buildFrontingDispatcher, markUnavailable } from './domain-fronting'
 import { isEhHost, notifyEhSetCookies } from './eh-session'
+import { parseLimitResponse } from './eh-limits'
+import { handleLimitFailure, assertNotEhBlocked } from './eh-limits-hook'
 
 export interface HttpFetchOptions {
   url: string
@@ -209,6 +211,7 @@ async function performFetch(
 }
 
 export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise<HttpResult> {
+  assertNotEhBlocked(opts.url)
   const { dispatcher, frontHost, frontIp } = buildDispatcherFor(opts.url, proxy)
   const { res, bodyText } = await performFetch(opts, dispatcher, frontHost, frontIp)
   const setCookies = extractSetCookies(res)
@@ -218,7 +221,13 @@ export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise
       if (isEhHost(host)) notifyEhSetCookies(host, setCookies)
     } catch { /* ignore */ }
   }
+  // Body is read exactly once here; the EH limit check below sees the same text.
   const text = bodyText ?? await res.text()
+  const hostLower = (() => { try { return new URL(opts.url).hostname.toLowerCase() } catch { return '' } })()
+  if (isEhHost(hostLower) || hostLower.includes('exhentai') || hostLower.includes('e-hentai.org')) {
+    const lim = parseLimitResponse(text.slice(0, 4000))
+    if (lim.kind) throw handleLimitFailure(lim.kind, lim.resetAfterSec)
+  }
   return { status: res.status, text, setCookies }
 }
 
@@ -237,10 +246,19 @@ export async function httpFetchBinary(
   proxy?: string,
   timeoutMs = 30_000
 ): Promise<Uint8Array> {
+  assertNotEhBlocked(url)
   const { dispatcher, frontHost, frontIp } = buildDispatcherFor(url, proxy)
   const { res } = await performFetch({ url, headers, timeoutMs, method: 'GET' }, dispatcher, frontHost, frontIp)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return new Uint8Array(await res.arrayBuffer())
+  // Body is read exactly once; limit pages arrive as text/html instead of an image.
+  const buf = Buffer.from(await res.arrayBuffer())
+  const hostLower = (() => { try { return new URL(url).hostname.toLowerCase() } catch { return '' } })()
+  const ct = res.headers.get('content-type') ?? ''
+  if ((isEhHost(hostLower) || hostLower.includes('exhentai') || hostLower.includes('e-hentai.org')) && ct.includes('text/html')) {
+    const lim = parseLimitResponse(buf.slice(0, 4000).toString('utf-8'))
+    if (lim.kind) throw handleLimitFailure(lim.kind, lim.resetAfterSec)
+  }
+  return new Uint8Array(buf)
 }
 
 export async function httpGetJson(
