@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { CH, type Api } from '@shared/ipc'
+import type { DownloadTask } from '@shared/downloads'
+import type { EhLimitState } from '@shared/ipc'
 
 const api: Api = {
   getSettings: () => ipcRenderer.invoke(CH.getSettings),
@@ -29,7 +31,24 @@ const api: Api = {
   addExAccount: (name, memberId, passHash, igneous) => ipcRenderer.invoke(CH.addExAccount, name, memberId, passHash, igneous),
   removeExAccount: (id) => ipcRenderer.invoke(CH.removeExAccount, id),
   importExAccounts: () => ipcRenderer.invoke(CH.importExAccounts),
-  markChapterRead: (url) => ipcRenderer.invoke(CH.markChapterRead, url)
+  markChapterRead: (url) => ipcRenderer.invoke(CH.markChapterRead, url),
+  downloadsList: () => ipcRenderer.invoke(CH.downloadsList),
+  downloadsAdd: (sourceUrl) => ipcRenderer.invoke(CH.downloadsAdd, sourceUrl),
+  downloadsPause: (id) => ipcRenderer.invoke(CH.downloadsPause, id),
+  downloadsResume: (id) => ipcRenderer.invoke(CH.downloadsResume, id),
+  downloadsRemove: (id) => ipcRenderer.invoke(CH.downloadsRemove, id),
+  downloadsSetPriority: (id, p) => ipcRenderer.invoke(CH.downloadsSetPriority, id, p),
+  ehLimitsState: () => ipcRenderer.invoke(CH.ehLimitsState),
+  onEhLimitsChanged: (cb) => {
+    const fn = (_e: unknown, s: EhLimitState): void => cb(s)
+    ipcRenderer.on(CH.ehLimitsChanged, fn)
+    return () => ipcRenderer.removeListener(CH.ehLimitsChanged, fn)
+  },
+  onDownloadsChanged: (cb) => {
+    const fn = (_e: unknown, tasks: DownloadTask[]): void => cb(tasks)
+    ipcRenderer.on(CH.downloadsChanged, fn)
+    return () => ipcRenderer.removeListener(CH.downloadsChanged, fn)
+  }
 }
 
 contextBridge.exposeInMainWorld('api', api)

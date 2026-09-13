@@ -23,6 +23,8 @@ import { ExAccountsService, parseCookieLogin } from './services/accounts'
 import { setEhSetCookieHandler } from './services/eh-session'
 import { ehWatcher, broadcastEhLimitState } from './services/eh-limits-instance'
 import { registerEhLimitHook } from './services/eh-limits-hook'
+import { httpFetchBinary } from './services/http'
+import { DownloadManager } from './services/download-manager'
 import { CH } from '@shared/ipc'
 
 const galleries = new Map<string, Gallery>()
@@ -37,6 +39,7 @@ protocol.registerSchemesAsPrivileged([
 let settings: SettingsService
 let history: HistoryManager
 let exAccounts: ExAccountsService
+let downloads: DownloadManager
 
 function getCover(url: string): Promise<Buffer> {
   const cached = coverCache.get(url)
@@ -91,6 +94,33 @@ app.whenReady().then(() => {
   setEhSetCookieHandler((_host, setCookies) => exAccounts.mergeSetCookies(setCookies))
   history = new HistoryManager()
   history.load(settings.get().viewing_history)
+
+  downloads = new DownloadManager(
+    join(app.getPath('userData'), 'downloads'),
+    join(app.getPath('userData'), 'downloads.json'),
+    {
+      fetchBinary: (url, headers, proxy, timeoutMs) => httpFetchBinary(url, headers ?? {}, proxy, timeoutMs),
+      broadcast: (tasks) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.downloadsChanged, tasks) }
+    }
+  )
+
+  ipcMain.handle(CH.downloadsList, () => downloads.list())
+  ipcMain.handle(CH.downloadsAdd, async (_e, sourceUrl: string) => {
+    const s = settings.get()
+    const torSocks = s.tor_socks_addr || '127.0.0.1:9150'
+    const isEx = sourceUrl.includes('exhentai') || sourceUrl.includes('e-hentai.org')
+    const useTor = sourceUrl.includes('.onion') || (isEx && (s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai')))
+    const proxy = useTor ? torSocks : (isEx && s.exhentai_proxy_addr.trim() ? s.exhentai_proxy_addr.trim() : undefined)
+    const cookieHeader = sourceUrl.includes('.onion') ? s.onion_cookies_raw : isEx ? exAccounts.currentCookieHeader() : undefined
+    return await downloads.add(sourceUrl, () => resolveGallery(sourceUrl, { proxy, cookieHeader }), {
+      Referer: sourceUrl,
+      ...(cookieHeader ? { Cookie: cookieHeader } : {})
+    }, proxy)
+  })
+  ipcMain.handle(CH.downloadsPause, (_e, id: string) => downloads.pause(id))
+  ipcMain.handle(CH.downloadsResume, (_e, id: string) => downloads.resume(id))
+  ipcMain.handle(CH.downloadsRemove, (_e, id: string) => downloads.remove(id))
+  ipcMain.handle(CH.downloadsSetPriority, (_e, id: string, p: number) => downloads.setPriority(id, p))
 
   protocol.handle('manga', async (request) => {
     const url = new URL(request.url)

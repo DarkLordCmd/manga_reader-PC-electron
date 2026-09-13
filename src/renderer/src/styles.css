@@ -123,3 +123,7 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .manga-cover { position: relative; }
 .chapter-item.read { color: #22c55e; }
 .chapter-count { font-size: 12px; margin-bottom: 6px; }
+.dl-row { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #222; }
+.dl-row progress { width: 140px; }
+.dl-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+

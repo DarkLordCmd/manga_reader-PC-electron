@@ -1,6 +1,7 @@
 import type { Settings } from './settings'
 import type { HistoryEntry } from './types'
 import type { MangaCard } from './mangadex'
+import type { DownloadTask } from './downloads'
 
 export interface OpenFolderResult {
   id: string
@@ -101,6 +102,12 @@ export interface CatalogCursor {
   cursor: string
 }
 
+export interface EhLimitState {
+  blocked: boolean
+  until: number
+  kind: string
+}
+
 export interface Api {
   getSettings(): Promise<Settings>
   setSettings(s: Settings): Promise<void>
@@ -130,6 +137,15 @@ export interface Api {
   removeExAccount(id: number): Promise<ExAccountsResult>
   importExAccounts(): Promise<ImportAccountsResult | null>
   markChapterRead(url: string): Promise<void>
+  downloadsList(): Promise<DownloadTask[]>
+  downloadsAdd(sourceUrl: string): Promise<DownloadTask | null>
+  downloadsPause(id: string): Promise<void>
+  downloadsResume(id: string): Promise<void>
+  downloadsRemove(id: string): Promise<void>
+  downloadsSetPriority(id: string, priority: number): Promise<void>
+  ehLimitsState(): Promise<EhLimitState>
+  onEhLimitsChanged(cb: (state: EhLimitState) => void): () => void
+  onDownloadsChanged(cb: (tasks: DownloadTask[]) => void): () => void
 }
 
 export const CH = {
@@ -161,9 +177,16 @@ export const CH = {
   removeExAccount: 'ex:remove',
   importExAccounts: 'ex:import',
   markChapterRead: 'reader:markread',
+  downloadsList: 'downloads:list',
+  downloadsAdd: 'downloads:add',
+  downloadsPause: 'downloads:pause',
+  downloadsResume: 'downloads:resume',
+  downloadsRemove: 'downloads:remove',
+  downloadsSetPriority: 'downloads:setPriority',
+  downloadsChanged: 'downloads:changed',
   ehLimitsState: 'eh-limits:state',
   ehLimitsChanged: 'eh-limits:changed',
   settingsChanged: 'settings:changed'
 } as const
 
-export type { MangaCard }
+export type { MangaCard, DownloadTask }

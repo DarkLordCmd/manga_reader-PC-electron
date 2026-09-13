@@ -2,23 +2,9 @@ import { randomUUID } from 'crypto'
 import { mkdirSync, existsSync, writeFileSync, readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import type { GalleryResolution } from './resolve-gallery'
+import type { DownloadTask } from '@shared/downloads'
 
-export interface DownloadTask {
-  id: string
-  title: string
-  sourceUrl: string
-  pageUrls: string[]
-  headers: Record<string, string>
-  proxy?: string
-  outDir: string
-  state: 'queued' | 'running' | 'paused' | 'completed' | 'error'
-  priority: number
-  completedPages: number[]
-  totalPages: number
-  error?: string
-  addedAt: number
-  epoch?: number
-}
+export type { DownloadTask }
 
 export const PARALLEL = 3
 

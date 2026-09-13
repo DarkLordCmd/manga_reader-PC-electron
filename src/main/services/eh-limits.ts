@@ -1,5 +1,4 @@
-export interface LimitParseResult {
-  kind: 'image-limit' | 'usage-limit' | 'sad-panda' | null
+export interface LimitParseResult {  kind: 'image-limit' | 'usage-limit' | 'sad-panda' | null
   resetAfterSec: number | null
 }
 
@@ -14,11 +13,8 @@ export function parseLimitResponse(text: string): LimitParseResult {
   return { kind: null, resetAfterSec: null }
 }
 
-export interface EhLimitState {
-  blocked: boolean
-  until: number
-  kind: string
-}
+import type { EhLimitState } from '@shared/ipc'
+export type { EhLimitState }
 
 export class EhLimitWatcher {
   private until = 0
