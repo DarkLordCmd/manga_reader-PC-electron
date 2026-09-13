@@ -5,6 +5,7 @@ import { readFileSync } from 'fs'
 import { SettingsService } from './services/settings'
 import { HistoryManager } from './services/history'
 import { galleryFromFolder, type Gallery } from './services/gallery'
+import { openZipGallery, readZipEntry, isZipPath } from './services/zip-gallery'
 import { fetchChapterList, searchMangaDex, fetchChapterCount } from './services/mangadex'
 import { createOnlineGallery, requestPage, setReadingPosition, getGalleryPages } from './services/online-gallery'
 import { resolveGallery, UnsupportedUrlError, type GalleryResolution } from './services/resolve-gallery'
@@ -31,6 +32,8 @@ const galleries = new Map<string, Gallery>()
 const onlineHeaders = new Map<string, Record<string, string>>()
 const coverCache = new Map<string, Buffer>()
 const coverInFlight = new Map<string, Promise<Buffer>>()
+const zipMeta = new Map<string, { zipPath: string; entries: string[] }>()
+const ZIP_TMP = join(app.getPath('userData'), 'tmp', 'zip')
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'manga', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
@@ -165,6 +168,15 @@ app.whenReady().then(() => {
     const gid = parsed.gid
     const index = parsed.index
 
+    const zip = zipMeta.get(gid)
+    if (zip) {
+      if (!Number.isInteger(index) || index < 0 || index >= zip.entries.length) {
+        return new Response('Not found', { status: 404 })
+      }
+      const file = await readZipEntry(zip.zipPath, zip.entries[index], ZIP_TMP)
+      return net.fetch(pathToFileURL(file).toString())
+    }
+
     const local = galleries.get(gid)
     if (local) {
       if (!Number.isInteger(index) || index < 0 || index >= local.pages.length) {
@@ -203,7 +215,7 @@ app.whenReady().then(() => {
     settings.save({ ...settings.get(), viewing_history: [] })
   })
   ipcMain.handle(CH.pickFolder, async () => {
-    const r = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'openFile'] })
     if (r.canceled || r.filePaths.length === 0) return null
     return openFolder(r.filePaths[0])
   })
@@ -443,7 +455,20 @@ app.whenReady().then(() => {
   })
 })
 
-function openFolder(path: string): { id: string; title: string; pageCount: number; pages: string[]; url: string } | null {
+async function openFolder(path: string): Promise<{ id: string; title: string; pageCount: number; pages: string[]; url: string } | null> {
+  if (isZipPath(path)) {
+    const zi = await openZipGallery(path, ZIP_TMP)
+    if (!zi) return null
+    zipMeta.set(zi.id, { zipPath: path, entries: zi.entries })
+    const url = `file://${path}`
+    history.addOrUpdate({
+      url, series_id: url, title: zi.title, cover_url: null,
+      source: 'Локальный архив', chapter_label: null, chapter_index: null,
+      chapter_total: null, total_pages: zi.pageCount, category: 'main'
+    })
+    settings.save({ ...settings.get(), viewing_history: history.toVec() })
+    return { id: zi.id, title: zi.title, pageCount: zi.pageCount, pages: zi.entries, url }
+  }
   const g = galleryFromFolder(path)
   if (!g) return null
   galleries.set(g.id, g)
