@@ -52,10 +52,10 @@ export async function searchRemanga(
   page: number,
   filters: CatalogFilters = {}
 ): Promise<CatalogItem[]> {
-  const params = new URLSearchParams({
-    query, page: String(page + 1), count: '20', ordering: 'index'
-  })
-  if (filters.remangaOrdering) params.set('ordering', filters.remangaOrdering)
+  // API rejects `query=` with an empty value (HTTP 400) and no longer
+  // accepts the old `index` ordering — `views` is a stable equivalent.
+  const params = new URLSearchParams({ page: String(page + 1), count: '20', ordering: filters.remangaOrdering ?? 'views' })
+  if (query.trim()) params.set('query', query.trim())
   if (filters.remangaStatus) params.set('status', filters.remangaStatus)
   if (filters.remangaTypes) params.set('types', filters.remangaTypes)
   for (const g of filters.remangaGenres ?? []) params.append('genres', g)

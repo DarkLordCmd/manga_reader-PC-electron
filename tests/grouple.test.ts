@@ -64,9 +64,9 @@ describe('searchGrouple parse', () => {
     })
   })
 
-  it('appends page with & when catalogPath already has a query', async () => {
+  it('paginates the listing by 50-item offset', async () => {
     await searchGrouple(GROUPLE_SITES[0], '', 2, (url) => {
-      if (url === `${GROUPLE_SITES[0].base}/list?type=&sortType=rate&page=3`) return Promise.resolve(html)
+      if (url === `${GROUPLE_SITES[0].base}/list?type=&sortType=rate&offset=100`) return Promise.resolve(html)
       throw new Error('unexpected ' + url)
     })
   })

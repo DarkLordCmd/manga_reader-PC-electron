@@ -60,7 +60,12 @@ export async function searchSenkuro(query: string, cookieHeader = '', after?: st
       cursor: typeof e?.cursor === 'string' ? e.cursor : null
     }
   })
-  if (items.length === 0) throw new Error('Senkuro: ничего не найдено')
+  if (items.length === 0) {
+    // С пустым запросом API часто отдаёт пустой каталог; без авторизационных
+    // кукиОтветов бывает «Not yet»-заглушка.
+    if (query.trim()) throw new Error('Senkuro: ничего не найдено. Если не проходит — проверь куки/авторизацию в настройках Senkuro.')
+    throw new Error('Senkuro: каталог без поискового запроса недоступен (API отдаёт пусто). Укажи запрос в поиске.')
+  }
   return items
 }
 

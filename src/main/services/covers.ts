@@ -14,6 +14,8 @@ function siteKeyForUrl(url: string): string | null {
   if (l.includes('manga-shi')) return 'mangashi'
   if (l.includes('mangalib')) return 'mangalib'
   if (l.includes('com-x.life')) return 'comx'
+  // Grouple cover CDNs live on separate hosts (e.g. mmm/resrmr.one-way.work).
+  if (l.includes('one-way.work') || l.includes('readmanga') || l.includes('mintmanga') || l.includes('mangapoisk')) return 'grouple'
   return null
 }
 
@@ -28,6 +30,10 @@ export function coverReferer(siteKey: string | null, url: string): string | unde
     case 'mangashi': return 'https://manga-shi.org/'
     case 'mangalib': return 'https://mangalib.me/'
     case 'comx': return 'https://com-x.life/'
+    case 'grouple':
+      // one-way.work CDN hot-link check passes with the grouple-site Referer
+      // (verified live: 402 without, 200 with).
+      return 'https://mintmanga.com/'
     case 'nhentai': return url.includes('.onion') ? url : 'https://nhentai.net/'
     default: return undefined
   }

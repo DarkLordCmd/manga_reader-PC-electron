@@ -7,7 +7,7 @@ import type { SimpleSiteConfig, CatalogItem } from './catalog-types'
 import type { ChapterInfo } from './remanga'
 
 export const MARKERS = ['tile-link', 'tiles row', 'class="tile', 'card shadow mb-4']
-export const CHAPTER_MARKERS = ['chapters-link', 'chapter', '/v']
+export const CHAPTER_MARKERS = ['chapters-link', 'chapter', '/v', '/read']
 
 export const GROUPLE_SITES: SimpleSiteConfig[] = [
   { name: 'Readmanga', base: 'https://readmanga.me', catalogPath: '/list?type=&sortType=rate', searchPath: '/search?q=', linkMarker: '/manga/' },
@@ -69,14 +69,27 @@ export function parseGroupleListing(html: string, base: string, _page = 0): Cata
 
   // Strategy B: server-rendered card grids (`card shadow mb-4`, e.g.
   // mangapoisk.me) — <a href="/manga/<slug>" title="…"> with <img> inside.
-  const tryCardBlock = (el: any): { full: string; title: string } | null => {
+  const tryCardBlock = (el: any): { full: string; title: string; pages: number | null } | null => {
     const href = $(el).attr('href') ?? ''
     if (!href.includes('/manga/')) return null
-    const full = resolve(base, href)
-    if (!full) return null
+    // Chapter links (`/manga/<slug>/chapter/<v>-<n>`) point inside a card — skip.
+    if (/\/manga\/[^/]+\/chapter\//.test(href)) return null
+    const full0 = resolve(base, href)
+    if (!full0) return null
+    // Canonicalize: nav anchors append ?tab=… on the same slug — one entry.
+    let full: string
+    try {
+      const u = new URL(full0)
+      u.search = ''
+      u.hash = ''
+      full = u.toString()
+    } catch { return null }
     const title = ($(el).attr('title') || $(el).find('img').first().attr('alt') || '').trim()
     if (title.length < 2) return null
-    return { full, title }
+    // Latest chapter number from the trailing "167 Глава" link, if present.
+    const cardText = $(el).parent().text()
+    const cm = cardText.match(/(\d+)\s*Глава/)
+    return { full, title, pages: cm ? Number(cm[1]) : null }
   }
 
   $('div.card').each((_d, card) => {
@@ -86,8 +99,12 @@ export function parseGroupleListing(html: string, base: string, _page = 0): Cata
     if (!hit || seen.has(hit.full)) return
     seen.add(hit.full)
     const cover = extractCoverFromSubtree($, card)
-    results.push({ url: hit.full, title: hit.title, coverUrl: cover ? resolve(base, cover) : null, pages: null })
+    results.push({ url: hit.full, title: hit.title, coverUrl: cover ? resolve(base, cover) : null, pages: hit.pages })
   })
+
+  // On card-grid pages (e.g. mangapoisk) the generic anchor scan only adds
+  // junk nav duplicates — stop after the card strategy produced results.
+  if (html.includes('card shadow mb-4') && results.length > 0) return results
 
   $('a[href]').each((_i, el) => {
     const hit = tryCardBlock(el) ?? tryLegacyTile(el)
@@ -107,7 +124,8 @@ export async function searchGrouple(
 ): Promise<CatalogItem[]> {
   const target = query.trim()
     ? `${cfg.base}/api/catalog/search?q=${encodeURIComponent(query.trim())}&offset=${page * 50}`
-    : `${cfg.base}${cfg.catalogPath}${page > 0 ? `${cfg.catalogPath.includes('?') ? '&' : '?'}page=${page + 1}` : ''}`
+    // Servers ignore `page=` — the listing paginates by 50-item offset.
+    : `${cfg.base}${cfg.catalogPath}${page > 0 ? `${cfg.catalogPath.includes('?') ? '&' : '?'}offset=${page * 50}` : ''}`
   const data = fetchOverride ? await fetchOverride(target) : await fetchHtmlSmart(target)
   const results = query.trim()
     ? parseGroupleSearchJson(data, cfg.base)
@@ -135,7 +153,8 @@ export function parseGroupleSearchJson(jsonText: string, base: string): CatalogI
 
 interface ChapterRef { vol: number | null; num: number | null }
 
-/** Matches /<slug>/v<V>[/(c|chapter)?<C>] and /<slug>/vol<V>/<C> chapter paths. */
+/** Matches /<slug>/v<V>[/(c|chapter)?<C>] and /<slug>/vol<V>/<C> chapter paths,
+ * plus mangapoisk's /manga/<slug>/chapter/<V>-<N> format. */
 function chapterRefFromUrl(u: URL): ChapterRef | null {
   const segs = u.pathname.split('/').filter(Boolean)
   for (let i = 0; i < segs.length; i++) {
@@ -144,6 +163,12 @@ function chapterRefFromUrl(u: URL): ChapterRef | null {
     const next = segs[i + 1] ?? ''
     const mC = next.match(/^(?:c(?:hapter)?)?(\d+(?:\.\d+)?)$/i)
     return { vol: Number(mV[1]), num: mC ? Number(mC[1]) : null }
+  }
+  // mangapoisk: /manga/<slug>/chapter/<V>-<N>
+  const ci = segs.findIndex((s) => s === 'chapter')
+  if (ci >= 0) {
+    const vn = (segs[ci + 1] ?? '').match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/)
+    if (vn) return { vol: Number(vn[1]), num: Number(vn[2]) }
   }
   return null
 }
