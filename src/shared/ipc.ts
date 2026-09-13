@@ -114,6 +114,8 @@ export interface ArchiveCost {
   archiverUrl: string
 }
 
+export interface PinAttemptResult { locked: boolean; retryAfterSec: number }
+
 export interface Api {
   getSettings(): Promise<Settings>
   setSettings(s: Settings): Promise<void>
@@ -155,6 +157,11 @@ export interface Api {
   ehArchiveBuy(url: string, dltype: string): Promise<{ downloadUrl: string } | null>
   downloadsAddArchive(sourceUrl: string, title: string, downloadUrl: string): Promise<DownloadTask | null>
   ehLimitsState(): Promise<EhLimitState>
+  pinHasPin(): Promise<boolean>
+  pinSetPin(pin: string): Promise<void>
+  pinRemovePin(pin: string): Promise<boolean>
+  pinVerifyPin(pin: string): Promise<boolean>
+  pinFailedAttempt(): Promise<PinAttemptResult>
   onEhLimitsChanged(cb: (state: EhLimitState) => void): () => void
   onDownloadsChanged(cb: (tasks: DownloadTask[]) => void): () => void
 }
@@ -201,6 +208,11 @@ export const CH = {
   ehArchiveBuy: 'ehArchive:buy',
   downloadsChanged: 'downloads:changed',
   ehLimitsState: 'eh-limits:state',
+  pinHasPin: 'pin:hasPin',
+  pinSetPin: 'pin:setPin',
+  pinRemovePin: 'pin:removePin',
+  pinVerifyPin: 'pin:verifyPin',
+  pinFailedAttempt: 'pin:failedAttempt',
   ehLimitsChanged: 'eh-limits:changed',
   settingsChanged: 'settings:changed'
 } as const

@@ -23,6 +23,7 @@ import { setFrontingEnabled } from './services/domain-fronting'
 import { parseMangaPageUrl } from './services/page-url'
 import { ExAccountsService, parseCookieLogin } from './services/accounts'
 import { setEhSetCookieHandler } from './services/eh-session'
+import { PinService } from './services/pin'
 import { ehWatcher, broadcastEhLimitState } from './services/eh-limits-instance'
 import { registerEhLimitHook } from './services/eh-limits-hook'
 import { httpFetchBinary } from './services/http'
@@ -44,6 +45,7 @@ let settings: SettingsService
 let history: HistoryManager
 let exAccounts: ExAccountsService
 let downloads: DownloadManager
+let pin: PinService
 
 function downloadFetchOpts(sourceUrl: string): { proxy?: string; cookieHeader?: string } {
   const s = settings.get()
@@ -89,6 +91,12 @@ function createWindow(): void {
 app.whenReady().then(() => {
   settings = new SettingsService(app.getPath('userData'))
   setFrontingEnabled(settings.get().enable_domain_fronting)
+  pin = new PinService(app.getPath('userData'))
+  ipcMain.handle(CH.pinHasPin, () => pin.hasPin())
+  ipcMain.handle(CH.pinSetPin, (_e, p: string) => pin.setPin(String(p)))
+  ipcMain.handle(CH.pinRemovePin, (_e, p: string) => pin.removePin(String(p)))
+  ipcMain.handle(CH.pinVerifyPin, (_e, p: string) => pin.verify(String(p)))
+  ipcMain.handle(CH.pinFailedAttempt, () => pin.failedAttempt())
   exAccounts = new ExAccountsService(app.getPath('userData'))
   exAccounts.init()
   registerEhLimitHook({

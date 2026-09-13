@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react'
 import { StoreProvider, useStore } from './state/store'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
+import LockScreen from './components/LockScreen'
 import Reader from './screens/Reader'
 import Catalog from './screens/Catalog'
 import History from './screens/History'
@@ -25,5 +27,11 @@ function Shell(): JSX.Element {
 }
 
 export default function App(): JSX.Element {
+  const [unlocked, setUnlocked] = useState<boolean | null>(null)
+  useEffect(() => {
+    window.api.pinHasPin().then((has) => setUnlocked(!has))
+  }, [])
+  if (unlocked === null) return <div className="app" />
+  if (!unlocked) return <LockScreen onUnlock={() => setUnlocked(true)} />
   return <StoreProvider><Shell /></StoreProvider>
 }

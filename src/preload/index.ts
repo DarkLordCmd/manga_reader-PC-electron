@@ -44,6 +44,11 @@ const api: Api = {
   ehArchiveBuy: (url, dltype) => ipcRenderer.invoke(CH.ehArchiveBuy, url, dltype),
   downloadsAddArchive: (sourceUrl, title, downloadUrl) => ipcRenderer.invoke(CH.downloadsAddArchive, sourceUrl, title, downloadUrl),
   ehLimitsState: () => ipcRenderer.invoke(CH.ehLimitsState),
+  pinHasPin: () => ipcRenderer.invoke(CH.pinHasPin),
+  pinSetPin: (pin) => ipcRenderer.invoke(CH.pinSetPin, pin),
+  pinRemovePin: (pin) => ipcRenderer.invoke(CH.pinRemovePin, pin),
+  pinVerifyPin: (pin) => ipcRenderer.invoke(CH.pinVerifyPin, pin),
+  pinFailedAttempt: () => ipcRenderer.invoke(CH.pinFailedAttempt),
   onEhLimitsChanged: (cb) => {
     const fn = (_e: unknown, s: EhLimitState): void => cb(s)
     ipcRenderer.on(CH.ehLimitsChanged, fn)
