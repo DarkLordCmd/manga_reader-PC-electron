@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseSettings, defaultSettings } from '../src/shared/settings'
+import { parseSettings, defaultSettings, startPageFor } from '../src/shared/settings'
 
 describe('parseSettings', () => {
   it('fills defaults for a missing object', () => {
@@ -37,5 +37,17 @@ describe('parseSettings', () => {
     expect(s.read_progress).toEqual({})
     expect(s.read_chapters).toEqual([])
     expect(s.eh_tag_bookmarks).toEqual([])
+  })
+})
+
+describe('startPageFor', () => {
+  it('returns saved page - 1', () => {
+    expect(startPageFor('u', { u: [5, 10] })).toBe(4)
+  })
+  it('returns 0 for finished gallery', () => {
+    expect(startPageFor('u', { u: [10, 10] })).toBe(0)
+  })
+  it('returns 0 when unknown', () => {
+    expect(startPageFor('x', {})).toBe(0)
   })
 })

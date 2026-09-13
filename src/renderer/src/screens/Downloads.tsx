@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react'
 import type { OpenFolderResult } from '@shared/ipc'
 import type { DownloadTask } from '@shared/downloads'
 import { useStore } from '../state/store'
+import { startPageFor } from '@shared/settings'
 
 export default function Downloads(): JSX.Element {
-  const { setOpened, setScreen } = useStore()
+  const { setOpened, setScreen, settings } = useStore()
   const [tasks, setTasks] = useState<DownloadTask[]>([])
   useEffect(() => {
     window.api.downloadsList().then(setTasks)
@@ -14,7 +15,8 @@ export default function Downloads(): JSX.Element {
   const open = async (id: string): Promise<void> => {
     const r: OpenFolderResult | null = await window.api.downloadsOpen(id)
     if (r) {
-      setOpened({ kind: 'local', ...r, startPage: 0 })
+      const saved = startPageFor(r.url, settings.read_progress)
+      setOpened({ kind: 'local', ...r, startPage: saved })
       setScreen('Reader')
     }
   }

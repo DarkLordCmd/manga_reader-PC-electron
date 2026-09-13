@@ -44,6 +44,14 @@ const bool = (v: unknown, d: boolean): boolean => (typeof v === 'boolean' ? v : 
 const str = (v: unknown, d: string): string => (typeof v === 'string' ? v : d)
 const strArr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
 
+export function startPageFor(url: string, readProgress: Record<string, [number, number]>): number {
+  const p = readProgress[url]
+  if (!p || !Array.isArray(p)) return 0
+  const [page, total] = p
+  if (total > 0 && page >= total) return 0
+  return Math.max(0, page - 1)
+}
+
 export function parseSettings(raw: unknown): Settings {
   const d = defaultSettings()
   if (!raw || typeof raw !== 'object') return d

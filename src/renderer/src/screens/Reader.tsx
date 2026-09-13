@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { startPageFor } from '@shared/settings'
 import { useStore } from '../state/store'
 import { useHotkeys } from '../hooks/useHotkeys'
 import ScrollView from '../components/ScrollView'
@@ -124,9 +125,10 @@ export default function Reader(): JSX.Element {
     if (!url) return
     setOpeningUrl(true)
     try {
-      const r = await window.api.openUrl(url)
+      const saved = startPageFor(url, settings.read_progress)
+      const r = await window.api.openUrl(url, saved)
       if (r) {
-        setOpened({ kind: 'online', ...r, startPage: 0 })
+        setOpened({ kind: 'online', ...r, startPage: saved })
         setUrlText('')
       } else {
         alert('Не удалось открыть URL')
@@ -134,16 +136,17 @@ export default function Reader(): JSX.Element {
     } finally {
       setOpeningUrl(false)
     }
-  }, [urlText, setOpened])
+  }, [urlText, settings.read_progress, setOpened])
 
   const openChapter = useCallback(async (chapterId: string, chapterList: import('@shared/ipc').ChapterListItem[], chapterIndex: number) => {
     const current = opened?.kind === 'online' ? opened : null
-    const r = await window.api.openUrl(chapterId, 0, current?.mangaId ?? null, current?.coverUrl ?? null)
+    const saved = startPageFor(chapterId, settings.read_progress)
+    const r = await window.api.openUrl(chapterId, saved, current?.mangaId ?? null, current?.coverUrl ?? null)
     if (r) {
-      setOpened({ kind: 'online', ...r, startPage: 0, coverUrl: current?.coverUrl ?? null, chapterList, chapterIndex })
+      setOpened({ kind: 'online', ...r, startPage: saved, coverUrl: current?.coverUrl ?? null, chapterList, chapterIndex })
       setShowChapters(false)
     }
-  }, [opened, setOpened])
+  }, [opened, settings.read_progress, setOpened])
 
   const buyArchive = useCallback(async () => {
     if (opened?.kind !== 'online') return
