@@ -5,12 +5,11 @@ import { readFileSync } from 'fs'
 import { SettingsService } from './services/settings'
 import { HistoryManager } from './services/history'
 import { galleryFromFolder, type Gallery } from './services/gallery'
-import { resolveAtHome, fetchChapterList, searchMangaDex, fetchChapterCount } from './services/mangadex'
+import { fetchChapterList, searchMangaDex, fetchChapterCount } from './services/mangadex'
 import { createOnlineGallery, requestPage, setReadingPosition, getGalleryPages } from './services/online-gallery'
-import { fetchSimpleGallery } from './services/simple-gallery'
+import { resolveGallery, UnsupportedUrlError, type GalleryResolution } from './services/resolve-gallery'
 import {
-  fetchRemangaChapter, fetchRemangaChapters, fetchSenkuroChapter, fetchSenkuroChapters,
-  mangaSeriesUrlFromChapterUrl
+  fetchRemangaChapters, fetchSenkuroChapters
 } from './services/sources'
 import { fetchMangaShiChapters } from './services/catalog-search'
 import { searchExHentai, searchMangaShi, searchNhentai, searchRemanga, searchSenkuro, searchSimpleSite } from './services/catalog-search'
@@ -68,38 +67,6 @@ function createWindow(): void {
   } else {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
-}
-
-function isUuid(s: string): boolean {
-  return s.length === 36 && [...s].every((c, i) =>
-    (i === 8 || i === 13 || i === 18 || i === 23) ? c === '-' : /[0-9a-fA-F]/.test(c))
-}
-
-function sourceLabel(url: string): string {
-  const l = url.toLowerCase()
-  if (l.includes('mangadex')) return 'MangaDex'
-  if (l.includes('exhentai')) return 'ExHentai'
-  if (l.includes('e-hentai.org')) return 'E-Hentai'
-  if (l.includes('nhentai')) return 'NHentai'
-  if (l.includes('com-x.life')) return 'Com-X'
-  if (l.includes('senkuro')) return 'Senkuro'
-  if (l.includes('manga-shi')) return 'Manga-shi'
-  if (l.includes('remanga')) return 'Remanga'
-  if (l.includes('mangalib')) return 'Mangalib'
-  return ''
-}
-
-function extractMangaDexChapterId(url: string): string | null {
-  const t = url.trim()
-  if (t.includes('mangadex.org')) {
-    const pos = t.indexOf('/chapter/')
-    if (pos >= 0) {
-      const seg = t.slice(pos + '/chapter/'.length).split('/')[0]
-      if (seg) return seg
-    }
-  }
-  if (isUuid(t)) return t
-  return null
 }
 
 app.whenReady().then(() => {
@@ -214,28 +181,15 @@ app.whenReady().then(() => {
         ? exAccounts.currentCookieHeader()
         : s.onion_cookies_raw
     if (isClearnetEx && !url.includes('.onion') && s.exhentai_proxy_addr.trim()) proxy = s.exhentai_proxy_addr.trim()
-    let result: { title: string; pageUrls: string[]; coverUrl: string | null; source: string; referer: string | null; proxy?: string; mangaId: string | null }
-    let seriesId = mangaId ?? trimmed
-    const seriesUrl = mangaSeriesUrlFromChapterUrl(trimmed)
-    if (seriesUrl) seriesId = seriesUrl
-
-    const chapterId = extractMangaDexChapterId(trimmed)
-    if (chapterId) {
-      const atHome = await resolveAtHome(chapterId)
-      const pageUrls = atHome.files.map((f) => `${atHome.baseUrl}/data/${atHome.hash}/${f}`)
-      result = { title: `MangaDex Chapter ${chapterId}`, pageUrls, coverUrl: null, source: 'MangaDex', referer: 'https://mangadex.org/', mangaId: seriesId }
-    } else if (trimmed.includes('remanga.org/manga/')) {
-      const r = await fetchRemangaChapter(trimmed)
-      result = { title: r.title, pageUrls: r.pageUrls, coverUrl: null, source: 'Remanga', referer: 'https://remanga.org/', mangaId: seriesId }
-    } else if (trimmed.includes('senkuro') && trimmed.includes('/chapter/')) {
-      const r = await fetchSenkuroChapter(trimmed)
-      result = { title: r.title, pageUrls: r.pageUrls, coverUrl: null, source: 'Senkuro', referer: `${r.base}/`, mangaId: seriesId }
-    } else if (trimmed.includes('manga-shi.') || trimmed.includes('nhentai') || trimmed.includes('com-x.life') || trimmed.includes('mangalib.') || trimmed.includes('e-hentai.org') || trimmed.includes('exhentai')) {
-      const g = await fetchSimpleGallery(trimmed, { proxy, cookieHeader })
-      result = { title: g.title, pageUrls: g.pageUrls, coverUrl: g.coverUrl, source: sourceLabel(trimmed), referer: trimmed, proxy, mangaId: seriesId }
-    } else {
-      return null
+    let result: GalleryResolution
+    try {
+      result = await resolveGallery(trimmed, { proxy, cookieHeader })
+    } catch (e) {
+      if (e instanceof UnsupportedUrlError) return null
+      throw e
     }
+    // If no series url was derived, fall back to the caller-provided mangaId (original behavior).
+    const seriesId = result.seriesId === trimmed ? (mangaId ?? trimmed) : result.seriesId
 
     const gid = createOnlineGallery(result.title, result.pageUrls, result.proxy)
     const headers: Record<string, string> = {}
