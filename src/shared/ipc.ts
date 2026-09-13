@@ -108,6 +108,12 @@ export interface EhLimitState {
   kind: string
 }
 
+export interface ArchiveCost {
+  costGp: number | null
+  options: { key: string; label: string }[]
+  archiverUrl: string
+}
+
 export interface Api {
   getSettings(): Promise<Settings>
   setSettings(s: Settings): Promise<void>
@@ -145,6 +151,9 @@ export interface Api {
   downloadsSetPriority(id: string, priority: number): Promise<void>
   downloadsOpen(id: string): Promise<OpenFolderResult | null>
   downloadsCheckUpdates(): Promise<string[]>
+  ehArchiveCost(url: string): Promise<ArchiveCost | null>
+  ehArchiveBuy(url: string, dltype: string): Promise<{ downloadUrl: string } | null>
+  downloadsAddArchive(sourceUrl: string, title: string, downloadUrl: string): Promise<DownloadTask | null>
   ehLimitsState(): Promise<EhLimitState>
   onEhLimitsChanged(cb: (state: EhLimitState) => void): () => void
   onDownloadsChanged(cb: (tasks: DownloadTask[]) => void): () => void
@@ -187,6 +196,9 @@ export const CH = {
   downloadsSetPriority: 'downloads:setPriority',
   downloadsOpen: 'downloads:open',
   downloadsCheckUpdates: 'downloads:checkUpdates',
+  downloadsAddArchive: 'downloads:addArchive',
+  ehArchiveCost: 'ehArchive:cost',
+  ehArchiveBuy: 'ehArchive:buy',
   downloadsChanged: 'downloads:changed',
   ehLimitsState: 'eh-limits:state',
   ehLimitsChanged: 'eh-limits:changed',

@@ -145,6 +145,19 @@ export default function Reader(): JSX.Element {
     }
   }, [opened, setOpened])
 
+  const buyArchive = useCallback(async () => {
+    if (opened?.kind !== 'online') return
+    const cost = await window.api.ehArchiveCost(opened.url)
+    if (!cost) { alert('Не удалось получить страницу архива'); return }
+    const costText = cost.costGp != null ? `Стоимость: ${cost.costGp} GP.` : 'Стоимость неизвестна.'
+    if (!window.confirm(`${costText} Купить и скачать оригинальный архив?`)) return
+    const r = await window.api.ehArchiveBuy(opened.url, cost.options[0]?.key ?? 'org')
+    if (!r?.downloadUrl) { alert('Не удалось купить архив (нет ссылки на скачивание)'); return }
+    const task = await window.api.downloadsAddArchive(opened.url, opened.title, r.downloadUrl)
+    if (!task) { alert('Такая галерея уже есть в загрузках'); return }
+    alert('Архив скачивается в Downloads')
+  }, [opened])
+
   return (
     <div className="reader">
       <div className="reader-toolbar">
@@ -160,6 +173,9 @@ export default function Reader(): JSX.Element {
         </select>
         {opened?.kind === 'online' && (
           <button onClick={() => setShowChapters(true)}>Главы</button>
+        )}
+        {opened?.kind === 'online' && (opened.source.includes('ExHentai') || opened.source.includes('E-Hentai')) && (
+          <button onClick={() => void buyArchive()}>⬇ Archive</button>
         )}
         <div className="spacer" />
         <input

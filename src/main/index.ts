@@ -13,7 +13,8 @@ import {
   fetchRemangaChapters, fetchSenkuroChapters
 } from './services/sources'
 import { fetchMangaShiChapters } from './services/catalog-search'
-import { searchExHentai, searchMangaShi, searchNhentai, searchRemanga, searchSenkuro, searchSimpleSite } from './services/catalog-search'
+import { searchExHentai, searchMangaShi, searchNhentai, searchRemanga, searchSenkuro, searchSimpleSite, extractGidToken } from './services/catalog-search'
+import { fetchArchiveCost, buyArchive } from './services/eh-archive'
 import { runLoginWindow } from './services/login'
 import { probeSocks5Handshake, probeBridgeLine, probeSite, allSiteKeys } from './services/tor-check'
 import { fetchEhTagSuggest, fetchNhentaiTagSuggestions } from './services/tags'
@@ -143,6 +144,36 @@ app.whenReady().then(() => {
       const { proxy, cookieHeader } = downloadFetchOpts(url)
       return await resolveGallery(url, { proxy, cookieHeader })
     })
+  })
+
+  function archiverUrlFor(galleryUrl: string): string | null {
+    const gt = extractGidToken(galleryUrl)
+    if (!gt) return null
+    const base = new URL(galleryUrl)
+    return `${base.origin}/archiver.php?gid=${gt.gid}&token=${gt.token}`
+  }
+  ipcMain.handle(CH.ehArchiveCost, async (_e, url: string) => {
+    const archiver = archiverUrlFor(url)
+    if (!archiver) return null
+    const { proxy, cookieHeader } = downloadFetchOpts(url)
+    try {
+      return await fetchArchiveCost(archiver, { cookieHeader, proxy })
+    } catch { return null }
+  })
+  ipcMain.handle(CH.ehArchiveBuy, async (_e, url: string, dltype: string) => {
+    const archiver = archiverUrlFor(url)
+    if (!archiver) return null
+    const { proxy, cookieHeader } = downloadFetchOpts(url)
+    try {
+      return await buyArchive(archiver, { cookieHeader, proxy, dltype })
+    } catch { return null }
+  })
+  ipcMain.handle(CH.downloadsAddArchive, (_e, sourceUrl: string, title: string, downloadUrl: string) => {
+    const { proxy, cookieHeader } = downloadFetchOpts(sourceUrl)
+    return downloads.addArchive(sourceUrl, title, downloadUrl, {
+      Referer: new URL(sourceUrl).origin + '/',
+      ...(cookieHeader ? { Cookie: cookieHeader } : {})
+    }, proxy)
   })
 
   protocol.handle('manga', async (request) => {

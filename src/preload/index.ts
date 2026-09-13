@@ -40,6 +40,9 @@ const api: Api = {
   downloadsSetPriority: (id, p) => ipcRenderer.invoke(CH.downloadsSetPriority, id, p),
   downloadsOpen: (id) => ipcRenderer.invoke(CH.downloadsOpen, id),
   downloadsCheckUpdates: () => ipcRenderer.invoke(CH.downloadsCheckUpdates),
+  ehArchiveCost: (url) => ipcRenderer.invoke(CH.ehArchiveCost, url),
+  ehArchiveBuy: (url, dltype) => ipcRenderer.invoke(CH.ehArchiveBuy, url, dltype),
+  downloadsAddArchive: (sourceUrl, title, downloadUrl) => ipcRenderer.invoke(CH.downloadsAddArchive, sourceUrl, title, downloadUrl),
   ehLimitsState: () => ipcRenderer.invoke(CH.ehLimitsState),
   onEhLimitsChanged: (cb) => {
     const fn = (_e: unknown, s: EhLimitState): void => cb(s)

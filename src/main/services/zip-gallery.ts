@@ -103,6 +103,36 @@ function extractEntry(zipPath: string, entryName: string, dest: string): Promise
   })
 }
 
+/**
+ * Extracts all file entries of a zip into outDir. Directory structure inside
+ * the zip is flattened (same '__' separator rule as readZipEntry), and any
+ * entry path containing '..' is skipped (zip-slip guard).
+ */
+export function extractZipAll(zipPath: string, outDir: string): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    yauzl.open(zipPath, { lazyEntries: true }, (err, zf) => {
+      if (err || !zf) return reject(err ?? new Error('cannot open zip'))
+      const written: string[] = []
+      zf.on('entry', (entry: yauzl.Entry) => {
+        const name = entry.fileName
+        if (name.endsWith('/') || name.split(/[\\/]/).includes('..')) { zf.readEntry(); return }
+        const dest = join(outDir, name.replace(/[\\/]+/g, '__'))
+        zf.openReadStream(entry, (err2, stream) => {
+          if (err2 || !stream) { zf.close(); return reject(err2 ?? new Error('no stream')) }
+          written.push(dest)
+          const ws = createWriteStream(dest)
+          stream.pipe(ws)
+          ws.on('close', () => zf.readEntry())
+          ws.on('error', (e) => { zf.close(); reject(e) })
+        })
+      })
+      zf.on('end', () => { zf.close(); resolve(written) })
+      zf.on('error', reject)
+      zf.readEntry()
+    })
+  })
+}
+
 export function clearZipTmp(tmpBase: string, zipId: string): void {
   rmSync(join(tmpBase, zipId), { recursive: true, force: true })
 }

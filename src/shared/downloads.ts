@@ -3,6 +3,7 @@ export interface DownloadTask {
   title: string
   sourceUrl: string
   pageUrls: string[]
+  archiveDownloadUrl?: string
   headers: Record<string, string>
   proxy?: string
   outDir: string

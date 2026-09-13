@@ -1,8 +1,9 @@
 import { randomUUID } from 'crypto'
-import { mkdirSync, existsSync, writeFileSync, readFileSync, readdirSync } from 'fs'
+import { mkdirSync, existsSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import type { GalleryResolution } from './resolve-gallery'
 import type { DownloadTask } from '@shared/downloads'
+import { extractZipAll } from './zip-gallery'
 
 export type { DownloadTask }
 
@@ -105,7 +106,43 @@ export class DownloadManager {
     }
   }
 
+  private async runArchiveTask(t: DownloadTask): Promise<void> {
+    const epoch = t.epoch ?? 0
+    const zipPath = join(t.outDir, 'archive.zip')
+    let buf: Uint8Array
+    try {
+      buf = await this.deps.fetchBinary(t.archiveDownloadUrl ?? '', t.headers, t.proxy, 600_000)
+    } catch (e: any) {
+      if (t.epoch !== epoch) return
+      t.error = e?.message ?? String(e)
+      t.state = 'error'
+      this.notify()
+      return
+    }
+    if (t.epoch !== epoch) return
+    if (t.state !== 'running') return
+    mkdirSync(t.outDir, { recursive: true })
+    writeFileSync(zipPath, Buffer.from(buf))
+    this.notify()
+    try {
+      const written = await extractZipAll(zipPath, t.outDir)
+      if (t.epoch !== epoch) return
+      rmSync(zipPath, { force: true })
+      written.sort()
+      t.pageUrls = written
+      t.totalPages = written.length
+      t.completedPages = Array.from({ length: written.length }, (_v, i) => i)
+      if (t.state === 'running') t.state = 'completed'
+    } catch (e: any) {
+      if (t.epoch !== epoch) return
+      t.error = e?.message ?? String(e)
+      t.state = 'error'
+    }
+    this.notify()
+  }
+
   private async runTask(t: DownloadTask): Promise<void> {
+    if (t.archiveDownloadUrl) return await this.runArchiveTask(t)
     const epoch = t.epoch ?? 0
     mkdirSync(t.outDir, { recursive: true })
     for (let i = 0; i < t.pageUrls.length; i++) {
@@ -138,6 +175,21 @@ export class DownloadManager {
       id: randomUUID(), title: res.title, sourceUrl, pageUrls: res.pageUrls,
       headers, proxy, outDir: join(this.outDirBase, slugify(res.title, randomUUID())),
       state: 'queued', priority: 0, completedPages: [], totalPages: res.pageUrls.length,
+      addedAt: Date.now(), epoch: 0
+    }
+    this.tasks.push(task)
+    this.notify()
+    ;(schedule as NativeTimer)(() => { void this.pump() })
+    return task
+  }
+
+  addArchive(sourceUrl: string, title: string, downloadUrl: string, headers: Record<string, string>, proxy?: string): DownloadTask | null {
+    if (this.tasks.some((t) => t.sourceUrl === sourceUrl && t.state !== 'error')) return null
+    const task: DownloadTask = {
+      id: randomUUID(), title, sourceUrl, pageUrls: [],
+      archiveDownloadUrl: downloadUrl,
+      headers, proxy, outDir: join(this.outDirBase, slugify(title, randomUUID())),
+      state: 'queued', priority: 0, completedPages: [], totalPages: 0,
       addedAt: Date.now(), epoch: 0
     }
     this.tasks.push(task)
