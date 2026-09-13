@@ -1,9 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export default function LockScreen({ onUnlock }: { onUnlock: () => void }): JSX.Element {
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [locked, setLocked] = useState(false)
+  const lockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (lockTimerRef.current !== null) clearTimeout(lockTimerRef.current)
+    }
+  }, [])
 
   const tryPin = async (): Promise<void> => {
     if (locked) return
@@ -12,7 +19,8 @@ export default function LockScreen({ onUnlock }: { onUnlock: () => void }): JSX.
     const r = await window.api.pinFailedAttempt()
     if (r.locked) {
       setLocked(true)
-      setTimeout(() => setLocked(false), r.retryAfterSec * 1000)
+      if (lockTimerRef.current !== null) clearTimeout(lockTimerRef.current)
+      lockTimerRef.current = setTimeout(() => setLocked(false), r.retryAfterSec * 1000)
       setError('')
       setPin('')
       return

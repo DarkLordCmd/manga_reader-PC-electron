@@ -93,12 +93,12 @@ export default function Settings(): JSX.Element {
   const setNewPin = async (): Promise<void> => {
     setPinMsg(null)
     try {
+      if (!/^\d{4,8}$/.test(pinNew)) { setPinMsg('PIN должен быть 4–8 цифр'); return }
       if (pinHas) {
         if (!/^\d{4,8}$/.test(pinCurrent)) { setPinMsg('Введи текущий PIN (4–8 цифр)'); return }
         const removed = await window.api.pinRemovePin(pinCurrent)
         if (!removed) { setPinMsg('Неверный текущий PIN'); return }
       }
-      if (!/^\d{4,8}$/.test(pinNew)) { setPinMsg('PIN должен быть 4–8 цифр'); return }
       await window.api.pinSetPin(pinNew)
       setPinHas(true)
       setPinMsg('PIN установлен')
