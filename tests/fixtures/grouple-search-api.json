@@ -1,0 +1,4 @@
+{ "total": 10, "limit": 50, "offset": 0, "list": [
+  { "elementId": { "linkName": "nenasytnyi_berserk", "type": "MANGA", "externalId": 14934, "siteId": 11, "fuid": "1:M:14934" }, "name": "Ненасытный Берсерк", "picUrl": "https://rm.one-way.work/uploads/pics/01/92/177.webp", "chaptersCount": 92 },
+  { "elementId": { "linkName": "berserkir", "type": "MANGA", "externalId": 15001, "siteId": 11, "fuid": "1:M:15001" }, "name": "Берсерк", "picUrl": null, "chaptersCount": null }
+] }

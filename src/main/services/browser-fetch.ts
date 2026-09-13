@@ -1,4 +1,6 @@
-import { BrowserWindow, session } from 'electron'
+import { app, BrowserWindow, session } from 'electron'
+import { writeFileSync } from 'fs'
+import { join } from 'path'
 import { detectsAntiBot } from './anti-bot'
 
 export { detectsAntiBot }
@@ -55,11 +57,15 @@ async function ensureBrowser(proxy?: string): Promise<BrowserWindow> {
   }
   currentProxy = proxyKey
   await applyProxy(s, proxyKey)
+  const preloadPath = join(app.getPath('temp'), 'gagl-stealth.js')
+  try { writeFileSync(preloadPath, STEALTH_JS) } catch { /* fall back to no preload */ }
   win = new BrowserWindow({
     show: false, width: 1024, height: 768,
     webPreferences: {
       session: s,
-      javascript: true, images: false, webSecurity: true
+      javascript: true, images: false, webSecurity: true,
+      contextIsolation: false,
+      preload: preloadPath
     }
   })
   return win
@@ -84,7 +90,6 @@ async function loadViaWindow(url: string, proxy: string | undefined, timeoutMs: 
     w.webContents.once('did-finish-load', () => {
       void (async () => {
         try {
-          await w.webContents.executeJavaScript(STEALTH_JS, true)
           await new Promise((r) => setTimeout(r, 2000))
           const html: string = await w.webContents.executeJavaScript('document.documentElement.outerHTML', true)
           finish(() => resolve(html))
@@ -93,7 +98,8 @@ async function loadViaWindow(url: string, proxy: string | undefined, timeoutMs: 
         }
       })()
     })
-    w.webContents.once('did-fail-load', (_e, code, desc) => {
+    w.webContents.once('did-fail-load', (_e, code, desc, _url, isMainFrame) => {
+      if (!isMainFrame) return
       finish(() => reject(new Error(`Не удалось загрузить страницу через встроенный браузер: ${code} ${desc}`)))
     })
     void w.loadURL(url).catch(() => {})

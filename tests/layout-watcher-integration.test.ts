@@ -7,7 +7,7 @@ vi.mock('../src/main/services/http', () => ({
 }))
 
 import { searchSimpleSite } from '../src/main/services/sources/simple-sites'
-import { searchMangaShi } from '../src/main/services/sources/mangashi'
+import { searchMangaShi, fetchMangaShiChapters } from '../src/main/services/sources/mangashi'
 import { searchNhentai } from '../src/main/services/sources/nhentai'
 import { parseExHentaiListing } from '../src/main/services/sources/eh'
 
@@ -21,6 +21,11 @@ describe('layout-watchdog integration (junk markup)', () => {
 
   it('searchMangaShi rejects with layout-changed', async () => {
     await expect(searchMangaShi('q')).rejects.toMatchObject({ code: 'layout-changed', sourceName: 'Manga-shi' })
+  })
+
+  it('fetchMangaShiChapters rejects with layout-changed', async () => {
+    await expect(fetchMangaShiChapters('https://manga-shi.org/berserk/'))
+      .rejects.toMatchObject({ code: 'layout-changed', sourceName: 'Manga-shi chapters' })
   })
 
   it('searchNhentai rejects with layout-changed', async () => {

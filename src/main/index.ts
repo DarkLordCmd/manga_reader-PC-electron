@@ -42,7 +42,7 @@ const coverCache = new Map<string, Buffer>()
 const coverInFlight = new Map<string, Promise<Buffer>>()
 const zipMeta = new Map<string, { zipPath: string; entries: string[] }>()
 const ZIP_TMP = join(app.getPath('userData'), 'tmp', 'zip')
-const SERIES_SOURCES = ['MangaDex', 'Remanga', 'Senkuro', 'Manga-shi', 'Readmanga', 'Mintmanga', 'Mangapoisk']
+const SERIES_SOURCES = ['MangaDex', 'Remanga', 'Senkuro', 'Manga-shi', 'Readmanga', 'Mintmanga', 'Mangapoisk', 'MangaMello']
 
 function downloadsDirBase(dir: string | null | undefined): string {
   return dir?.trim() || join(app.getPath('userData'), 'downloads')

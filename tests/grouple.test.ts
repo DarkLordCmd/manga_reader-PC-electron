@@ -27,13 +27,41 @@ describe('searchGrouple parse', () => {
     expect(items[0].coverUrl).toBe('https://readmanga.me/img/cover1.jpg')
   })
 
-  it('builds a search url when query is given', async () => {
-    const mintHtml = html.replaceAll('readmanga.me', 'mintmanga.com')
-    const items = await searchGrouple(GROUPLE_SITES[1], 'berserk', 0, (url) => {
-      if (url === 'https://mintmanga.com/search?q=berserk') return Promise.resolve(mintHtml)
+  it('excludes navigation links that masquerade as series', async () => {
+    const junkHtml = html.replace('</body>', `
+  <a href="/collection">Коллекции</a>
+  <a href="/quote">Цитаты</a>
+  <a href="/logoff">Выход</a>
+  <a href="/about">О нас</a>
+</body>`)
+    const items = await searchGrouple(GROUPLE_SITES[0], '', 0, (url) => {
+      if (url === `${GROUPLE_SITES[0].base}/list?type=&sortType=rate`) return Promise.resolve(junkHtml)
       throw new Error('unexpected ' + url)
     })
-    expect(items[0].url).toBe('https://mintmanga.com/berserk-/')
+    expect(items).toHaveLength(2)
+    expect(items.map((i) => i.url)).not.toContain('https://readmanga.me/collection')
+  })
+
+  it('parses JSON search results from the SPA api', async () => {
+    const searchJson = readFileSync(join('tests', 'fixtures', 'grouple-search-api.json'), 'utf-8')
+    const items = await searchGrouple(GROUPLE_SITES[0], 'berserk', 0, (url) => {
+      if (url === `${GROUPLE_SITES[0].base}/api/catalog/search?q=berserk&offset=0`) return Promise.resolve(searchJson)
+      throw new Error('unexpected ' + url)
+    })
+    expect(items).toHaveLength(2)
+    expect(items[0].title).toBe('Ненасытный Берсерк')
+    expect(items[0].url).toBe('https://readmanga.me/nenasytnyi_berserk/')
+    expect(items[0].coverUrl).toBe('https://rm.one-way.work/uploads/pics/01/92/177.webp')
+    expect(items[0].pages).toBe(92)
+    expect(items[1].pages).toBeNull()
+  })
+
+  it('paginates JSON search with offset', async () => {
+    const searchJson = readFileSync(join('tests', 'fixtures', 'grouple-search-api.json'), 'utf-8')
+    await searchGrouple(GROUPLE_SITES[0], 'berserk', 2, (url) => {
+      if (url === `${GROUPLE_SITES[0].base}/api/catalog/search?q=berserk&offset=100`) return Promise.resolve(searchJson)
+      throw new Error('unexpected ' + url)
+    })
   })
 
   it('appends page with & when catalogPath already has a query', async () => {
@@ -77,6 +105,21 @@ describe('fetchGroupleChapters', () => {
       throw new Error('unexpected ' + url)
     })
     expect(chapters.map((c) => c.chapter_num)).toEqual(['Том 4', 'Том 4 Глава 12'])
+  })
+
+  it('parses decimal chapter numbers and sorts them numerically', async () => {
+    const decimal = `
+      <html><body>
+        <a class="chapter-link" href="/berserk-/v1/c26">Глава 26</a>
+        <a class="chapter-link" href="/berserk-/v1/c25.5">Глава 25.5</a>
+        <a class="chapter-link" href="/berserk-/v1/c25">Глава 25</a>
+      </body></html>`
+    const chapters = await fetchGroupleChapters('https://readmanga.me/berserk-/', async (url) => {
+      if (url === 'https://readmanga.me/berserk-/') return decimal
+      throw new Error('unexpected ' + url)
+    })
+    expect(chapters.map((c) => c.chapter_num)).toEqual(['Глава 25', 'Глава 25.5', 'Глава 26'])
+    expect(chapters[1].chapter_id).toBe('https://readmanga.me/berserk-/v1/c25.5')
   })
 })
 

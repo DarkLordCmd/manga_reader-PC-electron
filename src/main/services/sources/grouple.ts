@@ -20,7 +20,8 @@ const NON_SERIES_PREFIXES = new Set([
   'list', 'search', 'read', 'news', 'pages', 'users', 'login', 'logout',
   'register', 'auth', 'api', 'static', 'img', 'images', 'uploads', 'assets',
   'forum', 'wiki', 'support', 'rss', 'chapters', 'manga', 'tags', 'genres',
-  'type', 'order', 'status', 'sort', 'recommendations', 'random', 'favorites'
+  'type', 'order', 'status', 'sort', 'recommendations', 'random', 'favorites',
+  'collection', 'quote', 'logoff', 'about'
 ])
 
 function sameHost(full: string, base: string): boolean {
@@ -75,12 +76,29 @@ export async function searchGrouple(
   fetchOverride?: (url: string) => Promise<string>
 ): Promise<CatalogItem[]> {
   const target = query.trim()
-    ? `${cfg.base}${cfg.searchPath}${encodeURIComponent(query.trim())}`
+    ? `${cfg.base}/api/catalog/search?q=${encodeURIComponent(query.trim())}&offset=${page * 50}`
     : `${cfg.base}${cfg.catalogPath}${page > 0 ? `${cfg.catalogPath.includes('?') ? '&' : '?'}page=${page + 1}` : ''}`
-  const html = fetchOverride ? await fetchOverride(target) : await fetchHtmlSmart(target)
-  const results = parseGroupleListing(html, cfg.base, page)
+  const data = fetchOverride ? await fetchOverride(target) : await fetchHtmlSmart(target)
+  const results = query.trim()
+    ? parseGroupleSearchJson(data, cfg.base)
+    : parseGroupleListing(data, cfg.base, page)
   if (results.length === 0) throw new Error(`${cfg.name}: ничего не найдено (или вёрстка изменилась)`)
   return results
+}
+
+/** JSON search results from /api/catalog/search (SPA search endpoint). */
+export function parseGroupleSearchJson(jsonText: string, base: string): CatalogItem[] {
+  const j = JSON.parse(jsonText) as any
+  assertLayout(['"total"', '"list"'], jsonText, 'Grouple search')
+  const list: any[] = j?.list ?? []
+  return list
+    .filter((m) => typeof m?.elementId?.linkName === 'string' && m.elementId.linkName.length > 0)
+    .map((m) => ({
+      url: `${base}/${m.elementId.linkName}/`,
+      title: typeof m?.name === 'string' && m.name.trim() ? m.name.trim() : 'Без названия',
+      coverUrl: typeof m?.picUrl === 'string' && m.picUrl ? m.picUrl : null,
+      pages: typeof m?.chaptersCount === 'number' ? m.chaptersCount : null
+    }))
 }
 
 // ── Grouple chapters ────────────────────────────────────────────────────
@@ -91,10 +109,10 @@ interface ChapterRef { vol: number | null; num: number | null }
 function chapterRefFromUrl(u: URL): ChapterRef | null {
   const segs = u.pathname.split('/').filter(Boolean)
   for (let i = 0; i < segs.length; i++) {
-    const mV = segs[i].match(/^v(?:ol)?(\d+)$/i)
+    const mV = segs[i].match(/^v(?:ol)?(\d+(?:\.\d+)?)$/i)
     if (!mV) continue
     const next = segs[i + 1] ?? ''
-    const mC = next.match(/^(?:c(?:hapter)?)?(\d+)$/i)
+    const mC = next.match(/^(?:c(?:hapter)?)?(\d+(?:\.\d+)?)$/i)
     return { vol: Number(mV[1]), num: mC ? Number(mC[1]) : null }
   }
   return null

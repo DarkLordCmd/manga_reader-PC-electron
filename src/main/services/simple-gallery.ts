@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio'
-import { httpFetch } from './http'
+import { fetchHtmlSmart } from './fetch-html'
 import { ehErrorFromResponse } from './catalog-search'
 
 export interface SimpleGallery {
@@ -108,23 +108,16 @@ export async function fetchSimpleGallery(
   url: string,
   opts: { proxy?: string; cookieHeader?: string; timeoutMs?: number } = {}
 ): Promise<SimpleGallery> {
-  const r = await httpFetch({
-    url,
-    headers: {
-      Referer: url,
-      Accept: 'text/html,application/xhtml+xml',
-      ...(opts.cookieHeader ? { Cookie: opts.cookieHeader } : {})
-    },
-    timeoutMs: opts.timeoutMs ?? (opts.proxy ? 120_000 : 30_000),
-    frontOnEmpty: true
-  }, opts.proxy)
+  const html = await fetchHtmlSmart(url, {
+    proxy: opts.proxy,
+    cookieHeader: opts.cookieHeader,
+    timeoutMs: opts.timeoutMs ?? (opts.proxy ? 120_000 : 30_000)
+  })
 
-  if (r.status >= 400) throw new Error(`HTTP ${r.status}`)
   if (url.includes('exhentai') || url.includes('e-hentai.org')) {
-    const ehErr = ehErrorFromResponse(r.status, r.text)
+    const ehErr = ehErrorFromResponse(200, html)
     if (ehErr) throw new Error(ehErr)
   }
-  const html = r.text
   const $ = cheerio.load(html)
 
   const title = $('title').first().text().trim() || 'Gallery'
