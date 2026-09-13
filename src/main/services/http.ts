@@ -145,11 +145,27 @@ function buildInit(opts: HttpFetchOptions): any {
 async function fetchWithTimeout(url: string, init: any, ms: number, dispatcher?: Agent, forceUndici = false): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), ms)
+  let host = ''
+  try { host = new URL(url).hostname } catch { /* ignore */ }
   try {
     const full = { ...init, signal: controller.signal }
     if (dispatcher) return await fetch(url, { ...full, dispatcher } as any)
     if (forceUndici) return await fetch(url, full)
     return await defaultFetch(url, full)
+  } catch (e: any) {
+    // Our own timeout surfaces as an abort. A hard timeout on BOTH the direct
+    // and the fronting path is the signature of a TCP handshake succeeding but
+    // the TLS ClientHello being dropped — classic ISP-side SNI blocking of
+    // this domain. Surface a clear, actionable message instead of a bare
+    // `AbortError`.
+    if (e?.name === 'AbortError') {
+      throw new Error(
+        `Соединение с ${host || url} прервано по таймауту — сайт недоступен ` +
+        '(DNS/SNI-блокировка на уровне провайдера или сеть). ' +
+        'Включи Tor для этого источника в настройках или используй доступный источник.'
+      )
+    }
+    throw e
   } finally {
     clearTimeout(timer)
   }
