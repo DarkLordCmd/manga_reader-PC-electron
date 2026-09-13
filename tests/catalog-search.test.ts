@@ -4,6 +4,7 @@ import {
   searchSimpleSite, searchNhentai, extractGid, extractGidToken, searchMangaShi, ehErrorFromResponse, fetchGData,
   parseExHentaiListing
 } from '../src/main/services/catalog-search'
+import { mangaSeriesUrlFromChapterUrl } from '../src/main/services/sources'
 
 function serve(fn: (req: any, res: any) => void): Promise<{ port: number; close: () => void }> {
   return new Promise((resolve) => {
@@ -193,5 +194,12 @@ describe('searchNhentai', () => {
     expect(results[0].url).toContain('/g/123456/')
     expect(results[0].coverUrl).toContain('//i.nhentai.net/cover.jpg')
     close()
+  })
+})
+describe('mangaSeriesUrlFromChapterUrl', () => {
+  it('maps grouple chapter pages to series url', () => {
+    expect(mangaSeriesUrlFromChapterUrl('https://readmanga.me/some-title/v1/')).toBe('https://readmanga.me/some-title/')
+    expect(mangaSeriesUrlFromChapterUrl('https://mintmanga.com/another/v2/1')).toBe('https://mintmanga.com/another/')
+    expect(mangaSeriesUrlFromChapterUrl('https://mangapoisk.me/x/v1/1')).toBe('https://mangapoisk.me/x/')
   })
 })
