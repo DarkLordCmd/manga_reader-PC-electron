@@ -17,6 +17,7 @@ export interface DownloadTask {
   totalPages: number
   error?: string
   addedAt: number
+  epoch?: number
 }
 
 export const PARALLEL = 3
@@ -57,7 +58,7 @@ export class DownloadManager {
   private persist(): void {
     try {
       mkdirSync(join(this.persistPath, '..'), { recursive: true })
-      writeFileSync(this.persistPath, JSON.stringify(this.tasks, null, 2))
+      writeFileSync(this.persistPath, JSON.stringify(this.tasks.map(({ epoch: _epoch, ...t }) => t), null, 2))
     } catch { /* ignore */ }
   }
 
@@ -70,17 +71,19 @@ export class DownloadManager {
     if (!existsSync(this.persistPath)) return
     try {
       const raw = JSON.parse(readFileSync(this.persistPath, 'utf-8')) as DownloadTask[]
-      this.tasks = raw.map((t) => ({ ...t, state: t.state === 'running' || t.state === 'queued' ? 'queued' : t.state }))
+      this.tasks = raw.map((t) => ({ ...t, state: t.state === 'running' || t.state === 'queued' ? 'queued' : t.state, epoch: (t.epoch ?? 0) + 1 }))
     } catch { this.tasks = [] }
     for (const t of this.tasks) {
       if (t.state !== 'queued') continue
       // rescan outDir for already-downloaded pages
-      if (existsSync(t.outDir)) {
-        const have = new Set(readdirSync(t.outDir))
-        t.completedPages = t.pageUrls
-          .map((_u, i) => i)
-          .filter((i) => have.has(this.fileName(t, i)))
-      }
+      try {
+        if (existsSync(t.outDir)) {
+          const have = new Set(readdirSync(t.outDir))
+          t.completedPages = t.pageUrls
+            .map((_u, i) => i)
+            .filter((i) => have.has(this.fileName(t, i)))
+        }
+      } catch { /* outDir vanished or unreadable — leave completedPages as persisted */ }
     }
     if (this.tasks.some((t) => t.state === 'queued')) (schedule as NativeTimer)(() => { void this.pump() })
     this.notify()
@@ -117,22 +120,27 @@ export class DownloadManager {
   }
 
   private async runTask(t: DownloadTask): Promise<void> {
+    const epoch = t.epoch ?? 0
     mkdirSync(t.outDir, { recursive: true })
     for (let i = 0; i < t.pageUrls.length; i++) {
       if (t.state !== 'running') return
+      if (t.epoch !== epoch) return
       if (t.completedPages.includes(i)) continue
       try {
         const buf = await this.deps.fetchBinary(t.pageUrls[i], t.headers, t.proxy, 60_000)
+        if (t.epoch !== epoch) return
         writeFileSync(join(t.outDir, this.fileName(t, i)), Buffer.from(buf))
-        t.completedPages.push(i)
+        if (!t.completedPages.includes(i)) t.completedPages.push(i)
         this.notify()
       } catch (e: any) {
+        if (t.epoch !== epoch) return
         t.error = e?.message ?? String(e)
         t.state = 'error'
         this.notify()
         return
       }
     }
+    if (t.epoch !== epoch) return
     if (t.state === 'running') t.state = 'completed'
     this.notify()
   }
@@ -144,7 +152,7 @@ export class DownloadManager {
       id: randomUUID(), title: res.title, sourceUrl, pageUrls: res.pageUrls,
       headers, proxy, outDir: join(this.outDirBase, slugify(res.title, randomUUID())),
       state: 'queued', priority: 0, completedPages: [], totalPages: res.pageUrls.length,
-      addedAt: Date.now()
+      addedAt: Date.now(), epoch: 0
     }
     this.tasks.push(task)
     this.notify()
@@ -154,18 +162,18 @@ export class DownloadManager {
 
   pause(id: string): void {
     const t = this.tasks.find((x) => x.id === id)
-    if (t && t.state === 'running') { t.state = 'paused'; this.notify() }
+    if (t && t.state === 'running') { t.state = 'paused'; t.epoch = (t.epoch ?? 0) + 1; this.notify() }
   }
 
   resume(id: string): void {
     const t = this.tasks.find((x) => x.id === id)
-    if (t && (t.state === 'paused' || t.state === 'error')) { t.state = 'queued'; delete t.error; this.notify(); (schedule as NativeTimer)(() => { void this.pump() }) }
+    if (t && (t.state === 'paused' || t.state === 'error')) { t.state = 'queued'; t.epoch = (t.epoch ?? 0) + 1; delete t.error; this.notify(); (schedule as NativeTimer)(() => { void this.pump() }) }
   }
 
   remove(id: string): void {
     const t = this.tasks.find((x) => x.id === id)
     if (!t) return
-    if (t.state === 'running') t.state = 'paused'
+    if (t.state === 'running') { t.state = 'paused'; t.epoch = (t.epoch ?? 0) + 1 }
     this.tasks = this.tasks.filter((x) => x.id !== id)
     this.notify()
   }
@@ -175,7 +183,9 @@ export class DownloadManager {
     if (t) { t.priority = priority; this.notify() }
   }
 
-  list(): DownloadTask[] { return this.tasks }
+  list(): DownloadTask[] {
+    return this.tasks.map((t) => ({ ...t, completedPages: [...t.completedPages] }))
+  }
 
   waitIdle(): Promise<void> {
     if (!this.tasks.some((t) => t.state === 'queued' || t.state === 'running')) return Promise.resolve()

@@ -55,6 +55,32 @@ describe('DownloadManager', () => {
     expect(t!.state).toBe('completed')
   })
 
+  it('pause/resume race does not double-run or duplicate pages', async () => {
+    const counts: Record<string, number> = {}
+    let releaseAll!: () => void
+    const released = new Promise<void>((r) => { releaseAll = r })
+    const m = makeManager(async (url: string) => {
+      counts[url] = (counts[url] ?? 0) + 1
+      await released
+      return new Uint8Array([9])
+    })
+    const t = await m.add('https://x/g/1/', async () => ({
+      title: 'T', pageUrls: ['u1', 'u2', 'u3'], coverUrl: null, source: 'S', referer: null, mangaId: null, seriesId: 's'
+    }), {})
+    await delay(20)
+    m.pause(t!.id)
+    expect(t!.state).toBe('paused')
+    releaseAll()
+    await delay(20)
+    m.resume(t!.id)
+    await m.waitIdle()
+    expect(t!.state).toBe('completed')
+    expect((counts['u2'] ?? 0) + (counts['u3'] ?? 0)).toBe(2)
+    expect(counts['u1']).toBeLessThanOrEqual(2)
+    expect(m.list()[0].completedPages).toEqual([0, 1, 2])
+    expect(existsSync(join(t!.outDir, '003.bin'))).toBe(true)
+  })
+
   it('resumes from existing files on loadPersisted', async () => {
     const out = join(dir, 'downloads', 'test-1')
     mkdirSync(out, { recursive: true })
@@ -69,7 +95,7 @@ describe('DownloadManager', () => {
     expect(t.completedPages).toEqual([0])
     expect(t.state).toBe('queued')
     await m.waitIdle()
-    expect(t.state).toBe('completed')
+    expect(m.list()[0].state).toBe('completed')
   })
 
   it('priority order', async () => {
