@@ -38,6 +38,8 @@ const api: Api = {
   downloadsResume: (id) => ipcRenderer.invoke(CH.downloadsResume, id),
   downloadsRemove: (id) => ipcRenderer.invoke(CH.downloadsRemove, id),
   downloadsSetPriority: (id, p) => ipcRenderer.invoke(CH.downloadsSetPriority, id, p),
+  downloadsOpen: (id) => ipcRenderer.invoke(CH.downloadsOpen, id),
+  downloadsCheckUpdates: () => ipcRenderer.invoke(CH.downloadsCheckUpdates),
   ehLimitsState: () => ipcRenderer.invoke(CH.ehLimitsState),
   onEhLimitsChanged: (cb) => {
     const fn = (_e: unknown, s: EhLimitState): void => cb(s)

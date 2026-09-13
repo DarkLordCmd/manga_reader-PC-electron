@@ -41,6 +41,16 @@ let history: HistoryManager
 let exAccounts: ExAccountsService
 let downloads: DownloadManager
 
+function downloadFetchOpts(sourceUrl: string): { proxy?: string; cookieHeader?: string } {
+  const s = settings.get()
+  const torSocks = s.tor_socks_addr || '127.0.0.1:9150'
+  const isEx = sourceUrl.includes('exhentai') || sourceUrl.includes('e-hentai.org')
+  const useTor = sourceUrl.includes('.onion') || (isEx && (s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai')))
+  const proxy = useTor ? torSocks : (isEx && s.exhentai_proxy_addr.trim() ? s.exhentai_proxy_addr.trim() : undefined)
+  const cookieHeader = sourceUrl.includes('.onion') ? s.onion_cookies_raw : isEx ? exAccounts.currentCookieHeader() : undefined
+  return { proxy, cookieHeader }
+}
+
 function getCover(url: string): Promise<Buffer> {
   const cached = coverCache.get(url)
   if (cached) return Promise.resolve(cached)
@@ -106,12 +116,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle(CH.downloadsList, () => downloads.list())
   ipcMain.handle(CH.downloadsAdd, async (_e, sourceUrl: string) => {
-    const s = settings.get()
-    const torSocks = s.tor_socks_addr || '127.0.0.1:9150'
-    const isEx = sourceUrl.includes('exhentai') || sourceUrl.includes('e-hentai.org')
-    const useTor = sourceUrl.includes('.onion') || (isEx && (s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai')))
-    const proxy = useTor ? torSocks : (isEx && s.exhentai_proxy_addr.trim() ? s.exhentai_proxy_addr.trim() : undefined)
-    const cookieHeader = sourceUrl.includes('.onion') ? s.onion_cookies_raw : isEx ? exAccounts.currentCookieHeader() : undefined
+    const { proxy, cookieHeader } = downloadFetchOpts(sourceUrl)
     return await downloads.add(sourceUrl, () => resolveGallery(sourceUrl, { proxy, cookieHeader }), {
       Referer: sourceUrl,
       ...(cookieHeader ? { Cookie: cookieHeader } : {})
@@ -121,6 +126,21 @@ app.whenReady().then(() => {
   ipcMain.handle(CH.downloadsResume, (_e, id: string) => downloads.resume(id))
   ipcMain.handle(CH.downloadsRemove, (_e, id: string) => downloads.remove(id))
   ipcMain.handle(CH.downloadsSetPriority, (_e, id: string, p: number) => downloads.setPriority(id, p))
+  ipcMain.handle(CH.downloadsOpen, (_e, id: string) => {
+    const t = downloads.list().find((x) => x.id === id)
+    if (!t || t.state !== 'completed') return null
+    const g = galleryFromFolder(t.outDir)
+    if (!g) return null
+    galleries.set(g.id, g)
+    return { id: g.id, title: g.title, pageCount: g.pages.length, pages: g.pages, url: `file://${t.outDir}` }
+  })
+  ipcMain.handle(CH.downloadsCheckUpdates, async () => {
+    const urls = downloads.list().filter((t) => t.state === 'completed').map((t) => t.sourceUrl)
+    return await downloads.checkUpdates(urls, async (url) => {
+      const { proxy, cookieHeader } = downloadFetchOpts(url)
+      return await resolveGallery(url, { proxy, cookieHeader })
+    })
+  })
 
   protocol.handle('manga', async (request) => {
     const url = new URL(request.url)

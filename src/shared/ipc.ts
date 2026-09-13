@@ -143,6 +143,8 @@ export interface Api {
   downloadsResume(id: string): Promise<void>
   downloadsRemove(id: string): Promise<void>
   downloadsSetPriority(id: string, priority: number): Promise<void>
+  downloadsOpen(id: string): Promise<OpenFolderResult | null>
+  downloadsCheckUpdates(): Promise<string[]>
   ehLimitsState(): Promise<EhLimitState>
   onEhLimitsChanged(cb: (state: EhLimitState) => void): () => void
   onDownloadsChanged(cb: (tasks: DownloadTask[]) => void): () => void
@@ -183,6 +185,8 @@ export const CH = {
   downloadsResume: 'downloads:resume',
   downloadsRemove: 'downloads:remove',
   downloadsSetPriority: 'downloads:setPriority',
+  downloadsOpen: 'downloads:open',
+  downloadsCheckUpdates: 'downloads:checkUpdates',
   downloadsChanged: 'downloads:changed',
   ehLimitsState: 'eh-limits:state',
   ehLimitsChanged: 'eh-limits:changed',

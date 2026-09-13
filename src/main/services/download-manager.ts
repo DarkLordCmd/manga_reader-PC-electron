@@ -164,6 +164,27 @@ export class DownloadManager {
     this.notify()
   }
 
+  async checkUpdates(urls: string[], resolve: (url: string) => Promise<GalleryResolution | null>): Promise<string[]> {
+    const updated: string[] = []
+    for (const url of urls) {
+      const t = this.tasks.find((x) => x.sourceUrl === url && x.state === 'completed')
+      if (!t) continue
+      try {
+        const res = await resolve(url)
+        if (!res) continue
+        if (res.pageUrls.length <= t.pageUrls.length) continue
+        t.pageUrls = res.pageUrls
+        t.totalPages = res.pageUrls.length
+        t.state = 'queued'
+        t.epoch = (t.epoch ?? 0) + 1
+        updated.push(t.id)
+        ;(schedule as NativeTimer)(() => { void this.pump() })
+      } catch { /* сеть/лимиты — пропускаем */ }
+    }
+    if (updated.length > 0) this.notify()
+    return updated
+  }
+
   setPriority(id: string, priority: number): void {
     const t = this.tasks.find((x) => x.id === id)
     if (t) { t.priority = priority; this.notify() }
