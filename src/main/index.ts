@@ -13,9 +13,10 @@ import {
   fetchRemangaChapters, fetchSenkuroChapters
 } from './services/sources'
 import { fetchMangaShiChapters } from './services/catalog-search'
+import { fetchMangaMelloChapters } from './services/catalog-search'
 import { searchGrouple, GROUPLE_SITES, fetchGroupleChapters } from './services/catalog-search'
 import type { SimpleSiteConfig } from './services/sources/catalog-types'
-import { searchExHentai, searchMangaShi, searchNhentai, searchRemanga, searchSenkuro, searchSimpleSite, extractGidToken } from './services/catalog-search'
+import { searchExHentai, searchMangaShi, searchMangaMello, searchNhentai, searchRemanga, searchSenkuro, searchSimpleSite, extractGidToken } from './services/catalog-search'
 import { fetchArchiveCost, buyArchive } from './services/eh-archive'
 import { runLoginWindow } from './services/login'
 import { probeSocks5Handshake, probeBridgeLine, probeSite, allSiteKeys } from './services/tor-check'
@@ -169,6 +170,8 @@ app.whenReady().then(() => {
       const s = settings.get()
       const proxy = s.tor_proxied_sites.includes('mangashi') ? (s.tor_socks_addr || '127.0.0.1:9150') : undefined
       chapters = await fetchMangaShiChapters(mangaId, proxy)
+    } else if (mangaId.includes('mangamello')) {
+      chapters = await fetchMangaMelloChapters(mangaId)
     } else if (mangaId.includes('readmanga.') || mangaId.includes('mintmanga.') || mangaId.includes('mangapoisk.')) {
       chapters = await fetchGroupleChapters(mangaId)
     } else {
@@ -425,6 +428,7 @@ app.whenReady().then(() => {
     if (source === 'remanga') return await searchRemanga(query, page, filters)
     if (source === 'senkuro') return await searchSenkuro(query, s.onion_cookies_raw, cursor?.dir === 'next' ? cursor.cursor : undefined)
     if (source === 'mangashi') return await searchMangaShi(query, proxy, filters, page)
+    if (source === 'mangamello') return await searchMangaMello(query, page)
     if (source === 'nhentai') return await searchNhentai('https://nhentai.net', query, page, { proxy, cookieHeader: s.onion_cookies_raw, showPageCounts: s.nhentai_show_page_counts, tags: filters.nhentaiTags })
     if (source === 'nhentai_onion') {
       const base = s.nhentai_onion_base || 'http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion'

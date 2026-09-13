@@ -11,7 +11,7 @@ export interface CatalogItem {
 export type CatalogSourceKey =
   | 'mangadex' | 'exhentai' | 'exhentai_onion' | 'ehentai' | 'nhentai'
   | 'nhentai_onion' | 'comx' | 'senkuro' | 'mangashi' | 'remanga' | 'mangalib'
-  | 'readmanga' | 'mintmanga' | 'mangapoisk'
+  | 'readmanga' | 'mintmanga' | 'mangapoisk' | 'mangamello'
 
 export interface CatalogFilters {
   ehExcludedCats?: number

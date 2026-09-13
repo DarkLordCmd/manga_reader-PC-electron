@@ -5,6 +5,7 @@ export { ehErrorFromResponse, parseExHentaiListing, extractGid, extractGidToken,
 export type { ExSearchResult, GDataResult } from './sources/eh'
 export { searchMangaShi, fetchMangaShiChapters } from './sources/mangashi'
 export { searchNhentai } from './sources/nhentai'
+export { searchMangaMello, fetchMangaMelloChapters, fetchMangaMelloChapter } from './sources/mangamello'
 export { searchRemanga, fetchRemangaChapters, fetchRemangaChapter, mangaSeriesUrlFromChapterUrl } from './sources/remanga'
 export type { ChapterInfo } from './sources/remanga'
 export { fetchSenkuroChapters, fetchSenkuroChapter, searchSenkuro } from './sources/senkuro'

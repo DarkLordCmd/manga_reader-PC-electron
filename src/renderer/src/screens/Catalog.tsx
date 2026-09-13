@@ -18,7 +18,8 @@ const SOURCES: { key: string; label: string }[] = [
   { key: 'mangalib', label: 'Mangalib' },
   { key: 'readmanga', label: 'Readmanga' },
   { key: 'mintmanga', label: 'Mintmanga' },
-  { key: 'mangapoisk', label: 'Mangapoisk' }
+  { key: 'mangapoisk', label: 'Mangapoisk' },
+  { key: 'mangamello', label: 'MangaMello' }
 ]
 
 const SORTS: { key: string; label: string }[] = [

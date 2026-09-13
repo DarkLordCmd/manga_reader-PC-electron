@@ -11,6 +11,15 @@ export interface ChapterInfo {
 export function mangaSeriesUrlFromChapterUrl(url: string): string | null {
   const lower = url.toLowerCase()
   const isGrouple = lower.includes('readmanga.') || lower.includes('mintmanga.') || lower.includes('mangapoisk.')
+  if (lower.includes('mangamello')) {
+    try {
+      const u = new URL(url)
+      const segs = u.pathname.split('/').filter(Boolean).map((s) => s.toLowerCase())
+      const i = segs.findIndex((s) => s === 'mangas' || s === 'manga')
+      if (i >= 0 && segs[i + 1]) return `https://mangamello.com/manga/${segs[i + 1]}/`
+    } catch { /* ignore */ }
+    return null
+  }
   if (!(lower.includes('manga-shi.') || lower.includes('remanga.') || lower.includes('senkuro.') || isGrouple)) return null
   try {
     const u = new URL(url)

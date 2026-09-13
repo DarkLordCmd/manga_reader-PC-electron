@@ -16,3 +16,4 @@ export {
 export { searchSenkuro, fetchSenkuroChapters, fetchSenkuroChapter, senkuroHeaders } from './senkuro'
 export { searchMangaShi, fetchMangaShiChapters } from './mangashi'
 export { searchNhentai, parseNhentaiPageCount } from './nhentai'
+export { searchMangaMello, fetchMangaMelloChapters, fetchMangaMelloChapter } from './mangamello'

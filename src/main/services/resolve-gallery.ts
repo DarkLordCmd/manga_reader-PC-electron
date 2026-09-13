@@ -1,6 +1,7 @@
 import { resolveAtHome } from './mangadex'
 import { fetchRemangaChapter, fetchSenkuroChapter, mangaSeriesUrlFromChapterUrl } from './sources'
 import { fetchSimpleGallery } from './simple-gallery'
+import { fetchMangaMelloChapter } from './sources'
 
 // Resolved fields (title, pageUrls, coverUrl, source, referer, mangaId, seriesId) mirror the
 // former inline openUrl routing in src/main/index.ts so behavior stays byte-identical.
@@ -53,6 +54,7 @@ export function sourceLabel(url: string): string {
   if (l.includes('readmanga')) return 'Readmanga'
   if (l.includes('mintmanga')) return 'Mintmanga'
   if (l.includes('mangapoisk')) return 'Mangapoisk'
+  if (l.includes('mangamello')) return 'MangaMello'
   return ''
 }
 
@@ -75,6 +77,10 @@ export async function resolveGallery(
   if (trimmed.includes('senkuro') && trimmed.includes('/chapter/')) {
     const r = await fetchSenkuroChapter(trimmed)
     return { title: r.title, pageUrls: r.pageUrls, coverUrl: null, source: 'Senkuro', referer: `${r.base}/`, mangaId: seriesId, seriesId }
+  }
+  if (trimmed.includes('mangamello')) {
+    const r = await fetchMangaMelloChapter(trimmed)
+    return { title: r.title, pageUrls: r.pageUrls, coverUrl: null, source: 'MangaMello', referer: 'https://mangamello.com/', mangaId: seriesId, seriesId }
   }
   if (trimmed.includes('manga-shi.') || trimmed.includes('nhentai') || trimmed.includes('com-x.life') || trimmed.includes('mangalib.') || trimmed.includes('e-hentai.org') || trimmed.includes('exhentai')
     || trimmed.includes('readmanga.') || trimmed.includes('mintmanga.') || trimmed.includes('mangapoisk.')) {
