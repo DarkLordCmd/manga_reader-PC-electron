@@ -16,7 +16,9 @@ export async function fetchHtmlSmart(url: string, opts: FetchHtmlOptions = {}): 
     ...(opts.cookieHeader ? { Cookie: opts.cookieHeader } : {})
   }
   const r = await httpFetch({ url, headers, timeoutMs: opts.timeoutMs }, opts.proxy)
-  if (!detectsAntiBot(r.status, r.text)) return r.text
+  const antiBot = detectsAntiBot(r.status, r.text)
+  if (!antiBot && (r.status < 200 || r.status >= 400)) throw new Error(`HTTP ${r.status} for ${url}`)
+  if (!antiBot) return r.text
   if (opts.useBrowser === false) throw new Error(`HTTP ${r.status}: анти-бот блокирует запрос`)
   return await fetchHtmlViaBrowser(url, { proxy: opts.proxy, timeoutMs: opts.timeoutMs })
 }

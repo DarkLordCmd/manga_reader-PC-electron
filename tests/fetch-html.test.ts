@@ -48,4 +48,26 @@ describe('fetchHtmlSmart', () => {
     await expect(fetchHtmlSmart('https://x/', { useBrowser: false }))
       .rejects.toThrow('анти-бот блокирует запрос')
   })
+
+  it('throws when healthy http response is 404', async () => {
+    mocks.httpFetch.mockResolvedValue({ status: 404, text: '<html>Not Found</html>' })
+    await expect(fetchHtmlSmart('https://x/missing', { useBrowser: false }))
+      .rejects.toThrow('HTTP 404 for https://x/missing')
+    expect(mocks.fetchHtmlViaBrowser).not.toHaveBeenCalled()
+  })
+
+  it('throws when healthy http response is 500', async () => {
+    mocks.httpFetch.mockResolvedValue({ status: 500, text: '<html>Internal Server Error</html>' })
+    await expect(fetchHtmlSmart('https://x/', { useBrowser: false }))
+      .rejects.toThrow('HTTP 500 for https://x/')
+  })
+
+  it('propagates browser fallback errors', async () => {
+    // Note: the brief's original note said to surface the original http error here;
+    // intentionally deviating — the browser error is the real failure cause and is
+    // more informative, so it wins over the http status.
+    mocks.httpFetch.mockResolvedValue({ status: 403, text: 'Just a moment...' })
+    mocks.fetchHtmlViaBrowser.mockRejectedValue(new Error('browser boom'))
+    await expect(fetchHtmlSmart('https://x/')).rejects.toThrow('browser boom')
+  })
 })
