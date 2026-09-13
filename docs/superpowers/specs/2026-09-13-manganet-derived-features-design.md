@@ -3,70 +3,87 @@
 Дата: 2026-09-13
 Статус: approved
 
-Порядокفيذ: Ф-4 (рефактор) → Ф-1 (browser-канал) → Ф-2 (Grouple) → Ф-5 (MangaMello) → Ф-3 (зеркала) → Ф-6 (watchdog).
+Порядок внедрения: Ф-4 (рефактор) → Ф-1 (browser-канал) → Ф-2 (Grouple) → Ф-5 (MangaMello) → Ф-3 (зеркала) → Ф-6 (watchdog).
 
 ## Ф-4: Разделение catalog-search.ts
 
-- Файл-структура: каталог `src/main/services/sources/` как в дизайне в чате:
-  `catalog-types.ts` (CatalogItem/Filters/source keys), `simple-sites.ts`, `eh.ts`,
-  `remanga.ts` (+ chapter-функции из sources.ts), `senkuro.ts` (+ GraphQL-главы),
-  `mangashi.ts` (+ fetchMangaShiChapters), `nhentai.ts`, впоследствии `mangafox.ts`,
-  `grouple.ts`, `mirror tool`.
-  `catalog-search.ts` → re-export фасад (обратная совместимость), `sources.ts` → удалить
-  после переноса. Тесты каталога двигаются с кодом.
+- Новый каталог `src/main/services/sources/`:
+  - `catalog-types.ts` — CatalogItem/CatalogFilters/source keys/SimpleSiteConfig
+  - `simple-sites.ts` — searchSimpleSite (Com-X/Mangalib)
+  - `eh.ts` — ehErrorFromResponse, parseExHentaiListing, GData, searchExHentai
+  - `remanga.ts` — searchRemanga + chapter-функции из sources.ts
+  - `senkuro.ts` — searchSenkuro + GraphQL-главы из sources.ts
+  - `mangashi.ts` — searchMangaShi + fetchMangaShiChapters
+  - `nhentai.ts` — searchNhentai
+  - `mangamello.ts` — (новое, Ф-5)
+  - `grouple.ts` — (новое, Ф-2)
+- `catalog-search.ts` → re-export фасад (обратная совместимость импортов в index.ts
+  и тестах). Старый `sources.ts` удаляется после переноса (его импорты в index.ts
+  переключаются на новые файлы).
+- Тесты каталога перееэкспортируются с кодом (tests/catalog-search.test.ts остаётся
+  рабочим через фасад).
 
-## Ф-1: Hidden BrowserWindow-канал (`src/main/services/browser-fetch.ts`)
+## Ф-1: Hidden BrowserWindow-канал (src/main/services/browser-fetch.ts)
 
 - `fetchHtmlViaBrowser(url, { proxy?, timeoutMs? }): Promise<string>`:
-  hidden BrowserWindow (show:false, 1024x768), `session.setProxy`, блокировка
-  медиа/шрифтов через `webRequest.onBeforeRequest` (оставить document/stylesheet),
-  preload-скрипт со stealth (удаление navigator.webdriver, спуф
-  permissions.query/Function.toString — как MangaNet), навигация через loadURL,
-  `did-finish-load` + 2с сетевой покой, `executeJavaScript('document.documentElement.outerHTML')`.
-- Реиспользование одного скрытого окна; destroy при таймауте (30с) и на quit.
-- Fallback-шлюз: весь HTML-фетч источника через один checkpoint — HTTP-first через
-  httpFetch; при детекте анти-бота (403/429/503 + 'Just a moment'/'Checking your
-  browser'/'Cf-Mitigated' + пустая вёрстка + SNI-таймаут) → fallback в браузер и
-  парс того же HTML. Активируется для Grouple + Com-X + Manga-shi.
-- Ошибки навигации/таймаута → единое русское сообщение «Не удалось загрузить страницу
-  через встроенный браузер: …».
+  скрытое BrowserWindow (show:false, 1024x768), `session.setProxy` при прокси,
+  блокировка медиа/шрифтов через `webRequest.onBeforeRequest` (оставить только
+  document/stylesheet), preload-скрипт со stealth (удаление navigator.webdriver,
+  спуф permissions.query и Function.prototype.toString — как MangaNet),
+  навигация через loadURL, `did-finish-load` + 2с покоя,
+  `executeJavaScript('document.documentElement.outerHTML')`.
+- Одно переиспользуемое скрытое окно; принудительное destroy по таймауту (30с)
+  и на app quit.
+- Анти-детект gate: единый checkpoint для HTML-фетчей — HTTP-first через httpFetch;
+  при детекте анти-бота (403/429/503, маркеры 'Just a moment' / 'Checking your
+  browser' / 'Cf-Mitigated: challenge', пустая вёрстка после парсинга, SNI-таймаут)
+  → fallback в браузер и парс того же HTML.
+- Первичное применение: Grouple (Ф-2) + Com-X и Manga-shi (существующие).
+- Ошибки навигации/таймаута → русское сообщение «Не удалось загрузить страницу через
+  встроенный браузер: …».
 
-## Ф-2: Grouple (Readmanga/mintmanga/mangapoisk)
+## Ф-2: Grouple (Readmanga / Mintmanga / Mangapoisk)
 
-- `sources/grouple.ts`: три конфига site (readmanga.me, mintmanga.com, mangapoisk.me):
-  каталог (HTML-лист /manga/ + обложки), поиск по `?search=q`; обсуждент: главы по
-  этим же URL через HTTP-first/browser-fallback; страницы: `fetchSimpleGallery`
-  общей веткой (после Ф-4/gallery-resolve-расширения).
-- Регистрация в каталоге UI: source keys 'readmanga' | 'mintmanga' | 'mangapoisk'.
+- `sources/grouple.ts`: три конфига сайтов (readmanga.me, mintmanga.com,
+  mangapoisk.me): каталог — HTML-лист с ссылками `/manga/<slug>` + обложки; поиск
+  по `?search=<q>`. Главы и страницы — через resolveGallery → fetchSimpleGallery,
+  где сам фетч страницы идёт через HTTP-first/browser-fallback gate (Ф-1).
+- Source keys в каталоге: 'readmanga' | 'mintmanga' | 'mangapoisk'.
 
-## Ф-3: Зеркала Lib-семейства
+## Ф-3: Зеркала Lib-семейства (mangalib/yaoilib/slashlib/hentailib)
 
-- Settings: `lib_image_server: string | null`.
-- Известные зеркала (client const): img33/img34/img45.imgslib.link.
-- IPC `libMirrors:check` → пинг каждого + лучший/тайминги; кнопка в Settings.
-- Рерайт URL страниц при отдаче картинок, если хост ≡ imgslib.link и выбран ≠ дефоулт.
+- Settings: `lib_image_server: string | null` (null = дефолт сайта).
+- Известные зеркала (клиентская константа): img33/img34/img45.imgslib.link.
+- IPC `libMirrors:check` — HEAD-пинг каждого зеркала с таймингами; кнопка
+  «Проверить зеркала» в Settings; лучший (или выбранный вручную) применяется.
+- Переписывание хоста у картинок на отдаче, если хост ≡ *.imgslib.link и выбрано
+  не-дефолтное зеркало.
 
 ## Ф-5: MangaMello
 
-- sources/mangafox.ts: REST `https://api.mangamello.com/v1/mangas/`, каталог
-  `?search=…`, чтение главы из JSON (images-поле).
-- source key 'mangafox' (mangamello) в каталоге.
+- sources/mangamello.ts: REST `https://api.mangamello.com/v1/mangas/`; каталог —
+  `?search=<q>` (JSON-список), чтение главы — JSON с массивом ссылок на изображения.
+- Source key 'mangamello' в каталоге.
 
-## Ф-6: Layout-watchdog (`src/main/services/layout-watcher.ts`)
+## Ф-6: Layout-watchdog (src/main/services/layout-watcher.ts)
 
-- `assertLayout(markers: string[], html: string, sourceName: string): void` — если
-  ни один маркер не найден: бросить ошибку с формой как в спеке (структурированные
-  поля code='layout-changed', sha256-8, sourceName, htmlHead 300) + русское
-  сообщение для UI.
-- Подключение во все HTML-парсеры (simple-sites, mangashi, grouple, nhentai, EH).
+- `assertLayout(markers: string[], html: string, sourceName: string): void` —
+  при отсутствия всех маркеров бросить ошибку:
+  `{ code: 'layout-changed', pageHash: <первые 8 hex sha256(html)>, sourceName,
+  htmlHead: <первые 300 символов html> }` + русское сообщение:
+  «Парсер <sourceName> сломался: сайт поменял вёрстку (page hash <sha8>).
+  Пришли разработчику этот хеш.»
+- Подключение во все HTML-парсеры (simple-sites, mangashi, grouple, nhentai,
+  EH-листинг).
 
 ## IPC
 
-Новые каналы: `libMirrors:check`. Каталог: расширенные source keys через существующий
-`catalog:search`.
+- Новый канал: `libMirrors:check`.
+- Каталог/чтение Grouple/MangaMello — через существующий `catalog:search` / `url:open`
+  с новыми source keys.
 
 ## Тесты (vitest)
 
-- grouple HTML-парсеры (фикстуры лист/главы), mangafox JSON-парсер,
-  layout-watcher, rewrite-зеркал.
-- Рingerprint для browser-fetch — ручной smoke (сеть).
+- grouple HTML-парсеры (фикстуры листа+глав), mangamello JSON-парсер,
+  layout-watcher (позитив/негатив), рерайт зеркал (чистые URL-функции).
+- browser-fetch — ручной smoke (сеть).
