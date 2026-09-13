@@ -21,6 +21,7 @@ import { fetchEhTagSuggest, fetchNhentaiTagSuggestions } from './services/tags'
 import { fetchCoverBuffer } from './services/covers'
 import { setFrontingEnabled } from './services/domain-fronting'
 import { setTorFallbackAddr } from './services/http'
+import { shutdownBrowserFetch } from './services/browser-fetch'
 import { parseMangaPageUrl } from './services/page-url'
 import { ExAccountsService, parseCookieLogin } from './services/accounts'
 import { setEhSetCookieHandler } from './services/eh-session'
@@ -593,4 +594,5 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   clearZipTmpAll(ZIP_TMP)
+  void shutdownBrowserFetch()
 })
