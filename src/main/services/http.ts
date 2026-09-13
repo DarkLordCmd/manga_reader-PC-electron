@@ -103,28 +103,34 @@ function buildDispatcherFor(url: string, proxy?: string): { dispatcher: Agent | 
       const host = new URL(url).hostname
       if (supportsFronting(host)) {
         const ip = frontingIpFor(host)
-        return { dispatcher: buildFrontingDispatcher(host, ip), frontHost: host, frontIp: ip }
+        return { dispatcher: buildPinnedFrontingDispatcher(buildFrontingDispatcher(host, ip)), frontHost: host, frontIp: ip }
       }
     } catch { /* ignore */ }
   }
-  // Custom DNS pinning: resolve through the user's blocker-circumvention DNS
-  // and connect to that IP directly (real SNI/cert checks preserved).
+  // Custom-DNS pinning is only applied on the fallback path (a direct/system
+  // failure was already recorded for the host) — a preemptive pin would break
+  // hosts the system DNS resolves fine.
   if (customDnsActive()) {
-    try {
-      const host = new URL(url).hostname
+    const host = (() => { try { return new URL(url).hostname } catch { return '' } })()
+    if (host && directFailedUntil.has(host) && Date.now() < directFailedUntil.get(host)!) {
       const ip = pinnedIpCache.get(host)
       if (ip) return { dispatcher: buildPinnedDispatcher(host, ip), frontHost: host, frontIp: ip }
-    } catch { /* ignore */ }
+    }
   }
   return { dispatcher: undefined }
 }
 
 const pinnedIpCache = new Map<string, string>()
+export function rememberDirectFailureFor(host: string): void {
+  directFailedUntil.set(host, Date.now() + 10 * 60_000)
+}
+const directFailedUntil = new Map<string, number>()
 
 async function customDnsDispatcher(url: string): Promise<{ dispatcher?: Agent; pinned: boolean }> {
   if (!customDnsActive()) return { pinned: false }
+  const host = (() => { try { return new URL(url).hostname } catch { return '' } })()
+  if (!host || !directFailedUntil.has(host)) return { pinned: false }
   try {
-    const host = new URL(url).hostname
     const p = await resolveViaCustomDns(host)
     if (!p) return { pinned: false }
     pinnedIpCache.set(host, p)
@@ -133,6 +139,8 @@ async function customDnsDispatcher(url: string): Promise<{ dispatcher?: Agent; p
     return { pinned: false }
   }
 }
+
+function buildPinnedFrontingDispatcher(h: Agent): Agent { return h }
 
 function buildPinnedDispatcher(host: string, ip: string): Agent {
   return new Agent({
@@ -331,6 +339,15 @@ async function withSniFallback<T>(url: string, requestProxy: string | undefined,
       isNetworkLevelError(e) &&
       (isEhSiteHost(host) || !['', 'localhost', '127.0.0.1'].includes(host))
     if (!canFallback) throw e
+    // 1st: custom-DNS pin (fixes DNS-poisoning), 2nd: Tor (fixes everything else).
+    if (customDnsActive()) {
+      rememberDirectFailureFor(host)
+      try {
+        const r = await run(proxied) // buildDispatcherFor consults pin cache now
+        pinnedOkFor(host)
+        return r
+      } catch { /* pin failed, fall through to tor */ }
+    }
     try {
       const r = await run(torFallbackAddr)
       markTorFallbackSuccess(host)
@@ -340,6 +357,12 @@ async function withSniFallback<T>(url: string, requestProxy: string | undefined,
       throw e
     }
   }
+}
+
+function pinnedOkFor(host: string): void {
+  // Successful pin — keep routing pinned for the TTL (10 min), so the dead
+  // system path isn't retried every request.
+  directFailedUntil.set(host, Date.now() + 10 * 60_000)
 }
 
 export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise<HttpResult> {
