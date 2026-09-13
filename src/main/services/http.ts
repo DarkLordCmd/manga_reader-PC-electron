@@ -247,17 +247,37 @@ function hostnameOf(url: string): string {
   try { return new URL(url).hostname.toLowerCase() } catch { return '' }
 }
 
-/** Hosts eligible for the automatic Tor fallback on SNI timeouts. */
+/** Hosts eligible for the automatic Tor fallback on network failures. */
 function isEhSiteHost(host: string): boolean {
   return host.includes('exhentai') || host.includes('e-hentai.org')
 }
 
 /**
- * Runs `run` once; on an SNI-timeout abort for an EH host with no explicit
- * proxy, retries once through the fallback Tor SOCKS dispatcher. The
- * cooldown state (eh-sni-fallback) prevents repeated 20-30s timeouts: after
- * a success later requests go straight through Tor; after a failure the
- * fallback is parked for 10 minutes.
+ * Network-level failures that are worth a Tor retry: our own timeout aborts
+ * (tagged), and transport errors (net::ERR_*, node fetch failures, socket
+ * resets, DNS failures). Deliberately NOT: structured business errors
+ * (ehBlocked, layout-changed) and plain HTTP <status> errors.
+ */
+function isNetworkLevelError(e: unknown): boolean {
+  if (isEhTimeoutError(e)) return true
+  const err = e as any
+  if (!err || typeof err !== 'object') return false
+  if (err.code === 'layout-changed' || err.ehBlocked !== undefined) return false
+  const msg = String(err.message ?? '')
+  if (msg.startsWith('HTTP ')) return false
+  const m = msg.toLowerCase()
+  return [
+    'net::err', 'fetch failed', 'und_err', 'econnreset', 'econnrefused',
+    'enotfound', 'socket hang up', 'eai_again', 'etimedout', 'receiver error'
+  ].some((s) => m.includes(s))
+}
+
+/**
+ * Runs `run` once; on a network-level failure (DNS/SNI block or dead path)
+ * with no explicit proxy, retries once through the fallback Tor SOCKS
+ * dispatcher. Cooldown state (eh-sni-fallback) prevents repeated 20-30s
+ * timeouts: after a success later requests go straight through Tor; after a
+ * failure the fallback is parked for 10 minutes.
  */
 async function withSniFallback<T>(url: string, requestProxy: string | undefined, run: (proxy: string | undefined) => Promise<T>): Promise<T> {
   const host = hostnameOf(url)
@@ -270,7 +290,8 @@ async function withSniFallback<T>(url: string, requestProxy: string | undefined,
   } catch (e) {
     const canFallback =
       !proxied && torFallbackAvailable() && !isTorFallbackBlocked(host) &&
-      isEhTimeoutError(e) && isEhSiteHost(host)
+      isNetworkLevelError(e) &&
+      (isEhSiteHost(host) || !['', 'localhost', '127.0.0.1'].includes(host))
     if (!canFallback) throw e
     try {
       const r = await run(torFallbackAddr)

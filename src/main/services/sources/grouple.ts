@@ -6,13 +6,13 @@ import { resolve } from './catalog-types'
 import type { SimpleSiteConfig, CatalogItem } from './catalog-types'
 import type { ChapterInfo } from './remanga'
 
-export const MARKERS = ['tile-link', 'tiles row', 'class="tile']
+export const MARKERS = ['tile-link', 'tiles row', 'class="tile', 'card shadow mb-4']
 export const CHAPTER_MARKERS = ['chapters-link', 'chapter', '/v']
 
 export const GROUPLE_SITES: SimpleSiteConfig[] = [
   { name: 'Readmanga', base: 'https://readmanga.me', catalogPath: '/list?type=&sortType=rate', searchPath: '/search?q=', linkMarker: '/manga/' },
   { name: 'Mintmanga', base: 'https://mintmanga.com', catalogPath: '/list?sortType=rate', searchPath: '/search?q=', linkMarker: '/manga/' },
-  { name: 'Mangapoisk', base: 'https://mangapoisk.me', catalogPath: '/manga', searchPath: '?search=', linkMarker: '/manga/' }
+  { name: 'Mangapoisk', base: 'https://mangapoisk.me', catalogPath: '/', searchPath: '?search=', linkMarker: '/manga/' }
 ]
 
 // Paths that are navigation/utility pages, never series slugs.
@@ -52,19 +52,49 @@ export function parseGroupleListing(html: string, base: string, _page = 0): Cata
   const $ = cheerio.load(html)
   const results: CatalogItem[] = []
   const seen = new Set<string>()
-  $('a[href]').each((_i, el) => {
+
+  // Strategy A: legacy grouple tiles (`tile-link` + .text-center).
+  const tryLegacyTile = (el: any): { full: string; title: string } | null => {
     const href = $(el).attr('href') ?? ''
-    if (!href) return
+    if (!href) return null
     const full = resolve(base, href)
-    if (!full || seen.has(full)) return
+    if (!full) return null
     // Grouple series pages live at /<slug>/ (readmanga, mintmanga) but some
     // vendor variants keep the /manga/<slug>/ form — accept both.
-    if (!href.includes('/manga/') && !(sameHost(full, base) && isSeriesPath(full))) return
+    if (!href.includes('/manga/') && !(sameHost(full, base) && isSeriesPath(full))) return null
     const title = extractTitle($, el)
-    if (title.length < 2) return
-    seen.add(full)
+    if (title.length < 2) return null
+    return { full, title }
+  }
+
+  // Strategy B: server-rendered card grids (`card shadow mb-4`, e.g.
+  // mangapoisk.me) — <a href="/manga/<slug>" title="…"> with <img> inside.
+  const tryCardBlock = (el: any): { full: string; title: string } | null => {
+    const href = $(el).attr('href') ?? ''
+    if (!href.includes('/manga/')) return null
+    const full = resolve(base, href)
+    if (!full) return null
+    const title = ($(el).attr('title') || $(el).find('img').first().attr('alt') || '').trim()
+    if (title.length < 2) return null
+    return { full, title }
+  }
+
+  $('div.card').each((_d, card) => {
+    const a = $(card).find('a[href]').first()
+    if (a.length === 0) return
+    const hit = tryCardBlock(a)
+    if (!hit || seen.has(hit.full)) return
+    seen.add(hit.full)
+    const cover = extractCoverFromSubtree($, card)
+    results.push({ url: hit.full, title: hit.title, coverUrl: cover ? resolve(base, cover) : null, pages: null })
+  })
+
+  $('a[href]').each((_i, el) => {
+    const hit = tryCardBlock(el) ?? tryLegacyTile(el)
+    if (!hit || seen.has(hit.full)) return
+    seen.add(hit.full)
     const cover = extractCoverFromSubtree($, el)
-    results.push({ url: full, title, coverUrl: cover ? resolve(base, cover) : null, pages: null })
+    results.push({ url: hit.full, title: hit.title, coverUrl: cover ? resolve(base, cover) : null, pages: null })
   })
   return results
 }
