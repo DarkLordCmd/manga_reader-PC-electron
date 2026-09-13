@@ -3,7 +3,7 @@ import { connect as netConnect } from 'net'
 import { isFrontingEnabled, supportsFronting, frontingIpFor, buildFrontingDispatcher, markUnavailable } from './domain-fronting'
 import { isEhHost, notifyEhSetCookies } from './eh-session'
 import { parseLimitResponse } from './eh-limits'
-import { handleLimitFailure, assertNotEhBlocked } from './eh-limits-hook'
+import { handleLimitFailure, assertNotEhBlocked, retryOnce } from './eh-limits-hook'
 
 export interface HttpFetchOptions {
   url: string
@@ -211,24 +211,26 @@ async function performFetch(
 }
 
 export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise<HttpResult> {
-  assertNotEhBlocked(opts.url)
-  const { dispatcher, frontHost, frontIp } = buildDispatcherFor(opts.url, proxy)
-  const { res, bodyText } = await performFetch(opts, dispatcher, frontHost, frontIp)
-  const setCookies = extractSetCookies(res)
-  if (setCookies.length > 0) {
-    try {
-      const host = new URL(opts.url).hostname
-      if (isEhHost(host)) notifyEhSetCookies(host, setCookies)
-    } catch { /* ignore */ }
-  }
-  // Body is read exactly once here; the EH limit check below sees the same text.
-  const text = bodyText ?? await res.text()
-  const hostLower = (() => { try { return new URL(opts.url).hostname.toLowerCase() } catch { return '' } })()
-  if (isEhHost(hostLower) || hostLower.includes('exhentai') || hostLower.includes('e-hentai.org')) {
-    const lim = parseLimitResponse(text.slice(0, 4000))
-    if (lim.kind) throw handleLimitFailure(lim.kind, lim.resetAfterSec)
-  }
-  return { status: res.status, text, setCookies }
+  return retryOnce(async () => {
+    assertNotEhBlocked(opts.url)
+    const { dispatcher, frontHost, frontIp } = buildDispatcherFor(opts.url, proxy)
+    const { res, bodyText } = await performFetch(opts, dispatcher, frontHost, frontIp)
+    const setCookies = extractSetCookies(res)
+    if (setCookies.length > 0) {
+      try {
+        const host = new URL(opts.url).hostname
+        if (isEhHost(host)) notifyEhSetCookies(host, setCookies)
+      } catch { /* ignore */ }
+    }
+    // Body is read exactly once here; the EH limit check below sees the same text.
+    const text = bodyText ?? await res.text()
+    const hostLower = (() => { try { return new URL(opts.url).hostname.toLowerCase() } catch { return '' } })()
+    if (isEhHost(hostLower) || hostLower.includes('exhentai') || hostLower.includes('e-hentai.org')) {
+      const lim = parseLimitResponse(text.slice(0, 4000))
+      if (lim.kind) throw handleLimitFailure(lim.kind, lim.resetAfterSec)
+    }
+    return { status: res.status, text, setCookies }
+  })
 }
 
 export async function httpGetText(

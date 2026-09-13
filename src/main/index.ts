@@ -22,6 +22,8 @@ import { setFrontingEnabled } from './services/domain-fronting'
 import { parseMangaPageUrl } from './services/page-url'
 import { ExAccountsService, parseCookieLogin } from './services/accounts'
 import { setEhSetCookieHandler } from './services/eh-session'
+import { ehWatcher, broadcastEhLimitState } from './services/eh-limits-instance'
+import { registerEhLimitHook } from './services/eh-limits-hook'
 import { CH } from '@shared/ipc'
 
 const galleries = new Map<string, Gallery>()
@@ -105,6 +107,20 @@ app.whenReady().then(() => {
   setFrontingEnabled(settings.get().enable_domain_fronting)
   exAccounts = new ExAccountsService(app.getPath('userData'))
   exAccounts.init()
+  registerEhLimitHook({
+    watcher: ehWatcher,
+    switchAccount: () => {
+      const accs = exAccounts.accounts
+      if (accs.length === 0) return false
+      const idx = accs.findIndex((a) => a.id === exAccounts.currentId)
+      const next = accs[(idx + 1) % accs.length] ?? accs[0]
+      if (!next || next.id === exAccounts.currentId) return false
+      exAccounts.setCurrent(next.id)
+      return true
+    }
+  })
+  ehWatcher.onChange(broadcastEhLimitState)
+  ipcMain.handle(CH.ehLimitsState, () => ehWatcher.state())
   setEhSetCookieHandler((_host, setCookies) => exAccounts.mergeSetCookies(setCookies))
   history = new HistoryManager()
   history.load(settings.get().viewing_history)

@@ -161,6 +161,8 @@ export const CH = {
   removeExAccount: 'ex:remove',
   importExAccounts: 'ex:import',
   markChapterRead: 'reader:markread',
+  ehLimitsState: 'eh-limits:state',
+  ehLimitsChanged: 'eh-limits:changed',
   settingsChanged: 'settings:changed'
 } as const
 
