@@ -1,7 +1,8 @@
 import yauzl from 'yauzl'
 import { createHash } from 'crypto'
-import { mkdirSync, existsSync, createWriteStream, rmSync } from 'fs'
+import { mkdirSync, existsSync, createWriteStream, rmSync, renameSync } from 'fs'
 import { join } from 'path'
+import { randomBytes } from 'crypto'
 import { naturalCompare } from './natural-sort'
 
 const IMAGE_RE = /\.(jpe?g|png|webp|gif|avif|bmp)$/i
@@ -49,11 +50,31 @@ export async function openZipGallery(zipPath: string, tmpBase: string): Promise<
   return { id, title, pageCount: entries.length, entries }
 }
 
+// In-flight promise map keyed by resolved dest path: concurrent readZipEntry
+// calls for the same entry share a single extraction instead of racing
+// writes to the same file.
+const inflight = new Map<string, Promise<string>>()
+
 export function readZipEntry(zipPath: string, entryName: string, tmpBase: string): Promise<string> {
   const id = zipId(zipPath)
-  const dest = join(tmpBase, id, entryName.replace(/[\\/]/g, '__'))
-  if (existsSync(dest)) return Promise.resolve(dest)
+  // Path flattening: any '../' segments and slashes in entryName are collapsed
+  // into the literal separator '__', so the resolved dest always stays inside
+  // tmpBase/<id>/ and a crafted zip entry like '../evil.jpg' cannot escape
+  // the cache directory (zip-slip).
+  const dest = join(tmpBase, id, entryName.replace(/[\\/]+/g, '__'))
+  const cached = existsSync(dest) ? Promise.resolve(dest) : undefined
+  const pending = inflight.get(dest)
+  if (pending) return pending
+  const work = cached ?? extractEntry(zipPath, entryName, dest).finally(() => inflight.delete(dest))
+  inflight.set(dest, work)
+  return work
+}
+
+function extractEntry(zipPath: string, entryName: string, dest: string): Promise<string> {
   mkdirSync(join(dest, '..'), { recursive: true })
+  // Extract to a temporary .part-<random> file first, then rename atomically,
+  // so a partial/crashed write never looks like a complete cached file.
+  const part = `${dest}.part-${randomBytes(6).toString('hex')}`
   return new Promise((resolve, reject) => {
     yauzl.open(zipPath, { lazyEntries: true }, (err, zf) => {
       if (err || !zf) return reject(err ?? new Error('cannot open zip'))
@@ -63,13 +84,19 @@ export function readZipEntry(zipPath: string, entryName: string, tmpBase: string
         found = true
         zf.openReadStream(entry, (err2, stream) => {
           if (err2 || !stream) { zf.close(); return reject(err2 ?? new Error('no stream')) }
-          const ws = createWriteStream(dest)
+          const ws = createWriteStream(part)
           stream.pipe(ws)
-          ws.on('close', () => { zf.close(); resolve(dest) })
-          ws.on('error', reject)
+          ws.on('close', () => {
+            zf.close()
+            try { renameSync(part, dest); resolve(dest) } catch (e) { reject(e) }
+          })
+          ws.on('error', (e) => { zf.close(); reject(e) })
         })
       })
-      zf.on('end', () => { zf.close(); if (!found) reject(new Error('entry not found')) })
+      zf.on('end', () => {
+        zf.close()
+        if (!found) { reject(new Error('entry not found')) } else if (existsSync(part)) { rmSync(part, { force: true }) }
+      })
       zf.on('error', reject)
       zf.readEntry()
     })

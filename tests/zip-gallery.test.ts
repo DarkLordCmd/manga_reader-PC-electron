@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { execSync } from 'child_process'
@@ -49,5 +49,29 @@ describe('zip-gallery', () => {
     expect(existsSync(p)).toBe(true)
     const p2 = await readZipEntry(zip, g!.entries[0], tmp)
     expect(p2).toBe(p) // cached
+  })
+
+  it('flattens traversal paths so zip-slip cannot escape the tmp cache dir', async () => {
+    const zip = join(dir, 'test.zip')
+    makeTestZip(zip, { '1.jpg': Buffer.from([1]) })
+    // entryName is flattened to '__evil.jpg' inside the cache dir, so the
+    // lookup by raw name '../evil.jpg' finds nothing in the zip -> reject;
+    // crucially nothing is ever written outside tmpBase.
+    await expect(readZipEntry(zip, '../evil.jpg', tmp)).rejects.toThrow('entry not found')
+    expect(existsSync(join(tmp, '__evil.jpg'))).toBe(false)
+    expect(existsSync(join(tmp, '..', 'evil.jpg'))).toBe(false)
+  })
+
+  it('dedupes concurrent extractions of the same entry', async () => {
+    const zip = join(dir, 'test.zip')
+    const content = Buffer.from([9, 8, 7, 6])
+    makeTestZip(zip, { 'big.jpg': content })
+    await openZipGallery(zip, tmp)
+    const [a, b] = await Promise.all([readZipEntry(zip, 'big.jpg', tmp), readZipEntry(zip, 'big.jpg', tmp)])
+    expect(b).toContain(a)
+    expect(existsSync(a)).toBe(true)
+    expect(readFileSync(a)).toEqual(content)
+    // No partial .part files left behind
+    expect(existsSync(a + '.part-0')).toBe(false)
   })
 })

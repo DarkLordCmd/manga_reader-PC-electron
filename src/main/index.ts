@@ -173,7 +173,12 @@ app.whenReady().then(() => {
       if (!Number.isInteger(index) || index < 0 || index >= zip.entries.length) {
         return new Response('Not found', { status: 404 })
       }
-      const file = await readZipEntry(zip.zipPath, zip.entries[index], ZIP_TMP)
+      let file: string
+      try {
+        file = await readZipEntry(zip.zipPath, zip.entries[index], ZIP_TMP)
+      } catch {
+        return new Response('Not found', { status: 404 })
+      }
       return net.fetch(pathToFileURL(file).toString())
     }
 
