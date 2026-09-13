@@ -1,5 +1,6 @@
 export { CatalogItem, CatalogFilters, CatalogSourceKey, SimpleSiteConfig, siteKeyForUrl } from './sources/catalog-types'
 export { searchSimpleSite } from './sources/simple-sites'
+export { GROUPLE_SITES, searchGrouple, fetchGroupleChapters } from './sources/grouple'
 export { ehErrorFromResponse, parseExHentaiListing, extractGid, extractGidToken, fetchGData, searchExHentai, looksRateLimited } from './sources/eh'
 export type { ExSearchResult, GDataResult } from './sources/eh'
 export { searchMangaShi, fetchMangaShiChapters } from './sources/mangashi'

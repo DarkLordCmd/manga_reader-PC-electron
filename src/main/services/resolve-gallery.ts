@@ -50,6 +50,9 @@ export function sourceLabel(url: string): string {
   if (l.includes('manga-shi')) return 'Manga-shi'
   if (l.includes('remanga')) return 'Remanga'
   if (l.includes('mangalib')) return 'Mangalib'
+  if (l.includes('readmanga')) return 'Readmanga'
+  if (l.includes('mintmanga')) return 'Mintmanga'
+  if (l.includes('mangapoisk')) return 'Mangapoisk'
   return ''
 }
 
@@ -73,7 +76,8 @@ export async function resolveGallery(
     const r = await fetchSenkuroChapter(trimmed)
     return { title: r.title, pageUrls: r.pageUrls, coverUrl: null, source: 'Senkuro', referer: `${r.base}/`, mangaId: seriesId, seriesId }
   }
-  if (trimmed.includes('manga-shi.') || trimmed.includes('nhentai') || trimmed.includes('com-x.life') || trimmed.includes('mangalib.') || trimmed.includes('e-hentai.org') || trimmed.includes('exhentai')) {
+  if (trimmed.includes('manga-shi.') || trimmed.includes('nhentai') || trimmed.includes('com-x.life') || trimmed.includes('mangalib.') || trimmed.includes('e-hentai.org') || trimmed.includes('exhentai')
+    || trimmed.includes('readmanga.') || trimmed.includes('mintmanga.') || trimmed.includes('mangapoisk.')) {
     const g = await fetchSimpleGallery(trimmed, { proxy: opts.proxy, cookieHeader: opts.cookieHeader })
     return { title: g.title, pageUrls: g.pageUrls, coverUrl: g.coverUrl, source: sourceLabel(trimmed), referer: trimmed, proxy: opts.proxy, mangaId: seriesId, seriesId }
   }

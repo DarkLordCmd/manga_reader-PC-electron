@@ -3,6 +3,7 @@ export type {
 } from './catalog-types'
 export { siteKeyForUrl, resolve, UA, TOR_UA } from './catalog-types'
 export { searchSimpleSite } from './simple-sites'
+export { GROUPLE_SITES, searchGrouple, fetchGroupleChapters } from './grouple'
 export type { ExSearchResult, GDataResult } from './eh'
 export {
   looksRateLimited, ehErrorFromResponse, parseExHentaiListing,

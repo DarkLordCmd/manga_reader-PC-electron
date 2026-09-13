@@ -13,6 +13,8 @@ import {
   fetchRemangaChapters, fetchSenkuroChapters
 } from './services/sources'
 import { fetchMangaShiChapters } from './services/catalog-search'
+import { searchGrouple, GROUPLE_SITES, fetchGroupleChapters } from './services/catalog-search'
+import type { SimpleSiteConfig } from './services/sources/catalog-types'
 import { searchExHentai, searchMangaShi, searchNhentai, searchRemanga, searchSenkuro, searchSimpleSite, extractGidToken } from './services/catalog-search'
 import { fetchArchiveCost, buyArchive } from './services/eh-archive'
 import { runLoginWindow } from './services/login'
@@ -38,7 +40,7 @@ const coverCache = new Map<string, Buffer>()
 const coverInFlight = new Map<string, Promise<Buffer>>()
 const zipMeta = new Map<string, { zipPath: string; entries: string[] }>()
 const ZIP_TMP = join(app.getPath('userData'), 'tmp', 'zip')
-const SERIES_SOURCES = ['MangaDex', 'Remanga', 'Senkuro', 'Manga-shi']
+const SERIES_SOURCES = ['MangaDex', 'Remanga', 'Senkuro', 'Manga-shi', 'Readmanga', 'Mintmanga', 'Mangapoisk']
 
 function downloadsDirBase(dir: string | null | undefined): string {
   return dir?.trim() || join(app.getPath('userData'), 'downloads')
@@ -167,6 +169,8 @@ app.whenReady().then(() => {
       const s = settings.get()
       const proxy = s.tor_proxied_sites.includes('mangashi') ? (s.tor_socks_addr || '127.0.0.1:9150') : undefined
       chapters = await fetchMangaShiChapters(mangaId, proxy)
+    } else if (mangaId.includes('readmanga.') || mangaId.includes('mintmanga.') || mangaId.includes('mangapoisk.')) {
+      chapters = await fetchGroupleChapters(mangaId)
     } else {
       chapters = await fetchChapterList(mangaId)
     }
@@ -453,6 +457,11 @@ app.whenReady().then(() => {
       }[source]!
       const extra = page > 0 ? `page=${page + 1}` : ''
       return await searchSimpleSite(cfg, query, extra, { proxy })
+    }
+    const groupleIdx = { readmanga: 0, mintmanga: 1, mangapoisk: 2 } as const
+    if (source in groupleIdx) {
+      const cfg = GROUPLE_SITES[groupleIdx[source as keyof typeof groupleIdx]] as SimpleSiteConfig
+      return await searchGrouple(cfg, query, page)
     }
     return []
   })

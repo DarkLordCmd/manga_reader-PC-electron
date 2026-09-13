@@ -15,7 +15,10 @@ const SOURCES: { key: string; label: string }[] = [
   { key: 'senkuro', label: 'Senkuro' },
   { key: 'mangashi', label: 'Manga-shi' },
   { key: 'remanga', label: 'Remanga' },
-  { key: 'mangalib', label: 'Mangalib' }
+  { key: 'mangalib', label: 'Mangalib' },
+  { key: 'readmanga', label: 'Readmanga' },
+  { key: 'mintmanga', label: 'Mintmanga' },
+  { key: 'mangapoisk', label: 'Mangapoisk' }
 ]
 
 const SORTS: { key: string; label: string }[] = [
