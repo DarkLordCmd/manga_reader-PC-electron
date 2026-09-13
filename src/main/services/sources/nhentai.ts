@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio'
 import { httpFetch } from '../http'
 import { type CatalogItem, resolve } from './catalog-types'
+import { assertLayout } from '../layout-watcher'
 
 export function parseNhentaiPageCount(html: string): number | null {
   const words = html.replace(/<[^>]+>/g, ' ').replace(/[^\w:. ]/g, ' ').split(/\s+/)
@@ -28,6 +29,7 @@ export async function searchNhentai(
     headers: { Referer: `${base}/`, Accept: 'text/html' }
   }, opts.proxy)
   if (r.status >= 400) throw new Error(`NHentai: HTTP ${r.status}`)
+  assertLayout(['class="cover"', '/g/'], r.text, 'NHentai')
   const $ = cheerio.load(r.text)
   const results: CatalogItem[] = []
   const seen = new Set<string>()

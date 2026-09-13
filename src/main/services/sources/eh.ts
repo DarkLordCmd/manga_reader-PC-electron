@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio'
 import { httpFetch, httpPostJson } from '../http'
 import { ehBlockedMessage } from '../eh-limits-hook'
 import { type CatalogItem, resolve, UA, TOR_UA } from './catalog-types'
+import { assertLayout } from '../layout-watcher'
 
 export function looksRateLimited(status: number, html: string): boolean {
   if (status === 403 || status === 429) return true
@@ -43,6 +44,7 @@ export interface ExSearchResult extends CatalogItem {
  * listing (`.itg.gltc > tbody > tr`, JHenTai-style) and the thumbnail mode
  * (`.itg.gld > div`) that e-hentai serves with `inline_set=dm_t`. */
 export function parseExHentaiListing(html: string, base: string): ExSearchResult[] {
+  assertLayout(['itg', 'glink', '/g/'], html, 'E-Hentai list')
   const $ = cheerio.load(html)
   const results: ExSearchResult[] = []
   const seen = new Set<string>()

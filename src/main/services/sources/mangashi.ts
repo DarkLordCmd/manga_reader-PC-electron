@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio'
 import { fetchHtmlSmart } from '../fetch-html'
 import { type CatalogItem, type CatalogFilters, resolve } from './catalog-types'
 import type { ChapterInfo } from './remanga'
+import { assertLayout } from '../layout-watcher'
 
 export async function searchMangaShi(
   query: string,
@@ -25,6 +26,7 @@ export async function searchMangaShi(
   if (page > 0) params.push(`page=${page + 1}`)
   const url = `${base}/catalog/${params.length ? `?${params.join('&')}` : ''}`
   const text = await fetchHtmlSmart(url, { proxy })
+  assertLayout(['media-shell'], text, 'Manga-shi')
   const $ = cheerio.load(text)
   const results: CatalogItem[] = []
   const seen = new Set<string>()
@@ -100,6 +102,7 @@ function mangashiChapterNumFromUrl(full: string, text: string): string {
 export async function fetchMangaShiChapters(mangaUrl: string, proxy?: string): Promise<ChapterInfo[]> {
   const base = mangaUrl.trim().replace(/\/+$/, '')
   const page1 = await fetchHtmlSmart(mangaUrl, { proxy, timeoutMs: 30_000 })
+  assertLayout(['glava-'], page1, 'Manga-shi chapters')
 
   const allChapters: ChapterInfo[] = []
   const seen = new Set<string>()

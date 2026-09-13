@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio'
 import { fetchHtmlSmart } from '../fetch-html'
 import { type CatalogItem, type SimpleSiteConfig, resolve } from './catalog-types'
+import { assertLayout } from '../layout-watcher'
 
 export function extractCoverFromSubtree($: cheerio.CheerioAPI, el: any): string | null {
   for (const attr of ['data-src', 'data-original', 'src']) {
@@ -29,6 +30,8 @@ export async function searchSimpleSite(
   if (extraQuery) target += (target.includes('?') ? '&' : '?') + extraQuery
 
   const html = await fetchHtmlSmart(target, { proxy: opts.proxy })
+
+  assertLayout([config.linkMarker, '<a '], html, config.name)
 
   const $ = cheerio.load(html)
   const results: CatalogItem[] = []
