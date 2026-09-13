@@ -27,6 +27,7 @@ const api: Api = {
   checkBridges: (lines) => ipcRenderer.invoke(CH.checkBridges, lines),
   checkSites: () => ipcRenderer.invoke(CH.checkSites),
   libMirrorsCheck: () => ipcRenderer.invoke(CH.libMirrorsCheck),
+  customDnsCheck: () => ipcRenderer.invoke(CH.customDnsCheck),
   getExAccounts: () => ipcRenderer.invoke(CH.getExAccounts),
   setExAccount: (id) => ipcRenderer.invoke(CH.setExAccount, id),
   addExAccount: (name, memberId, passHash, igneous) => ipcRenderer.invoke(CH.addExAccount, name, memberId, passHash, igneous),

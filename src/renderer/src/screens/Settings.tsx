@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../state/store'
-import type { TorStatus, BridgeStatus, SiteStatus, LibMirrorStatus, ExAccountsResult } from '@shared/ipc'
+import type { TorStatus, BridgeStatus, SiteStatus, LibMirrorStatus, CustomDnsStatus, ExAccountsResult } from '@shared/ipc'
+
+// Display copy of the well-known blocker-circumvention DNS servers (main keeps
+// its own copy in services/custom-dns.ts — node-only module).
+const KNOWN_DNS_SERVERS: { name: string; server: string }[] = [
+  { name: 'ComssDNS', server: '83.220.169.155' },
+  { name: 'XboxDNS', server: '111.88.96.50' },
+  { name: 'XboxDNS v2', server: '87.228.47.200' },
+  { name: 'XboxDNS old', server: '176.99.11.77' },
+  { name: 'MalwDNS', server: '84.21.189.133' }
+]
 
 function Section({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
   return (
@@ -51,6 +61,8 @@ export default function Settings(): JSX.Element {
   const [ignBusy, setIgnBusy] = useState(false)
   const [libMirrorResults, setLibMirrorResults] = useState<LibMirrorStatus[] | null>(null)
   const [libMirrorMsg, setLibMirrorMsg] = useState<string | null>(null)
+  const [dnsResults, setDnsResults] = useState<CustomDnsStatus[] | null>(null)
+  const [dnsMsg, setDnsMsg] = useState<string | null>(null)
   const [pinHas, setPinHas] = useState(false)
   const [pinCurrent, setPinCurrent] = useState('')
   const [pinNew, setPinNew] = useState('')
@@ -258,6 +270,41 @@ export default function Settings(): JSX.Element {
             </div>
           )}
           {libMirrorMsg && <div className="row muted">{libMirrorMsg}</div>}
+        </Section>
+
+        <Section title="DNS обхода блокировок">
+          <div className="row">
+            <label>DNS серверы:</label>
+            <input
+              style={{ flex: 1, minWidth: 220 }}
+              value={settings.custom_dns ?? ''}
+              placeholder="через пробел или запятую, IPv4"
+              onChange={(e) => { upd({ custom_dns: e.target.value || null }); setDnsResults(null) }}
+            />
+          </div>
+          <div className="row">
+            <button onClick={() => {
+              upd({ custom_dns: KNOWN_DNS_SERVERS.map((k) => k.server).join(', ') })
+              setDnsResults(null)
+            }}>Вставить популярные</button>
+            <button
+              disabled={!(settings.custom_dns ?? '').trim()}
+              onClick={async () => {
+                setDnsMsg('Проверяю DNS…')
+                try { setDnsResults(await window.api.customDnsCheck()) } finally { setDnsMsg(null) }
+              }}
+            >Проверить DNS</button>
+          </div>
+          {dnsResults && (
+            <div className="check-list">
+              {dnsResults.map((r) => (
+                <div key={r.server} className={`check-result ${r.ok ? 'ok' : 'bad'}`}>
+                  {r.ok ? `✓ ${r.server} → ${r.ip} (${r.ms} мс)` : `✗ ${r.server} — не отвечает`}
+                </div>
+              ))}
+            </div>
+          )}
+          {dnsMsg && <div className="row muted">{dnsMsg}</div>}
         </Section>
 
         <Section title="Каталог">

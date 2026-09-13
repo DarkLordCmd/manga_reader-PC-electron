@@ -26,6 +26,7 @@ export interface Settings {
   read_chapters: string[]
   downloads_dir: string | null
   lib_image_server: string | null
+  custom_dns: string | null
 }
 
 export function defaultSettings(): Settings {
@@ -39,7 +40,8 @@ export function defaultSettings(): Settings {
     enable_domain_fronting: false,
     viewing_history: [], show_r34_history: true, eh_tag_bookmarks: [], read_chapters: [],
     downloads_dir: null,
-    lib_image_server: null
+    lib_image_server: null,
+    custom_dns: null
   }
 }
 
@@ -96,6 +98,7 @@ export function parseSettings(raw: unknown): Settings {
     eh_tag_bookmarks: strArr(o.eh_tag_bookmarks),
     read_chapters: strArr(o.read_chapters),
     downloads_dir: typeof o.downloads_dir === 'string' ? o.downloads_dir : null,
-    lib_image_server: typeof o.lib_image_server === 'string' && o.lib_image_server.trim() ? o.lib_image_server.trim() : null
+    lib_image_server: typeof o.lib_image_server === 'string' && o.lib_image_server.trim() ? o.lib_image_server.trim() : null,
+    custom_dns: typeof o.custom_dns === 'string' && o.custom_dns.trim() ? o.custom_dns.trim() : null
   }
 }

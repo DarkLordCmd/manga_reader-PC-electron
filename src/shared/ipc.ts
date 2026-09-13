@@ -43,6 +43,7 @@ export interface TorStatus { state: string; latencyMs?: number; reason?: string 
 export interface BridgeStatus { line: string; state: string; latencyMs?: number; reason?: string }
 export interface SiteStatus { key: string; state: string; reason?: string }
 export interface LibMirrorStatus { host: string; ok: boolean; ms: number; error?: string }
+export interface CustomDnsStatus { server: string; ok: boolean; ip: string | null; ms: number }
 
 export interface CatalogFilters {
   ehExcludedCats?: number
@@ -141,6 +142,7 @@ export interface Api {
   checkBridges(lines: string[]): Promise<BridgeStatus[]>
   checkSites(): Promise<SiteStatus[]>
   libMirrorsCheck(): Promise<LibMirrorStatus[]>
+  customDnsCheck(): Promise<CustomDnsStatus[]>
   getExAccounts(): Promise<ExAccountsResult>
   setExAccount(id: number): Promise<ExAccountsResult>
   addExAccount(name: string, memberId: string, passHash: string, igneous: string): Promise<ExAccountsResult>
@@ -194,6 +196,7 @@ export const CH = {
   checkBridges: 'tor:bridges',
   checkSites: 'sites:check',
   libMirrorsCheck: 'libMirrors:check',
+  customDnsCheck: 'customDns:check',
   getExAccounts: 'ex:accounts',
   setExAccount: 'ex:set',
   addExAccount: 'ex:add',

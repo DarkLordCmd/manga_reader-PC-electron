@@ -33,6 +33,7 @@ import { ehWatcher, broadcastEhLimitState } from './services/eh-limits-instance'
 import { registerEhLimitHook } from './services/eh-limits-hook'
 import { httpFetchBinary, httpFetch } from './services/http'
 import { setLibMirror, LIB_MIRRORS } from './services/lib-mirror'
+import { setCustomDnsServers, parseDnsServerList, checkCustomDns } from './services/custom-dns'
 import { DownloadManager } from './services/download-manager'
 import { CH } from '@shared/ipc'
 
@@ -104,6 +105,7 @@ app.whenReady().then(() => {
   setFrontingEnabled(settings.get().enable_domain_fronting)
   setTorFallbackAddr(settings.get().tor_socks_addr || '127.0.0.1:9150')
   setLibMirror(settings.get().lib_image_server ?? null)
+  setCustomDnsServers(parseDnsServerList(settings.get().custom_dns ?? ''))
   pin = new PinService(app.getPath('userData'))
   ipcMain.handle(CH.pinHasPin, () => pin.hasPin())
   ipcMain.handle(CH.pinSetPin, (_e, p: string) => pin.setPin(String(p)))
@@ -321,6 +323,7 @@ app.whenReady().then(() => {
     setFrontingEnabled(!!s?.enable_domain_fronting)
     setTorFallbackAddr(s?.tor_socks_addr || '127.0.0.1:9150')
     setLibMirror(s?.lib_image_server ?? null)
+    setCustomDnsServers(parseDnsServerList(s?.custom_dns ?? ''))
     const before = downloadsDirBase(settings.get().downloads_dir)
     settings.save(s)
     const after = downloadsDirBase(s?.downloads_dir)
@@ -535,6 +538,9 @@ app.whenReady().then(() => {
         return { host, ok: false, ms: -1, error: e?.message ?? String(e) }
       }
     }))
+  })
+  ipcMain.handle(CH.customDnsCheck, async () => {
+    return await checkCustomDns('example.com')
   })
   ipcMain.handle(CH.setReadingPosition, (_e, gid: string, index: number) => {
     setReadingPosition(gid, index)

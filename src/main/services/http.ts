@@ -6,6 +6,7 @@ import {
   torFallbackActiveFor, markTorFallbackSuccess, markTorFallbackFailure,
   isTorFallbackBlocked, isEhTimeoutError
 } from './eh-sni-fallback'
+import { resolveViaCustomDns, customDnsActive } from './custom-dns'
 
 /** Tor SOCKS address used for the automatic SNI-timeout fallback on EH hosts.
  * Injected from main (settings), empty string disables the fallback. */
@@ -106,7 +107,40 @@ function buildDispatcherFor(url: string, proxy?: string): { dispatcher: Agent | 
       }
     } catch { /* ignore */ }
   }
+  // Custom DNS pinning: resolve through the user's blocker-circumvention DNS
+  // and connect to that IP directly (real SNI/cert checks preserved).
+  if (customDnsActive()) {
+    try {
+      const host = new URL(url).hostname
+      const ip = pinnedIpCache.get(host)
+      if (ip) return { dispatcher: buildPinnedDispatcher(host, ip), frontHost: host, frontIp: ip }
+    } catch { /* ignore */ }
+  }
   return { dispatcher: undefined }
+}
+
+const pinnedIpCache = new Map<string, string>()
+
+async function customDnsDispatcher(url: string): Promise<{ dispatcher?: Agent; pinned: boolean }> {
+  if (!customDnsActive()) return { pinned: false }
+  try {
+    const host = new URL(url).hostname
+    const p = await resolveViaCustomDns(host)
+    if (!p) return { pinned: false }
+    pinnedIpCache.set(host, p)
+    return { dispatcher: buildPinnedDispatcher(host, p), pinned: true }
+  } catch {
+    return { pinned: false }
+  }
+}
+
+function buildPinnedDispatcher(host: string, ip: string): Agent {
+  return new Agent({
+    connect: (origin: any) => {
+      const port = Number(origin?.port || (origin?.protocol === 'https:' ? 443 : 80))
+      return netConnect({ host: ip, port }) as any
+    }
+  })
 }
 
 function normalizeHeaders(headers: Record<string, string>): Record<string, string> {
@@ -207,7 +241,11 @@ async function performFetch(
   const init = buildInit(opts)
   // `redirect:'manual'` must stay on undici: Chromium returns an opaque
   // redirect response (status 0, no headers), so Set-Cookie would be lost.
-  const forceUndici = opts.redirect === 'manual'
+  // Same when a custom-DNS pin is active: Chromium resolves DNS itself and
+  // ignores our dispatcher.
+  const forceUndici = opts.redirect === 'manual' || !!(
+    customDnsActive() && (() => { try { return pinnedIpCache.has(new URL(opts.url).hostname) } catch { return false } })()
+  )
   const frontOnEmpty = opts.frontOnEmpty === true
 
   if (!dispatcher || !frontHost) {
@@ -308,6 +346,7 @@ export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise
   return retryOnce(async () => {
     return await withSniFallback(opts.url, proxy, async (p) => {
       assertNotEhBlocked(opts.url)
+      await customDnsDispatcher(opts.url)
       const { dispatcher, frontHost, frontIp } = buildDispatcherFor(opts.url, p)
       const { res, bodyText } = await performFetch(opts, dispatcher, frontHost, frontIp)
       const setCookies = extractSetCookies(res)
@@ -346,6 +385,7 @@ export async function httpFetchBinary(
 ): Promise<Uint8Array> {
   return await withSniFallback(url, proxy, async (p) => {
     assertNotEhBlocked(url)
+    await customDnsDispatcher(url)
     const { dispatcher, frontHost, frontIp } = buildDispatcherFor(url, p)
     const { res } = await performFetch({ url, headers, timeoutMs, method: 'GET' }, dispatcher, frontHost, frontIp)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
