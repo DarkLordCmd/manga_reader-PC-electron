@@ -2,6 +2,20 @@ import { Agent, buildConnector } from 'undici'
 import { connect as netConnect } from 'net'
 import { isFrontingEnabled, supportsFronting, frontingIpFor, buildFrontingDispatcher, markUnavailable } from './domain-fronting'
 import { isEhHost, notifyEhSetCookies } from './eh-session'
+import {
+  torFallbackActiveFor, markTorFallbackSuccess, markTorFallbackFailure,
+  isTorFallbackBlocked, isEhTimeoutError
+} from './eh-sni-fallback'
+
+/** Tor SOCKS address used for the automatic SNI-timeout fallback on EH hosts.
+ * Injected from main (settings), empty string disables the fallback. */
+let torFallbackAddr = ''
+export function setTorFallbackAddr(addr: string): void {
+  torFallbackAddr = addr
+}
+function torFallbackAvailable(): boolean {
+  return torFallbackAddr.trim() !== ''
+}
 import { parseLimitResponse } from './eh-limits'
 import { handleLimitFailure, assertNotEhBlocked, retryOnce } from './eh-limits-hook'
 
@@ -159,11 +173,14 @@ async function fetchWithTimeout(url: string, init: any, ms: number, dispatcher?:
     // this domain. Surface a clear, actionable message instead of a bare
     // `AbortError`.
     if (e?.name === 'AbortError') {
-      throw new Error(
+      const e2: any = new Error(
         `Соединение с ${host || url} прервано по таймауту — сайт недоступен ` +
         '(DNS/SNI-блокировка на уровне провайдера или сеть). ' +
         'Включи Tor для этого источника в настройках или используй доступный источник.'
       )
+      e2.ehSniTimeout = true
+      e2.host = host
+      throw e2
     }
     throw e
   } finally {
@@ -226,26 +243,68 @@ async function performFetch(
   }
 }
 
+function hostnameOf(url: string): string {
+  try { return new URL(url).hostname.toLowerCase() } catch { return '' }
+}
+
+/** Hosts eligible for the automatic Tor fallback on SNI timeouts. */
+function isEhSiteHost(host: string): boolean {
+  return host.includes('exhentai') || host.includes('e-hentai.org')
+}
+
+/**
+ * Runs `run` once; on an SNI-timeout abort for an EH host with no explicit
+ * proxy, retries once through the fallback Tor SOCKS dispatcher. The
+ * cooldown state (eh-sni-fallback) prevents repeated 20-30s timeouts: after
+ * a success later requests go straight through Tor; after a failure the
+ * fallback is parked for 10 minutes.
+ */
+async function withSniFallback<T>(url: string, requestProxy: string | undefined, run: (proxy: string | undefined) => Promise<T>): Promise<T> {
+  const host = hostnameOf(url)
+  let proxied = requestProxy
+  if (!proxied && torFallbackAvailable() && !host.includes('.onion') && torFallbackActiveFor(host)) {
+    proxied = torFallbackAddr
+  }
+  try {
+    return await run(proxied)
+  } catch (e) {
+    const canFallback =
+      !proxied && torFallbackAvailable() && !isTorFallbackBlocked(host) &&
+      isEhTimeoutError(e) && isEhSiteHost(host)
+    if (!canFallback) throw e
+    try {
+      const r = await run(torFallbackAddr)
+      markTorFallbackSuccess(host)
+      return r
+    } catch {
+      markTorFallbackFailure(host)
+      throw e
+    }
+  }
+}
+
 export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise<HttpResult> {
   return retryOnce(async () => {
-    assertNotEhBlocked(opts.url)
-    const { dispatcher, frontHost, frontIp } = buildDispatcherFor(opts.url, proxy)
-    const { res, bodyText } = await performFetch(opts, dispatcher, frontHost, frontIp)
-    const setCookies = extractSetCookies(res)
-    if (setCookies.length > 0) {
-      try {
-        const host = new URL(opts.url).hostname
-        if (isEhHost(host)) notifyEhSetCookies(host, setCookies)
-      } catch { /* ignore */ }
-    }
-    // Body is read exactly once here; the EH limit check below sees the same text.
-    const text = bodyText ?? await res.text()
-    const hostLower = (() => { try { return new URL(opts.url).hostname.toLowerCase() } catch { return '' } })()
-    if (isEhHost(hostLower) || hostLower.includes('exhentai') || hostLower.includes('e-hentai.org')) {
-      const lim = parseLimitResponse(text.slice(0, 4000))
-      if (lim.kind) throw handleLimitFailure(lim.kind, lim.resetAfterSec)
-    }
-    return { status: res.status, text, setCookies }
+    return await withSniFallback(opts.url, proxy, async (p) => {
+      assertNotEhBlocked(opts.url)
+      const { dispatcher, frontHost, frontIp } = buildDispatcherFor(opts.url, p)
+      const { res, bodyText } = await performFetch(opts, dispatcher, frontHost, frontIp)
+      const setCookies = extractSetCookies(res)
+      if (setCookies.length > 0) {
+        try {
+          const host = new URL(opts.url).hostname
+          if (isEhHost(host)) notifyEhSetCookies(host, setCookies)
+        } catch { /* ignore */ }
+      }
+      // Body is read exactly once here; the EH limit check below sees the same text.
+      const text = bodyText ?? await res.text()
+      const hostLower = hostnameOf(opts.url)
+      if (isEhHost(hostLower) || hostLower.includes('exhentai') || hostLower.includes('e-hentai.org')) {
+        const lim = parseLimitResponse(text.slice(0, 4000))
+        if (lim.kind) throw handleLimitFailure(lim.kind, lim.resetAfterSec)
+      }
+      return { status: res.status, text, setCookies }
+    })
   })
 }
 
@@ -264,19 +323,21 @@ export async function httpFetchBinary(
   proxy?: string,
   timeoutMs = 30_000
 ): Promise<Uint8Array> {
-  assertNotEhBlocked(url)
-  const { dispatcher, frontHost, frontIp } = buildDispatcherFor(url, proxy)
-  const { res } = await performFetch({ url, headers, timeoutMs, method: 'GET' }, dispatcher, frontHost, frontIp)
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  // Body is read exactly once; limit pages arrive as text/html instead of an image.
-  const buf = Buffer.from(await res.arrayBuffer())
-  const hostLower = (() => { try { return new URL(url).hostname.toLowerCase() } catch { return '' } })()
-  const ct = res.headers.get('content-type') ?? ''
-  if ((isEhHost(hostLower) || hostLower.includes('exhentai') || hostLower.includes('e-hentai.org')) && ct.includes('text/html')) {
-    const lim = parseLimitResponse(buf.slice(0, 4000).toString('utf-8'))
-    if (lim.kind) throw handleLimitFailure(lim.kind, lim.resetAfterSec)
-  }
-  return new Uint8Array(buf)
+  return await withSniFallback(url, proxy, async (p) => {
+    assertNotEhBlocked(url)
+    const { dispatcher, frontHost, frontIp } = buildDispatcherFor(url, p)
+    const { res } = await performFetch({ url, headers, timeoutMs, method: 'GET' }, dispatcher, frontHost, frontIp)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    // Body is read exactly once; limit pages arrive as text/html instead of an image.
+    const buf = Buffer.from(await res.arrayBuffer())
+    const hostLower = hostnameOf(url)
+    const ct = res.headers.get('content-type') ?? ''
+    if ((isEhHost(hostLower) || hostLower.includes('exhentai') || hostLower.includes('e-hentai.org')) && ct.includes('text/html')) {
+      const lim = parseLimitResponse(buf.slice(0, 4000).toString('utf-8'))
+      if (lim.kind) throw handleLimitFailure(lim.kind, lim.resetAfterSec)
+    }
+    return new Uint8Array(buf)
+  })
 }
 
 export async function httpGetJson(

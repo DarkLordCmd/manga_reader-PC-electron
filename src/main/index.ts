@@ -20,6 +20,7 @@ import { probeSocks5Handshake, probeBridgeLine, probeSite, allSiteKeys } from '.
 import { fetchEhTagSuggest, fetchNhentaiTagSuggestions } from './services/tags'
 import { fetchCoverBuffer } from './services/covers'
 import { setFrontingEnabled } from './services/domain-fronting'
+import { setTorFallbackAddr } from './services/http'
 import { parseMangaPageUrl } from './services/page-url'
 import { ExAccountsService, parseCookieLogin } from './services/accounts'
 import { setEhSetCookieHandler } from './services/eh-session'
@@ -96,6 +97,7 @@ function createWindow(): void {
 app.whenReady().then(() => {
   settings = new SettingsService(app.getPath('userData'))
   setFrontingEnabled(settings.get().enable_domain_fronting)
+  setTorFallbackAddr(settings.get().tor_socks_addr || '127.0.0.1:9150')
   pin = new PinService(app.getPath('userData'))
   ipcMain.handle(CH.pinHasPin, () => pin.hasPin())
   ipcMain.handle(CH.pinSetPin, (_e, p: string) => pin.setPin(String(p)))
@@ -307,6 +309,7 @@ app.whenReady().then(() => {
   ipcMain.handle(CH.getSettings, () => settings.get())
   ipcMain.handle(CH.setSettings, (_e, s) => {
     setFrontingEnabled(!!s?.enable_domain_fronting)
+    setTorFallbackAddr(s?.tor_socks_addr || '127.0.0.1:9150')
     const before = downloadsDirBase(settings.get().downloads_dir)
     settings.save(s)
     const after = downloadsDirBase(s?.downloads_dir)
