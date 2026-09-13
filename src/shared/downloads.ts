@@ -14,4 +14,8 @@ export interface DownloadTask {
   error?: string
   addedAt: number
   epoch?: number
+  mangaId?: string
+  chapterTotal?: number
+  newChapters?: number
+  latestChapterId?: string
 }

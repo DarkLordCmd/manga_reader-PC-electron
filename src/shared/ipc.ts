@@ -153,6 +153,8 @@ export interface Api {
   downloadsSetPriority(id: string, priority: number): Promise<void>
   downloadsOpen(id: string): Promise<OpenFolderResult | null>
   downloadsCheckUpdates(): Promise<string[]>
+  downloadsCheckChapters(): Promise<string[]>
+  downloadsPickDir(): Promise<string | null>
   ehArchiveCost(url: string): Promise<ArchiveCost | null>
   ehArchiveBuy(url: string, dltype: string): Promise<{ downloadUrl: string } | null>
   downloadsAddArchive(sourceUrl: string, title: string, downloadUrl: string): Promise<DownloadTask | null>
@@ -203,6 +205,8 @@ export const CH = {
   downloadsSetPriority: 'downloads:setPriority',
   downloadsOpen: 'downloads:open',
   downloadsCheckUpdates: 'downloads:checkUpdates',
+  downloadsCheckChapters: 'downloads:checkChapters',
+  downloadsPickDir: 'downloads:pickDir',
   downloadsAddArchive: 'downloads:addArchive',
   ehArchiveCost: 'ehArchive:cost',
   ehArchiveBuy: 'ehArchive:buy',

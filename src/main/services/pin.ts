@@ -49,19 +49,18 @@ export class PinService {
     if (!rec) return true // no pin set
     if (Date.now() < this.lockUntil) return false
     const ok = verifyPin(rec, pin)
-    if (ok) { this.fails = 0; this.lockUntil = 0 }
-    return ok
+    if (ok) { this.fails = 0; this.lockUntil = 0; return true }
+    this.fails++
+    if (this.fails >= 3) {
+      this.lockUntil = Date.now() + 30_000
+      this.fails = 0
+    }
+    return false
   }
 
   failedAttempt(): { locked: boolean; retryAfterSec: number } {
     if (Date.now() < this.lockUntil) {
       return { locked: true, retryAfterSec: Math.max(1, Math.ceil((this.lockUntil - Date.now()) / 1000)) }
-    }
-    this.fails++
-    if (this.fails >= 3) {
-      this.lockUntil = Date.now() + 30_000
-      this.fails = 0
-      return { locked: false, retryAfterSec: 0 }
     }
     return { locked: false, retryAfterSec: 0 }
   }

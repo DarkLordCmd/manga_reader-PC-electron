@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -34,13 +34,34 @@ describe('pin', () => {
     expect(() => s.setPin('abcd')).toThrow()
   })
 
-  it('lockout after 3 failures', () => {
+  it('lockout after 3 failed verify attempts', () => {
+    vi.useFakeTimers()
+    try {
+      const s = new PinService(dir)
+      s.setPin('1234')
+      expect(s.verify('0000')).toBe(false)
+      expect(s.verify('0000')).toBe(false)
+      expect(s.verify('0000')).toBe(false)
+      const r = s.failedAttempt()
+      expect(r.locked).toBe(true)
+      expect(r.retryAfterSec).toBe(30)
+      expect(s.verify('1234')).toBe(false)
+      vi.setSystemTime(Date.now() + 31_000)
+      expect(s.failedAttempt().locked).toBe(false)
+      expect(s.verify('1234')).toBe(true)
+      expect(s.verify('0000')).toBe(false)
+      expect(s.verify('1234')).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('failedAttempt is read-only', () => {
     const s = new PinService(dir)
     s.setPin('1234')
-    s.failedAttempt(); s.failedAttempt()
-    expect(s.failedAttempt().locked).toBe(false)
-    const r = s.failedAttempt()
-    expect(r.locked).toBe(true)
-    expect(r.retryAfterSec).toBe(30)
+    for (let i = 0; i < 10; i++) {
+      expect(s.failedAttempt().locked).toBe(false)
+    }
+    expect(s.verify('1234')).toBe(true)
   })
 })

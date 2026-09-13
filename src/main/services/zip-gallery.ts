@@ -1,6 +1,6 @@
 import yauzl from 'yauzl'
 import { createHash } from 'crypto'
-import { mkdirSync, existsSync, createWriteStream, rmSync, renameSync } from 'fs'
+import { mkdirSync, existsSync, createWriteStream, rmSync, renameSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
 import { naturalCompare } from './natural-sort'
@@ -135,4 +135,16 @@ export function extractZipAll(zipPath: string, outDir: string): Promise<string[]
 
 export function clearZipTmp(tmpBase: string, zipId: string): void {
   rmSync(join(tmpBase, zipId), { recursive: true, force: true })
+}
+
+export function clearZipTmpAll(tmpBase: string): void {
+  let entries: string[]
+  try {
+    entries = readdirSync(tmpBase)
+  } catch {
+    return
+  }
+  for (const name of entries) {
+    try { rmSync(join(tmpBase, name), { recursive: true, force: true }) } catch { /* ignore */ }
+  }
 }

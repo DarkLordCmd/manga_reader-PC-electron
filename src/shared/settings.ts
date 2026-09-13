@@ -24,6 +24,7 @@ export interface Settings {
   show_r34_history: boolean
   eh_tag_bookmarks: string[]
   read_chapters: string[]
+  downloads_dir: string | null
 }
 
 export function defaultSettings(): Settings {
@@ -35,7 +36,8 @@ export function defaultSettings(): Settings {
     onion_cookies_raw: '', nhentai_onion_cookies_raw: '', nhentai_onion_base: '',
     infinite_scroll: false, tor_proxied_sites: [], nhentai_show_page_counts: true,
     enable_domain_fronting: false,
-    viewing_history: [], show_r34_history: true, eh_tag_bookmarks: [], read_chapters: []
+    viewing_history: [], show_r34_history: true, eh_tag_bookmarks: [], read_chapters: [],
+    downloads_dir: null
   }
 }
 
@@ -90,6 +92,7 @@ export function parseSettings(raw: unknown): Settings {
     viewing_history: history,
     show_r34_history: bool(o.show_r34_history, true),
     eh_tag_bookmarks: strArr(o.eh_tag_bookmarks),
-    read_chapters: strArr(o.read_chapters)
+    read_chapters: strArr(o.read_chapters),
+    downloads_dir: typeof o.downloads_dir === 'string' ? o.downloads_dir : null
   }
 }

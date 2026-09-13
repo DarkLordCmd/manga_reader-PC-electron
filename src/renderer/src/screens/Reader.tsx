@@ -184,6 +184,9 @@ export default function Reader(): JSX.Element {
         {opened?.kind === 'online' && (
           <button onClick={() => setShowChapters(true)}>Главы</button>
         )}
+        {opened && (
+          <button onClick={() => void window.api.recordProgress(opened.url, 0, 1)}>Сбросить</button>
+        )}
         {opened?.kind === 'online' && (opened.source.includes('ExHentai') || opened.source.includes('E-Hentai')) && (
           <button onClick={() => void buyArchive()}>⬇ Archive</button>
         )}

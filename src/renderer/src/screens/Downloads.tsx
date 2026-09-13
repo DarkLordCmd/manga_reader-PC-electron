@@ -12,6 +12,10 @@ export default function Downloads(): JSX.Element {
     return window.api.onDownloadsChanged(setTasks)
   }, [])
 
+  useEffect(() => {
+    void window.api.downloadsCheckChapters().catch(() => {})
+  }, [])
+
   const open = async (id: string): Promise<void> => {
     const r: OpenFolderResult | null = await window.api.downloadsOpen(id)
     if (r) {
@@ -35,6 +39,10 @@ export default function Downloads(): JSX.Element {
           <span className="muted">{t.state}{t.error ? `: ${t.error}` : ''}</span>
           {t.state === 'running' && <button onClick={() => void window.api.downloadsPause(t.id)}>Pause</button>}
           {(t.state === 'paused' || t.state === 'error') && <button onClick={() => void window.api.downloadsResume(t.id)}>Resume</button>}
+          {(t.newChapters ?? 0) > 0 && <span className="dl-badge">{t.newChapters} новых глав</span>}
+          {(t.newChapters ?? 0) > 0 && t.latestChapterId && (
+            <button onClick={() => void window.api.downloadsAdd(t.latestChapterId!)}>Скачать новую главу</button>
+          )}
           {t.state === 'completed' && <button onClick={() => void open(t.id)}>Open</button>}
           <button onClick={() => void window.api.downloadsSetPriority(t.id, t.priority === 10 ? 0 : 10)}>{t.priority > 0 ? '↓prio' : '↑prio'}</button>
           <button onClick={() => void window.api.downloadsRemove(t.id)}>✕</button>

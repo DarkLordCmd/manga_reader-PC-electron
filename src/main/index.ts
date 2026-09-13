@@ -5,10 +5,10 @@ import { readFileSync } from 'fs'
 import { SettingsService } from './services/settings'
 import { HistoryManager } from './services/history'
 import { galleryFromFolder, type Gallery } from './services/gallery'
-import { openZipGallery, readZipEntry, isZipPath } from './services/zip-gallery'
+import { openZipGallery, readZipEntry, isZipPath, clearZipTmpAll } from './services/zip-gallery'
 import { fetchChapterList, searchMangaDex, fetchChapterCount } from './services/mangadex'
 import { createOnlineGallery, requestPage, setReadingPosition, getGalleryPages } from './services/online-gallery'
-import { resolveGallery, UnsupportedUrlError, type GalleryResolution } from './services/resolve-gallery'
+import { resolveGallery, sourceLabel, UnsupportedUrlError, type GalleryResolution } from './services/resolve-gallery'
 import {
   fetchRemangaChapters, fetchSenkuroChapters
 } from './services/sources'
@@ -36,6 +36,11 @@ const coverCache = new Map<string, Buffer>()
 const coverInFlight = new Map<string, Promise<Buffer>>()
 const zipMeta = new Map<string, { zipPath: string; entries: string[] }>()
 const ZIP_TMP = join(app.getPath('userData'), 'tmp', 'zip')
+const SERIES_SOURCES = ['MangaDex', 'Remanga', 'Senkuro', 'Manga-shi']
+
+function downloadsDirBase(dir: string | null | undefined): string {
+  return dir?.trim() || join(app.getPath('userData'), 'downloads')
+}
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'manga', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
@@ -118,7 +123,7 @@ app.whenReady().then(() => {
   history.load(settings.get().viewing_history)
 
   downloads = new DownloadManager(
-    join(app.getPath('userData'), 'downloads'),
+    downloadsDirBase(settings.get().downloads_dir),
     join(app.getPath('userData'), 'downloads.json'),
     {
       fetchBinary: (url, headers, proxy, timeoutMs) => httpFetchBinary(url, headers ?? {}, proxy, timeoutMs),
@@ -129,10 +134,66 @@ app.whenReady().then(() => {
   ipcMain.handle(CH.downloadsList, () => downloads.list())
   ipcMain.handle(CH.downloadsAdd, async (_e, sourceUrl: string) => {
     const { proxy, cookieHeader } = downloadFetchOpts(sourceUrl)
-    return await downloads.add(sourceUrl, () => resolveGallery(sourceUrl, { proxy, cookieHeader }), {
+    const holder: { res: GalleryResolution | null } = { res: null }
+    const task = await downloads.add(sourceUrl, async () => {
+      holder.res = await resolveGallery(sourceUrl, { proxy, cookieHeader })
+      return holder.res
+    }, {
       Referer: sourceUrl,
       ...(cookieHeader ? { Cookie: cookieHeader } : {})
     }, proxy)
+    if (task && holder.res) {
+      const mangaId = holder.res.mangaId
+      if (mangaId && SERIES_SOURCES.includes(sourceLabel(sourceUrl))) {
+        downloads.setChapterMeta(task.id, { mangaId })
+        const count = await fetchChapterCountSafe(mangaId)
+        if (count != null) downloads.setChapterMeta(task.id, { chapterTotal: count })
+      }
+    }
+    return task
+  })
+
+  async function fetchChapterListFor(mangaId: string): Promise<{ chapter_id: string; chapter_num: string; title: string | null }[]> {
+    let chapters
+    if (mangaId.includes('remanga.org')) {
+      chapters = await fetchRemangaChapters(mangaId)
+    } else if (mangaId.includes('senkuro')) {
+      const slug = mangaId.trim().replace(/\/+$/, '').split('/').filter(Boolean).pop() ?? mangaId
+      chapters = await fetchSenkuroChapters(slug, settings.get().onion_cookies_raw)
+    } else if (mangaId.includes('manga-shi')) {
+      const s = settings.get()
+      const proxy = s.tor_proxied_sites.includes('mangashi') ? (s.tor_socks_addr || '127.0.0.1:9150') : undefined
+      chapters = await fetchMangaShiChapters(mangaId, proxy)
+    } else {
+      chapters = await fetchChapterList(mangaId)
+    }
+    return chapters.map((c) => ({ chapter_id: c.chapter_id, chapter_num: c.chapter_num, title: c.title }))
+  }
+
+  async function fetchChapterListSafe(mangaId: string): Promise<{ chapter_id: string; chapter_num: string; title: string | null }[] | null> {
+    try { return await fetchChapterListFor(mangaId) } catch { return null }
+  }
+
+  async function fetchChapterCountSafe(mangaId: string): Promise<number | null> {
+    const list = await fetchChapterListSafe(mangaId)
+    return list ? list.length : null
+  }
+
+  ipcMain.handle(CH.downloadsCheckChapters, async () => {
+    const updated: string[] = []
+    for (const t of downloads.list()) {
+      if (!t.mangaId || t.chapterTotal == null) continue
+      const list = await fetchChapterListSafe(t.mangaId)
+      if (!list) continue
+      if (list.length > t.chapterTotal) {
+        downloads.setChapterMeta(t.id, {
+          newChapters: list.length - t.chapterTotal,
+          latestChapterId: list[list.length - 1].chapter_id
+        })
+        updated.push(t.id)
+      }
+    }
+    return updated
   })
   ipcMain.handle(CH.downloadsPause, (_e, id: string) => downloads.pause(id))
   ipcMain.handle(CH.downloadsResume, (_e, id: string) => downloads.resume(id))
@@ -246,7 +307,10 @@ app.whenReady().then(() => {
   ipcMain.handle(CH.getSettings, () => settings.get())
   ipcMain.handle(CH.setSettings, (_e, s) => {
     setFrontingEnabled(!!s?.enable_domain_fronting)
+    const before = downloadsDirBase(settings.get().downloads_dir)
     settings.save(s)
+    const after = downloadsDirBase(s?.downloads_dir)
+    if (before !== after) downloads.setOutDirBase(after)
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s)
   })
   ipcMain.handle(CH.getHistory, () => history.toVec())
@@ -257,6 +321,11 @@ app.whenReady().then(() => {
   ipcMain.handle(CH.clearHistory, () => {
     history.clear()
     settings.save({ ...settings.get(), viewing_history: [] })
+  })
+  ipcMain.handle(CH.downloadsPickDir, async () => {
+    const r = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+    if (r.canceled || r.filePaths.length === 0) return null
+    return r.filePaths[0]
   })
   ipcMain.handle(CH.pickFolder, async () => {
     const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'openFile'] })
@@ -314,20 +383,7 @@ app.whenReady().then(() => {
     return { id: gid, title: result.title, pageCount: result.pageUrls.length, source: result.source, url: trimmed, mangaId: seriesId }
   })
   ipcMain.handle(CH.fetchChapterList, async (_e, mangaId: string) => {
-    let chapters
-    if (mangaId.includes('remanga.org')) {
-      chapters = await fetchRemangaChapters(mangaId)
-    } else if (mangaId.includes('senkuro')) {
-      const slug = mangaId.trim().replace(/\/+$/, '').split('/').filter(Boolean).pop() ?? mangaId
-      chapters = await fetchSenkuroChapters(slug, settings.get().onion_cookies_raw)
-    } else if (mangaId.includes('manga-shi')) {
-      const s = settings.get()
-      const proxy = s.tor_proxied_sites.includes('mangashi') ? (s.tor_socks_addr || '127.0.0.1:9150') : undefined
-      chapters = await fetchMangaShiChapters(mangaId, proxy)
-    } else {
-      chapters = await fetchChapterList(mangaId)
-    }
-    return chapters.map((c) => ({ chapter_id: c.chapter_id, chapter_num: c.chapter_num, title: c.title }))
+    return await fetchChapterListFor(mangaId)
   })
   ipcMain.handle(CH.searchCatalog, async (_e, source: string, query: string, page: number, sort: string, filters: any = {}, cursor: any = null) => {
     const s = settings.get()
@@ -530,4 +586,8 @@ async function openFolder(path: string): Promise<{ id: string; title: string; pa
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('will-quit', () => {
+  clearZipTmpAll(ZIP_TMP)
 })

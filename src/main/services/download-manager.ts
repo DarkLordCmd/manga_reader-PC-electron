@@ -245,6 +245,17 @@ export class DownloadManager {
     if (t) { t.priority = priority; this.notify() }
   }
 
+  setOutDirBase(dir: string): void {
+    this.outDirBase = dir
+  }
+
+  setChapterMeta(id: string, patch: { mangaId?: string; chapterTotal?: number; newChapters?: number; latestChapterId?: string }): void {
+    const t = this.tasks.find((x) => x.id === id)
+    if (!t) return
+    Object.assign(t, patch)
+    this.notify()
+  }
+
   list(): DownloadTask[] {
     return this.tasks.map((t) => ({ ...t, completedPages: [...t.completedPages] }))
   }
