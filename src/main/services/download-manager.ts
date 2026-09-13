@@ -114,7 +114,10 @@ export class DownloadManager {
       buf = await this.deps.fetchBinary(t.archiveDownloadUrl ?? '', t.headers, t.proxy, 600_000)
     } catch (e: any) {
       if (t.epoch !== epoch) return
-      t.error = e?.message ?? String(e)
+      const msg = e?.message ?? String(e)
+      t.error = /^HTTP 4\d\d/.test(msg)
+        ? 'Ссылка на архив устарела (E-Hentai ссылок живёт несколько часов). Купи архив заново.'
+        : msg
       t.state = 'error'
       this.notify()
       return

@@ -150,8 +150,15 @@ export default function Reader(): JSX.Element {
     const cost = await window.api.ehArchiveCost(opened.url)
     if (!cost) { alert('Не удалось получить страницу архива'); return }
     const costText = cost.costGp != null ? `Стоимость: ${cost.costGp} GP.` : 'Стоимость неизвестна.'
+    let dltype = cost.options[0]?.key ?? 'org'
+    if (cost.options.length > 1) {
+      const labels = cost.options.map((o) => `'${o.key}' (${o.label})`).join(' / ')
+      const input = window.prompt(`${costText} Выберите формат архива: ${labels}`, dltype)
+      const chosen = input != null && input.trim() !== '' ? cost.options.find((o) => o.key === input.trim()) : undefined
+      if (chosen) dltype = chosen.key
+    }
     if (!window.confirm(`${costText} Купить и скачать оригинальный архив?`)) return
-    const r = await window.api.ehArchiveBuy(opened.url, cost.options[0]?.key ?? 'org')
+    const r = await window.api.ehArchiveBuy(opened.url, dltype)
     if (!r?.downloadUrl) { alert('Не удалось купить архив (нет ссылки на скачивание)'); return }
     const task = await window.api.downloadsAddArchive(opened.url, opened.title, r.downloadUrl)
     if (!task) { alert('Такая галерея уже есть в загрузках'); return }

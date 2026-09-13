@@ -47,7 +47,9 @@ export async function buyArchive(
   // Response contains a link like /dl/<hash>/<gid>-<token>.zip or full URL
   const m = r.text.match(/https?:\/\/[^"'\s]+\.zip[^"'\s]*/)
   if (m) return { downloadUrl: m[0] }
-  const m2 = r.text.match(/href="([^"]+\.zip[^"]*)"/)
+  const m2 = r.text.match(/href=["']([^"']+\.zip[^"']*)["']/)
   if (m2) return { downloadUrl: m2[1].startsWith('http') ? m2[1] : new URL(m2[1], url).toString() }
+  const m3 = r.text.match(/["'](\/dl\/[^"'\s]+\.zip)["']/)
+  if (m3) return { downloadUrl: new URL(m3[1], url).toString() }
   return null
 }
