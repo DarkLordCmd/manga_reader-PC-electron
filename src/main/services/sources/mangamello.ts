@@ -8,7 +8,7 @@ const SITE = 'https://mangamello.com/manga/'
 
 export function parseMangaMelloSearch(jsonText: string, _base: string): CatalogItem[] {
   const j = JSON.parse(jsonText) as any
-  const arr: any[] = j?.results ?? j?.results ?? []
+  const arr: any[] = j?.results ?? []
   assertLayout(['results', '"total"'], jsonText, 'MangaMello')
   return arr.map((m) => {
     const id = m?.idmanga ?? m?.id
@@ -41,11 +41,14 @@ export async function searchMangaMello(query: string, page = 0): Promise<Catalog
 // search response only carries the latest chapter count. Chapter list is
 // therefore synthesized as 1..N chapter URLs on the site host.
 export async function fetchMangaMelloChapters(mangaUrl: string): Promise<ChapterInfo[]> {
-  const raw = await httpGetJson(mangaUrl.trim().replace(/\/+$/, '') + '/', { Referer: BASE })
+  const segs = mangaUrl.trim().replace(/\/+$/, '').split('/').filter(Boolean)
+  const nums = segs.filter((s) => /^\d+$/.test(s))
+  const id = nums[nums.length - 1] ?? ''
+  if (!id) throw new Error('MangaMello: не удалось разобрать URL манги')
+  const raw = await httpGetJson(`${BASE}${id}/`, { Referer: BASE })
   const j = raw as any
-  const id = j?.idmanga ?? j?.id
   const count = typeof j?.chapter === 'number' ? j.chapter : (typeof j?.chapters === 'number' ? j.chapters : null)
-  if (!id || !count || count < 1) throw new Error('MangaMello: не удалось получить список глав')
+  if (!count || count < 1) throw new Error('MangaMello: не удалось получить список глав')
   const chapters: ChapterInfo[] = []
   for (let n = 1; n <= count; n++) {
     chapters.push({
