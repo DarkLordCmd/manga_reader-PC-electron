@@ -25,6 +25,7 @@ export interface Settings {
   eh_tag_bookmarks: string[]
   read_chapters: string[]
   downloads_dir: string | null
+  lib_image_server: string | null
 }
 
 export function defaultSettings(): Settings {
@@ -37,7 +38,8 @@ export function defaultSettings(): Settings {
     infinite_scroll: false, tor_proxied_sites: [], nhentai_show_page_counts: true,
     enable_domain_fronting: false,
     viewing_history: [], show_r34_history: true, eh_tag_bookmarks: [], read_chapters: [],
-    downloads_dir: null
+    downloads_dir: null,
+    lib_image_server: null
   }
 }
 
@@ -93,6 +95,7 @@ export function parseSettings(raw: unknown): Settings {
     show_r34_history: bool(o.show_r34_history, true),
     eh_tag_bookmarks: strArr(o.eh_tag_bookmarks),
     read_chapters: strArr(o.read_chapters),
-    downloads_dir: typeof o.downloads_dir === 'string' ? o.downloads_dir : null
+    downloads_dir: typeof o.downloads_dir === 'string' ? o.downloads_dir : null,
+    lib_image_server: typeof o.lib_image_server === 'string' && o.lib_image_server.trim() ? o.lib_image_server.trim() : null
   }
 }

@@ -42,6 +42,7 @@ export interface NhentaiTagSuggestion { name: string; count: number }
 export interface TorStatus { state: string; latencyMs?: number; reason?: string }
 export interface BridgeStatus { line: string; state: string; latencyMs?: number; reason?: string }
 export interface SiteStatus { key: string; state: string; reason?: string }
+export interface LibMirrorStatus { host: string; ok: boolean; ms: number; error?: string }
 
 export interface CatalogFilters {
   ehExcludedCats?: number
@@ -139,6 +140,7 @@ export interface Api {
   checkTor(): Promise<TorStatus>
   checkBridges(lines: string[]): Promise<BridgeStatus[]>
   checkSites(): Promise<SiteStatus[]>
+  libMirrorsCheck(): Promise<LibMirrorStatus[]>
   getExAccounts(): Promise<ExAccountsResult>
   setExAccount(id: number): Promise<ExAccountsResult>
   addExAccount(name: string, memberId: string, passHash: string, igneous: string): Promise<ExAccountsResult>
@@ -191,6 +193,7 @@ export const CH = {
   checkTor: 'tor:check',
   checkBridges: 'tor:bridges',
   checkSites: 'sites:check',
+  libMirrorsCheck: 'libMirrors:check',
   getExAccounts: 'ex:accounts',
   setExAccount: 'ex:set',
   addExAccount: 'ex:add',

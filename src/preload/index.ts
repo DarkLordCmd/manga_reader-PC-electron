@@ -26,6 +26,7 @@ const api: Api = {
   checkTor: () => ipcRenderer.invoke(CH.checkTor),
   checkBridges: (lines) => ipcRenderer.invoke(CH.checkBridges, lines),
   checkSites: () => ipcRenderer.invoke(CH.checkSites),
+  libMirrorsCheck: () => ipcRenderer.invoke(CH.libMirrorsCheck),
   getExAccounts: () => ipcRenderer.invoke(CH.getExAccounts),
   setExAccount: (id) => ipcRenderer.invoke(CH.setExAccount, id),
   addExAccount: (name, memberId, passHash, igneous) => ipcRenderer.invoke(CH.addExAccount, name, memberId, passHash, igneous),

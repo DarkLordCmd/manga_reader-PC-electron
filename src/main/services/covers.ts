@@ -1,5 +1,6 @@
 import type { Settings } from '@shared/settings'
 import { httpFetchBinary } from './http'
+import { withMirror } from './lib-mirror'
 
 function siteKeyForUrl(url: string): string | null {
   const l = url.toLowerCase()
@@ -57,6 +58,7 @@ export async function fetchCoverBuffer(
   accountCookieHeader: string
 ): Promise<Buffer> {
   const siteKey = siteKeyForUrl(url)
+  url = withMirror(url)
   const headers: Record<string, string> = {}
   const referer = coverReferer(siteKey, url)
   if (referer) headers.Referer = referer

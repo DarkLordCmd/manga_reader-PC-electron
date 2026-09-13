@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { buildSocksDispatcher } from './http'
+import { withMirror } from './lib-mirror'
 
 export const MAX_CONCURRENT = 6
 export const LOAD_AHEAD = 32
@@ -57,12 +58,13 @@ export function setReadingPosition(gid: string, index: number): void {
 }
 
 async function loadOne(g: OnlineGallery, e: Entry, headers: Record<string, string>): Promise<void> {
-  try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 30_000)
     try {
-      const dispatch = g.proxy ? { dispatcher: buildSocksDispatcher(g.proxy) } : {}
-      const res = await fetch(e.url, {
+      const fetchUrl = withMirror(e.url)
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 30_000)
+      try {
+        const dispatch = g.proxy ? { dispatcher: buildSocksDispatcher(g.proxy) } : {}
+        const res = await fetch(fetchUrl, {
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', ...headers },
         signal: controller.signal,
         ...dispatch
