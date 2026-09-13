@@ -52,9 +52,9 @@ export async function searchRemanga(
   page: number,
   filters: CatalogFilters = {}
 ): Promise<CatalogItem[]> {
-  // API rejects `query=` with an empty value (HTTP 400) and no longer
-  // accepts the old `index` ordering — `views` is a stable equivalent.
-  const params = new URLSearchParams({ page: String(page + 1), count: '20', ordering: filters.remangaOrdering ?? 'views' })
+  // UI sends '' for the default sort — `'' || 'views'` (a nullish coalescing
+  // would keep the empty string) → invalid ordering crashes the API.
+  const params = new URLSearchParams({ page: String(page + 1), count: '20', ordering: filters.remangaOrdering || 'views' })
   if (query.trim()) params.set('query', query.trim())
   if (filters.remangaStatus) params.set('status', filters.remangaStatus)
   if (filters.remangaTypes) params.set('types', filters.remangaTypes)
