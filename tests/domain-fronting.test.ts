@@ -19,6 +19,12 @@ describe('domain-fronting', () => {
     expect(supportsFronting('example.com')).toBe(false)
   })
 
+  it('covers all five EH hosts', () => {
+    for (const h of ['e-hentai.org', 'exhentai.org', 'upld.e-hentai.org', 'api.e-hentai.org', 'forums.e-hentai.org']) {
+      expect(supportsFronting(h)).toBe(true)
+    }
+  })
+
   it('round-robins through IPs and marks unavailable ones', () => {
     const ips = HOST2IPS['exhentai.org']
     const first = frontingIpFor('exhentai.org')
