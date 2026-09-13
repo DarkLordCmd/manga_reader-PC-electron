@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio'
-import { httpFetch } from '../http'
+import { fetchHtmlSmart } from '../fetch-html'
 import { type CatalogItem, type SimpleSiteConfig, resolve } from './catalog-types'
 
 export function extractCoverFromSubtree($: cheerio.CheerioAPI, el: any): string | null {
@@ -28,13 +28,9 @@ export async function searchSimpleSite(
       : `${config.base}${config.catalogPath}`
   if (extraQuery) target += (target.includes('?') ? '&' : '?') + extraQuery
 
-  const r = await httpFetch({
-    url: target,
-    headers: { Referer: `${config.base}/`, Accept: 'text/html,application/xhtml+xml' }
-  }, opts.proxy)
-  if (r.status >= 400) throw new Error(`${config.name}: HTTP ${r.status}`)
+  const html = await fetchHtmlSmart(target, { proxy: opts.proxy })
 
-  const $ = cheerio.load(r.text)
+  const $ = cheerio.load(html)
   const results: CatalogItem[] = []
   const seen = new Set<string>()
   $('a').each((_i, el) => {

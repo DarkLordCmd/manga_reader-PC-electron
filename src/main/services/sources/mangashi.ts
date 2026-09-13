@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio'
-import { httpFetch } from '../http'
+import { fetchHtmlSmart } from '../fetch-html'
 import { type CatalogItem, type CatalogFilters, resolve } from './catalog-types'
 import type { ChapterInfo } from './remanga'
 
@@ -24,9 +24,8 @@ export async function searchMangaShi(
   // manga-shi.org pagination is 1-indexed on the wire; our page is 0-based.
   if (page > 0) params.push(`page=${page + 1}`)
   const url = `${base}/catalog/${params.length ? `?${params.join('&')}` : ''}`
-  const r = await httpFetch({ url, headers: { Referer: `${base}/`, Accept: 'text/html' } }, proxy)
-  if (r.status >= 400) throw new Error(`Manga-shi: HTTP ${r.status}`)
-  const $ = cheerio.load(r.text)
+  const text = await fetchHtmlSmart(url, { proxy })
+  const $ = cheerio.load(text)
   const results: CatalogItem[] = []
   const seen = new Set<string>()
   $('a.media-shell').each((_i, el) => {
@@ -100,10 +99,7 @@ function mangashiChapterNumFromUrl(full: string, text: string): string {
 
 export async function fetchMangaShiChapters(mangaUrl: string, proxy?: string): Promise<ChapterInfo[]> {
   const base = mangaUrl.trim().replace(/\/+$/, '')
-  const opts = { headers: { Referer: mangaUrl, Accept: 'text/html,application/xhtml+xml' }, timeoutMs: 30_000 }
-
-  const page1 = await httpFetch({ url: mangaUrl, ...opts }, proxy)
-  if (page1.status >= 400) throw new Error(`Manga-shi: HTTP ${page1.status}`)
+  const page1 = await fetchHtmlSmart(mangaUrl, { proxy, timeoutMs: 30_000 })
 
   const allChapters: ChapterInfo[] = []
   const seen = new Set<string>()
@@ -126,15 +122,14 @@ export async function fetchMangaShiChapters(mangaUrl: string, proxy?: string): P
     })
   }
 
-  parseChapters(page1.text)
+  parseChapters(page1)
 
-  let page = findNextPage(page1.text)
+  let page = findNextPage(page1)
   while (page != null && page <= 200) {
     const target = `${base}/chapters/?chapter_sort=latest&page=${page}`
-    const r = await httpFetch({ url: target, ...opts }, proxy)
-    if (r.status >= 400) break
-    parseChapters(r.text)
-    const next = findNextPage(r.text)
+    const r = await fetchHtmlSmart(target, { proxy, timeoutMs: 30_000 })
+    parseChapters(r)
+    const next = findNextPage(r)
     if (next == null || next <= page) break
     page = next
   }
