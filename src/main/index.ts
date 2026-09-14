@@ -181,6 +181,9 @@ app.whenReady().then(() => {
       chapters = await fetchMangaMelloChapters(mangaId)
     } else if (mangaId.includes('readmanga.') || mangaId.includes('mintmanga.') || mangaId.includes('mangapoisk.')) {
       chapters = await fetchGroupleChapters(mangaId)
+    } else if (mangaId.includes('com-x.life')) {
+      const { fetchComxChapters } = await import('./services/sources/comx')
+      chapters = await fetchComxChapters(mangaId)
     } else {
       chapters = await fetchChapterList(mangaId)
     }

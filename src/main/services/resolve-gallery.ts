@@ -2,6 +2,11 @@ import { resolveAtHome } from './mangadex'
 import { fetchRemangaChapter, fetchSenkuroChapter, mangaSeriesUrlFromChapterUrl } from './sources'
 import { fetchSimpleGallery } from './simple-gallery'
 import { fetchMangaMelloChapter } from './sources'
+import * as cheerio from 'cheerio'
+
+/** image hosts used by com-x reader pages (window.__IMG_HOST__ may pick one
+ * depending on the visitor's timezone). */
+export const CGI_IMAGE_HOSTS = /(?:img\.com-x\.life\/comix\/|rus\.com-x\.life\/comix\/)/
 
 // Resolved fields (title, pageUrls, coverUrl, source, referer, mangaId, seriesId) mirror the
 // former inline openUrl routing in src/main/index.ts so behavior stays byte-identical.
@@ -84,6 +89,33 @@ export async function resolveGallery(
   }
   if (trimmed.includes('manga-shi.') || trimmed.includes('nhentai') || trimmed.includes('com-x.life') || trimmed.includes('mangalib.') || trimmed.includes('e-hentai.org') || trimmed.includes('exhentai')
     || trimmed.includes('readmanga.') || trimmed.includes('mintmanga.') || trimmed.includes('mangapoisk.')) {
+    if (trimmed.includes('third-party')) {
+      // reserved for future js-only sources
+    }
+    if (trimmed.includes('com-x.life/reader/')) {
+      // the com-x reader is a JS SPA — render through the hidden browser
+      // channel and harvest the gallery <img>s.
+      const { fetchHtmlViaBrowser } = await import('./browser-fetch')
+      const rendered = await fetchHtmlViaBrowser(trimmed, { timeoutMs: 60_000 })
+      const $rd = cheerio.load(rendered)
+      const pages: string[] = []
+      const seen = new Set<string>()
+      $rd('img[src]').each((_i, el) => {
+        const s = $rd(el).attr('src') ?? ''
+        if (!CGI_IMAGE_HOSTS.test(s) || s.startsWith('data:')) return
+        if (seen.has(s)) return
+        seen.add(s)
+        pages.push(s)
+      })
+      // fallback: embedded URLs anywhere in the rendered html
+      if (pages.length === 0) {
+        for (const m of rendered.matchAll(/https?:\/\/img\.com-x\.life\/comix\/\d+\/\d+\/[\w._-]+\.(?:jpg|jpeg|png|webp)/g)) {
+          if (!seen.has(m[0])) { seen.add(m[0]); pages.push(m[0]) }
+        }
+      }
+      const title = ($rd('title').first().text().trim() || 'Com-X').slice(0, 120)
+      return { title, pageUrls: pages, coverUrl: null, source: 'Com-X', referer: trimmed, mangaId: seriesId, seriesId }
+    }
     const g = await fetchSimpleGallery(trimmed, { proxy: opts.proxy, cookieHeader: opts.cookieHeader })
     return { title: g.title, pageUrls: g.pageUrls, coverUrl: g.coverUrl, source: sourceLabel(trimmed), referer: trimmed, proxy: opts.proxy, mangaId: seriesId, seriesId }
   }

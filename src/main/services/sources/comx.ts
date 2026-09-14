@@ -1,9 +1,13 @@
 import * as cheerio from 'cheerio'
 import { comxFetchText } from '../comx-gate'
+import { fetchHtmlViaBrowser } from '../browser-fetch'
+import { type ChapterInfo } from './remanga'
 import { type CatalogItem, type SimpleSiteConfig } from './catalog-types'
 
 /** Com-X dedicated: DLE CMS markup + /reader/<news>/<chapter> pages and a
- * custom PoW challenge — everything routed through PoW-gate. */
+ * custom PoW challenge — everything routed through PoW-gate. The chapter
+ * list is rendered client-side, so it's collected through the hidden
+ * BrowserWindow channel. */
 
 export const COMX_BASE = 'https://com-x.life'
 
@@ -42,4 +46,30 @@ export async function searchComx(
   const html = await comxFetchText(target, { proxy: opts.proxy, timeoutMs: 30_000 })
   const results = parseComxListing(html, COMX_BASE)
   return results
+}
+
+/**
+ * Chapter list is rendered client-side by their SPA — collect it through the
+ * hidden BrowserWindow channel (JS runs, images stay disabled in prefs).
+ * Chapters are sorted ascending by their chapter ids (their ids grow).
+ */
+export async function fetchComxChapters(mangaUrl: string): Promise<ChapterInfo[]> {
+  const html = await fetchHtmlViaBrowser(mangaUrl, { timeoutMs: 60_000 })
+  const $ = cheerio.load(html)
+  const out: ChapterInfo[] = []
+  const seen = new Set<string>()
+  $('a[href*="/reader/"]').each((_i, el) => {
+    const href = $(el).attr('href') ?? ''
+    const m = href.match(/\/reader\/(\d+)\/(\d+)/)
+    if (!m) return
+    const full = href.startsWith('http') ? href : new URL(href, COMX_BASE).toString()
+    if (seen.has(full)) return
+    seen.add(full)
+    const rawLabel = $(el).text().trim().replace(/\s+/g, ' ')
+    const label = /Том|Глава|Вып/i.test(rawLabel) ? rawLabel : `Глава ${m[2]}`
+    out.push({ chapter_id: full, chapter_num: label, title: null, lang: 'comx' })
+  })
+  if (out.length === 0) throw new Error('Com-X: список глав не отрендерился (возможно, анти-бот сменил разметку)')
+  out.sort((a, b) => Number(b.chapter_id.split('/').pop()) - Number(a.chapter_id.split('/').pop()))
+  return out
 }
