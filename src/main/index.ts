@@ -34,6 +34,7 @@ import { registerEhLimitHook } from './services/eh-limits-hook'
 import { httpFetchBinary, httpFetch } from './services/http'
 import { setLibMirror, LIB_MIRRORS } from './services/lib-mirror'
 import { setCustomDnsServers, parseDnsServerList, checkCustomDns } from './services/custom-dns'
+import { lookup as dnsPromiseLookup } from 'dns'
 import { DownloadManager } from './services/download-manager'
 import { CH } from '@shared/ipc'
 
@@ -529,11 +530,21 @@ app.whenReady().then(() => {
   })
   ipcMain.handle(CH.libMirrorsCheck, async () => {
     return await Promise.all(LIB_MIRRORS.map(async (host) => {
+      // DNS gate first: a vanished record means a dead mirror server-side.
+      try {
+        await new Promise<void>((res, rej) => dnsPromiseLookup(host, (e: any) => e ? rej(e) : res()))
+      } catch (e: any) {
+        return { host, ok: false, ms: -1, error: `DNS записи нет (зеркало удалено) — ${e?.code ?? 'ENOTFOUND'}` }
+      }
       const start = Date.now()
       try {
-        const r = await httpFetch({ url: `https://${host}/favicon.ico`, timeoutMs: 5000, frontOnEmpty: false })
-        if (r.status >= 400) throw new Error(`HTTP ${r.status}`)
-        return { host, ok: true, ms: Date.now() - start }
+        const r = await httpFetch({ url: `https://${host}/favicon.ico`, timeoutMs: 10000, frontOnEmpty: false })
+        // Any HTTP answer (even 404 — many CDNs have no favicon) proves the
+        // host is reachable; only network failures make it "bad".
+        const reachable = r.status < 500
+        return reachable
+          ? { host, ok: true, ms: Date.now() - start }
+          : { host, ok: false, ms: Date.now() - start, error: `HTTP ${r.status}` }
       } catch (e: any) {
         return { host, ok: false, ms: -1, error: e?.message ?? String(e) }
       }

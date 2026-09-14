@@ -1,5 +1,6 @@
-export const LIB_MIRRORS = ['img33.imgslib.link', 'img34.imgslib.link', 'img45.imgslib.link']
-
+// Only img33 is still served by the Lib image CDN (img34/img45 removed from
+// DNS server-side — verified with system + ComssDNS resolvers on 2026-09-13).
+export const LIB_MIRRORS = ['img33.imgslib.link']
 let chosen: string | null = null
 
 export function setLibMirror(v: string | null): void {

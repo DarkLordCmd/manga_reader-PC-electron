@@ -12,8 +12,9 @@ describe('rewriteImglibHost', () => {
   it('leaves non-imgslib urls alone', () => {
     expect(rewriteImglibHost('https://example.com/x.jpg', 'img45.imgslib.link')).toBe('https://example.com/x.jpg')
   })
-  it('exposes known mirrors', () => {
-    expect(LIB_MIRRORS.length).toBeGreaterThanOrEqual(3)
+  it('exposes the single live mirror (img33; img34/img45 removed by Lib)', () => {
+    expect(LIB_MIRRORS.length).toBeGreaterThanOrEqual(1)
+    expect(LIB_MIRRORS).toContain('img33.imgslib.link')
   })
 })
 
