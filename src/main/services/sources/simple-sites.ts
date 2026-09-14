@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio'
 import { fetchHtmlSmart } from '../fetch-html'
 import { type CatalogItem, type SimpleSiteConfig, resolve } from './catalog-types'
 import { assertLayout } from '../layout-watcher'
+import { comxFetchText } from '../comx-gate'
 
 export function extractCoverFromSubtree($: cheerio.CheerioAPI, el: any): string | null {
   for (const attr of ['data-src', 'data-original', 'src']) {
@@ -29,7 +30,13 @@ export async function searchSimpleSite(
       : `${config.base}${config.catalogPath}`
   if (extraQuery) target += (target.includes('?') ? '&' : '?') + extraQuery
 
-  const html = await fetchHtmlSmart(target, { proxy: opts.proxy })
+  let html
+  if (config.linkMarker === '/manga/' && (config.base.includes('com-x') ?? false)) {
+    // com-x.life: páginas отдаются с PoW-челленджем (HTTP 404) — отдельный путь.
+    html = await comxFetchText(target, { proxy: opts.proxy })
+  } else {
+    html = await fetchHtmlSmart(target, { proxy: opts.proxy })
+  }
 
   assertLayout([config.linkMarker, '<a '], html, config.name)
 

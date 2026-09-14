@@ -34,6 +34,7 @@ import { registerEhLimitHook } from './services/eh-limits-hook'
 import { httpFetchBinary, httpFetch } from './services/http'
 import { setLibMirror, LIB_MIRRORS } from './services/lib-mirror'
 import { setCustomDnsServers, parseDnsServerList, checkCustomDns } from './services/custom-dns'
+import { initCookieStore } from './services/comx-gate'
 import { lookup as dnsPromiseLookup } from 'dns'
 import { DownloadManager } from './services/download-manager'
 import { CH } from '@shared/ipc'
@@ -107,6 +108,7 @@ app.whenReady().then(() => {
   setTorFallbackAddr(settings.get().tor_socks_addr || '127.0.0.1:9150')
   setLibMirror(settings.get().lib_image_server ?? null)
   setCustomDnsServers(parseDnsServerList(settings.get().custom_dns ?? ''))
+  initCookieStore(app.getPath('userData'))
   pin = new PinService(app.getPath('userData'))
   ipcMain.handle(CH.pinHasPin, () => pin.hasPin())
   ipcMain.handle(CH.pinSetPin, (_e, p: string) => pin.setPin(String(p)))
@@ -461,9 +463,13 @@ app.whenReady().then(() => {
       }, exProxy)
       return ex.map((c) => ({ url: c.url, title: c.title, coverUrl: c.coverUrl, pages: c.pages, score: c.rating, kind: c.category }))
     }
-    if (source === 'comx' || source === 'mangalib') {
+    if (source === 'comx') {
+      const { searchComx } = await import('./services/sources/comx')
+      const { COMX_BASE } = await import('./services/sources/comx')
+      return await searchComx({ name: 'Com-X', base: COMX_BASE, catalogPath: '/comix-read/', searchPath: '/search/', linkMarker: '.html' }, query, page, { proxy })
+    }
+    if (source === 'mangalib') {
       const cfg = {
-        comx: { name: 'Com-X', base: 'https://com-x.life', catalogPath: '/manga/', searchPath: '/search?q=', linkMarker: '/manga/' },
         mangalib: { name: 'Mangalib', base: 'https://mangalib.me', catalogPath: '/manga-list', searchPath: '/search?q=', linkMarker: '/manga/' }
       }[source]!
       const extra = page > 0 ? `page=${page + 1}` : ''

@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio'
 import { fetchHtmlSmart } from './fetch-html'
 import { ehErrorFromResponse } from './catalog-search'
+import { comxFetchText } from './comx-gate'
 
 export interface SimpleGallery {
   title: string
@@ -108,11 +109,16 @@ export async function fetchSimpleGallery(
   url: string,
   opts: { proxy?: string; cookieHeader?: string; timeoutMs?: number } = {}
 ): Promise<SimpleGallery> {
-  const html = await fetchHtmlSmart(url, {
-    proxy: opts.proxy,
-    cookieHeader: opts.cookieHeader,
-    timeoutMs: opts.timeoutMs ?? (opts.proxy ? 120_000 : 30_000)
-  })
+  let html
+  if (url.includes('com-x.life')) {
+    html = await comxFetchText(url, { proxy: opts.proxy, timeoutMs: opts.timeoutMs })
+  } else {
+    html = await fetchHtmlSmart(url, {
+      proxy: opts.proxy,
+      cookieHeader: opts.cookieHeader,
+      timeoutMs: opts.timeoutMs ?? (opts.proxy ? 120_000 : 30_000)
+    })
+  }
 
   if (url.includes('exhentai') || url.includes('e-hentai.org')) {
     const ehErr = ehErrorFromResponse(200, html)
