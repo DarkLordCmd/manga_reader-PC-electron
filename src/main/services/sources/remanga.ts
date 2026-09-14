@@ -65,10 +65,16 @@ export async function searchRemanga(
     { Referer: 'https://remanga.org/', Accept: 'application/json' }
   ) as any
   const results: any[] = json?.results ?? json?.content ?? []
+  // API now returns cover paths without a host (/media/titles/...).
+  const coverOf = (r: any): string | null => {
+    const c = r?.cover?.high ?? r?.cover?.mid ?? null
+    if (typeof c !== 'string' || !c) return null
+    return c.startsWith('http') ? c : `https://remanga.org${c.startsWith('/') ? '' : '/'}${c}`
+  }
   return results.map((r) => ({
     url: `https://remanga.org/manga/${r?.dir ?? ''}/`,
     title: r?.main_name ?? r?.rus_name ?? r?.name ?? 'Без названия',
-    coverUrl: r?.cover?.high ?? r?.cover?.mid ?? null,
+    coverUrl: coverOf(r),
     pages: r?.count_chapters ?? null,
     kind: r?.type?.name ?? null,
     score: typeof r?.avg_rating === 'number' ? r.avg_rating : null
