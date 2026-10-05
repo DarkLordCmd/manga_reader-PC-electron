@@ -114,6 +114,9 @@ export class HistoryManager {
         next.totalPages = Math.max(existing.totalPages, update.total_pages)
       }
       this.repo.upsertHistory(next)
+      if (existing.url !== update.url) {
+        this.repo.updateProgress(existing.key, 1, Math.max(existing.totalPages, update.total_pages), Date.now())
+      }
     } else {
       this.repo.upsertHistory(toUpsert(update, key, update.series_id || update.url))
     }

@@ -31,4 +31,15 @@ describe('HistoryManager writes through to the repository', () => {
     m2.load([{ ...base, url: 'https://nhentai.net/g/99/', series_id: 'y', current_page: 1, total_pages: 1, opened_at: 2 }])
     expect(repo.get('nh:99')).toBeNull()
   })
+
+  it('resets currentPage when opening a different chapter of the same series', () => {
+    const repo = new InMemorySeriesRepository()
+    const m = new HistoryManager(repo)
+    m.addOrUpdate({ ...base, url: 'https://senkuro.me/manga/foo/chapter/1/', series_id: 'https://senkuro.me/manga/foo/', current_page: 1, total_pages: 50 } as any)
+    m.updateProgress('https://senkuro.me/manga/foo/chapter/1/', 20, 50)
+    expect(repo.get('sk:foo')!.currentPage).toBe(20)
+    m.addOrUpdate({ ...base, url: 'https://senkuro.me/manga/foo/chapter/2/', series_id: 'https://senkuro.me/manga/foo/', current_page: 1, total_pages: 40 } as any)
+    expect(repo.get('sk:foo')!.currentPage).toBe(1)
+    expect(repo.get('sk:foo')!.totalPages).toBe(50)
+  })
 })
