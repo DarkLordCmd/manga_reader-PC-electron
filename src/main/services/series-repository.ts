@@ -1,0 +1,149 @@
+import type { LibraryItem, SeriesUpsert, ReadingStatus, LibraryQuery } from '@shared/library'
+
+export interface SeriesRepository {
+  all(): LibraryItem[]
+  get(key: string): LibraryItem | null
+  findByUrl(url: string): LibraryItem | null
+  upsertHistory(item: SeriesUpsert): LibraryItem
+  updateProgress(key: string, currentPage: number, totalPages: number, openedAt: number): void
+  setStatus(key: string, status: ReadingStatus | null): void
+  setNote(key: string, note: string): void
+  setRating(key: string, rating: number | null): void
+  setTags(key: string, tags: string[]): void
+  delete(key: string): void
+  clearHistory(): void
+  list(query: LibraryQuery): LibraryItem[]
+  countByStatus(): Record<string, number>
+  importItems(items: LibraryItem[]): { added: number; updated: number }
+}
+
+function clone(i: LibraryItem): LibraryItem {
+  return { ...i, tags: [...i.tags] }
+}
+
+export abstract class BaseSeriesRepository implements SeriesRepository {
+  abstract all(): LibraryItem[]
+  abstract get(key: string): LibraryItem | null
+  abstract findByUrl(url: string): LibraryItem | null
+  abstract upsertHistory(item: SeriesUpsert): LibraryItem
+  abstract updateProgress(key: string, currentPage: number, totalPages: number, openedAt: number): void
+  abstract setStatus(key: string, status: ReadingStatus | null): void
+  abstract setNote(key: string, note: string): void
+  abstract setRating(key: string, rating: number | null): void
+  abstract setTags(key: string, tags: string[]): void
+  abstract delete(key: string): void
+  abstract clearHistory(): void
+  abstract importItems(items: LibraryItem[]): { added: number; updated: number }
+
+  list(query: LibraryQuery): LibraryItem[] {
+    let items = this.all().filter((i) => i.status !== null)
+    if (query.includeR34 === false) items = items.filter((i) => i.category !== 'r34')
+    if (query.status && query.status !== 'all') items = items.filter((i) => i.status === query.status)
+    const q = query.search?.trim().toLowerCase()
+    if (q) items = items.filter((i) => i.title.toLowerCase().includes(q))
+    const sort = query.sort ?? 'last_read'
+    return [...items].sort((a, b) => {
+      if (sort === 'title') return a.title.localeCompare(b.title)
+      if (sort === 'rating') return (b.rating ?? 0) - (a.rating ?? 0)
+      if (sort === 'added') return b.createdAt - a.createdAt
+      return b.openedAt - a.openedAt
+    })
+  }
+
+  countByStatus(): Record<string, number> {
+    const out: Record<string, number> = {}
+    for (const i of this.all()) {
+      if (!i.status) continue
+      out[i.status] = (out[i.status] ?? 0) + 1
+    }
+    return out
+  }
+}
+
+export class InMemorySeriesRepository extends BaseSeriesRepository {
+  private map = new Map<string, LibraryItem>()
+
+  constructor(seed: LibraryItem[] = []) {
+    super()
+    for (const i of seed) this.map.set(i.key, clone(i))
+  }
+
+  all(): LibraryItem[] {
+    return [...this.map.values()].map(clone)
+  }
+
+  get(key: string): LibraryItem | null {
+    const v = this.map.get(key)
+    return v ? clone(v) : null
+  }
+
+  findByUrl(url: string): LibraryItem | null {
+    for (const v of this.map.values()) if (v.url === url) return clone(v)
+    return null
+  }
+
+  upsertHistory(item: SeriesUpsert): LibraryItem {
+    const now = Date.now()
+    const existing = this.map.get(item.key)
+    if (existing) {
+      const next: LibraryItem = {
+        ...existing,
+        ...item,
+        coverUrl: item.coverUrl ?? existing.coverUrl,
+        currentPage: Math.max(existing.currentPage, item.currentPage),
+        totalPages: Math.max(existing.totalPages, item.totalPages),
+        openedAt: item.openedAt ?? now,
+        createdAt: existing.createdAt,
+        updatedAt: now
+      }
+      this.map.set(item.key, next)
+      return clone(next)
+    }
+    const row: LibraryItem = {
+      ...item,
+      status: null, note: '', rating: null, tags: [],
+      openedAt: item.openedAt ?? now,
+      createdAt: item.createdAt ?? now,
+      updatedAt: now
+    }
+    this.map.set(item.key, row)
+    return clone(row)
+  }
+
+  updateProgress(key: string, currentPage: number, totalPages: number, openedAt: number): void {
+    const e = this.map.get(key)
+    if (!e) return
+    e.currentPage = currentPage
+    e.totalPages = Math.max(e.totalPages, totalPages)
+    e.openedAt = openedAt
+    e.updatedAt = Date.now()
+  }
+
+  private patch(key: string, p: Partial<LibraryItem>): void {
+    const e = this.map.get(key)
+    if (!e) return
+    Object.assign(e, p, { updatedAt: Date.now() })
+  }
+
+  setStatus(key: string, status: ReadingStatus | null): void { this.patch(key, { status }) }
+  setNote(key: string, note: string): void { this.patch(key, { note }) }
+  setRating(key: string, rating: number | null): void { this.patch(key, { rating }) }
+  setTags(key: string, tags: string[]): void { this.patch(key, { tags: [...tags] }) }
+
+  delete(key: string): void { this.map.delete(key) }
+
+  clearHistory(): void {
+    for (const [k, v] of this.map) if (v.status === null) this.map.delete(k)
+  }
+
+  importItems(items: LibraryItem[]): { added: number; updated: number } {
+    let added = 0
+    let updated = 0
+    for (const item of items) {
+      const cur = this.map.get(item.key)
+      if (!cur) { this.map.set(item.key, clone(item)); added++; continue }
+      if (item.updatedAt > cur.updatedAt) { this.map.set(item.key, clone(item)); updated++ }
+    }
+    return { added, updated }
+  }
+}
