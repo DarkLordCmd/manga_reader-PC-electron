@@ -12,9 +12,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "dist": "electron-vite build && electron-builder"
+    "dist": "node scripts/fetch-tor.mjs && electron-vite build && electron-builder",
+    "postinstall": "electron-builder install-app-deps"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -28,6 +30,7 @@
   },
   "dependencies": {
     "@types/yauzl": "^3.4.0",
+    "better-sqlite3": "^12.11.1",
     "cheerio": "^1.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

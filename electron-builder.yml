@@ -6,6 +6,12 @@ directories:
 files:
   - out/**
   - package.json
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**'
+extraResources:
+  - from: vendor/tor
+    to: tor
+    filter: ['**/*']
 win:
   target:
     - nsis
