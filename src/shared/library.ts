@@ -22,6 +22,7 @@ export interface LibraryItem {
   openedAt: number
   createdAt: number
   updatedAt: number
+  deletedAt: number | null
 }
 
 export interface SeriesUpsert {
@@ -39,6 +40,7 @@ export interface SeriesUpsert {
   chapterTotal: number | null
   openedAt?: number
   createdAt?: number
+  deletedAt?: number | null
 }
 
 export type LibrarySort = 'last_read' | 'title' | 'rating' | 'added'

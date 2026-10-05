@@ -2,8 +2,11 @@ import type { LibraryItem, SeriesUpsert, ReadingStatus, LibraryQuery } from '@sh
 
 export interface SeriesRepository {
   all(): LibraryItem[]
+  allIncludingDeleted(): LibraryItem[]
   get(key: string): LibraryItem | null
+  getIncludingDeleted(key: string): LibraryItem | null
   findByUrl(url: string): LibraryItem | null
+  hardDelete(key: string): void
   upsertHistory(item: SeriesUpsert): LibraryItem
   updateProgress(key: string, currentPage: number, totalPages: number, openedAt: number): void
   setStatus(key: string, status: ReadingStatus | null): void
@@ -23,8 +26,11 @@ function clone(i: LibraryItem): LibraryItem {
 
 export abstract class BaseSeriesRepository implements SeriesRepository {
   abstract all(): LibraryItem[]
+  abstract allIncludingDeleted(): LibraryItem[]
   abstract get(key: string): LibraryItem | null
+  abstract getIncludingDeleted(key: string): LibraryItem | null
   abstract findByUrl(url: string): LibraryItem | null
+  abstract hardDelete(key: string): void
   abstract upsertHistory(item: SeriesUpsert): LibraryItem
   abstract updateProgress(key: string, currentPage: number, totalPages: number, openedAt: number): void
   abstract setStatus(key: string, status: ReadingStatus | null): void
@@ -69,16 +75,25 @@ export class InMemorySeriesRepository extends BaseSeriesRepository {
   }
 
   all(): LibraryItem[] {
+    return [...this.map.values()].filter((i) => i.deletedAt === null).map(clone)
+  }
+
+  allIncludingDeleted(): LibraryItem[] {
     return [...this.map.values()].map(clone)
   }
 
   get(key: string): LibraryItem | null {
     const v = this.map.get(key)
+    return v && v.deletedAt === null ? clone(v) : null
+  }
+
+  getIncludingDeleted(key: string): LibraryItem | null {
+    const v = this.map.get(key)
     return v ? clone(v) : null
   }
 
   findByUrl(url: string): LibraryItem | null {
-    for (const v of this.map.values()) if (v.url === url) return clone(v)
+    for (const v of this.map.values()) if (v.url === url && v.deletedAt === null) return clone(v)
     return null
   }
 
@@ -94,7 +109,8 @@ export class InMemorySeriesRepository extends BaseSeriesRepository {
         totalPages: Math.max(existing.totalPages, item.totalPages),
         openedAt: item.openedAt ?? now,
         createdAt: existing.createdAt,
-        updatedAt: now
+        updatedAt: now,
+        deletedAt: null
       }
       this.map.set(item.key, next)
       return clone(next)
@@ -104,7 +120,8 @@ export class InMemorySeriesRepository extends BaseSeriesRepository {
       status: null, note: '', rating: null, tags: [],
       openedAt: item.openedAt ?? now,
       createdAt: item.createdAt ?? now,
-      updatedAt: now
+      updatedAt: now,
+      deletedAt: null
     }
     this.map.set(item.key, row)
     return clone(row)
@@ -130,10 +147,15 @@ export class InMemorySeriesRepository extends BaseSeriesRepository {
   setRating(key: string, rating: number | null): void { this.patch(key, { rating }) }
   setTags(key: string, tags: string[]): void { this.patch(key, { tags: [...tags] }) }
 
-  delete(key: string): void { this.map.delete(key) }
+  delete(key: string): void { this.patch(key, { deletedAt: Date.now() }) }
+
+  hardDelete(key: string): void { this.map.delete(key) }
 
   clearHistory(): void {
-    for (const [k, v] of this.map) if (v.status === null) this.map.delete(k)
+    const now = Date.now()
+    for (const v of this.map.values()) {
+      if (v.status === null && v.deletedAt === null) { v.deletedAt = now; v.updatedAt = now }
+    }
   }
 
   importItems(items: LibraryItem[]): { added: number; updated: number } {

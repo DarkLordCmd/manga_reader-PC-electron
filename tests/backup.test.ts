@@ -7,7 +7,7 @@ const item = (over: Partial<LibraryItem> = {}): LibraryItem => ({
   key: 'nh:1', seriesId: 'nh:1', url: 'https://nhentai.net/g/1/', title: 'A', coverUrl: null,
   source: 'NHentai', category: 'r34', currentPage: 1, totalPages: 10, chapterLabel: null,
   chapterIndex: null, chapterTotal: null, status: 'reading', note: '', rating: null, tags: [],
-  openedAt: 1, createdAt: 1, updatedAt: 1, ...over
+  openedAt: 1, createdAt: 1, updatedAt: 1, deletedAt: null, ...over
 })
 
 describe('sanitizeSettings', () => {

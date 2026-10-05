@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { join } from 'path'
 import { existsSync, renameSync } from 'fs'
 import { SqliteSeriesRepository } from './sqlite-series-repository'
+import { needsDeletedAtColumn } from './db-migrate'
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS series (
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS series (
   note TEXT NOT NULL DEFAULT '',
   rating INTEGER,
   tags TEXT NOT NULL DEFAULT '[]',
+  deleted_at INTEGER,
   opened_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
@@ -36,11 +38,21 @@ export interface DbHandle {
   repo: SqliteSeriesRepository
 }
 
+function migrate(db: Database.Database): void {
+  const version = db.pragma('user_version', { simple: true }) as number
+  const cols = (db.pragma('table_info(series)') as { name: string }[]).map((c) => c.name)
+  if (needsDeletedAtColumn(version, cols)) {
+    db.exec('ALTER TABLE series ADD COLUMN deleted_at INTEGER')
+  }
+  db.pragma('user_version = 2')
+}
+
 function openAt(path: string): Database.Database {
   const db = new Database(path)
   try {
     db.pragma('journal_mode = WAL')
     db.exec(SCHEMA)
+    migrate(db)
     return db
   } catch (e) {
     try { db.close() } catch { /* ignore */ }
