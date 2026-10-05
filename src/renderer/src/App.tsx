@@ -6,6 +6,7 @@ import LockScreen from './components/LockScreen'
 import Reader from './screens/Reader'
 import Catalog from './screens/Catalog'
 import Library from './screens/Library'
+import Favorites from './screens/Favorites'
 import History from './screens/History'
 import Settings from './screens/Settings'
 import Downloads from './screens/Downloads'
@@ -20,6 +21,7 @@ function Shell(): JSX.Element {
         {screen === 'Reader' && <Reader />}
         {screen === 'Catalog' && <Catalog />}
         {screen === 'Library' && <Library />}
+        {screen === 'Favorites' && <Favorites />}
         {screen === 'History' && <History />}
         {screen === 'Downloads' && <Downloads />}
         {screen === 'Settings' && <Settings />}
