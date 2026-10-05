@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import { join } from 'path'
 import { existsSync, renameSync } from 'fs'
 import { SqliteSeriesRepository } from './sqlite-series-repository'
-import { needsDeletedAtColumn } from './db-migrate'
+import { needsDeletedAtColumn, needsFavoritedAtColumn } from './db-migrate'
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS series (
@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS series (
   rating INTEGER,
   tags TEXT NOT NULL DEFAULT '[]',
   deleted_at INTEGER,
+  favorited_at INTEGER,
   opened_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
@@ -44,7 +45,10 @@ function migrate(db: Database.Database): void {
   if (needsDeletedAtColumn(version, cols)) {
     db.exec('ALTER TABLE series ADD COLUMN deleted_at INTEGER')
   }
-  db.pragma('user_version = 2')
+  if (needsFavoritedAtColumn(version, cols)) {
+    db.exec('ALTER TABLE series ADD COLUMN favorited_at INTEGER')
+  }
+  db.pragma('user_version = 3')
 }
 
 function openAt(path: string): Database.Database {

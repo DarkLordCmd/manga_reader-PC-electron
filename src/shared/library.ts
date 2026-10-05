@@ -23,6 +23,7 @@ export interface LibraryItem {
   createdAt: number
   updatedAt: number
   deletedAt: number | null
+  favoritedAt: number | null
 }
 
 export interface SeriesUpsert {
@@ -41,6 +42,7 @@ export interface SeriesUpsert {
   openedAt?: number
   createdAt?: number
   deletedAt?: number | null
+  favoritedAt?: number | null
 }
 
 export type LibrarySort = 'last_read' | 'title' | 'rating' | 'added'
@@ -50,4 +52,5 @@ export interface LibraryQuery {
   search?: string
   sort?: LibrarySort
   includeR34?: boolean
+  scope?: 'library' | 'favorites'
 }

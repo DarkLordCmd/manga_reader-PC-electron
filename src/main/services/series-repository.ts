@@ -10,6 +10,7 @@ export interface SeriesRepository {
   upsertHistory(item: SeriesUpsert): LibraryItem
   updateProgress(key: string, currentPage: number, totalPages: number, openedAt: number): void
   setStatus(key: string, status: ReadingStatus | null): void
+  setFavorite(key: string, at: number | null): void
   setNote(key: string, note: string): void
   setRating(key: string, rating: number | null): void
   setTags(key: string, tags: string[]): void
@@ -34,6 +35,7 @@ export abstract class BaseSeriesRepository implements SeriesRepository {
   abstract upsertHistory(item: SeriesUpsert): LibraryItem
   abstract updateProgress(key: string, currentPage: number, totalPages: number, openedAt: number): void
   abstract setStatus(key: string, status: ReadingStatus | null): void
+  abstract setFavorite(key: string, at: number | null): void
   abstract setNote(key: string, note: string): void
   abstract setRating(key: string, rating: number | null): void
   abstract setTags(key: string, tags: string[]): void
@@ -42,7 +44,10 @@ export abstract class BaseSeriesRepository implements SeriesRepository {
   abstract importItems(items: LibraryItem[]): { added: number; updated: number }
 
   list(query: LibraryQuery): LibraryItem[] {
-    let items = this.all().filter((i) => i.status !== null)
+    let items = this.all()
+    items = query.scope === 'favorites'
+      ? items.filter((i) => i.favoritedAt !== null)
+      : items.filter((i) => i.status !== null)
     if (query.includeR34 === false) items = items.filter((i) => i.category !== 'r34')
     if (query.status && query.status !== 'all') items = items.filter((i) => i.status === query.status)
     const q = query.search?.trim().toLowerCase()
@@ -121,7 +126,8 @@ export class InMemorySeriesRepository extends BaseSeriesRepository {
       openedAt: item.openedAt ?? now,
       createdAt: item.createdAt ?? now,
       updatedAt: now,
-      deletedAt: null
+      deletedAt: null,
+      favoritedAt: null
     }
     this.map.set(item.key, row)
     return clone(row)
@@ -143,6 +149,7 @@ export class InMemorySeriesRepository extends BaseSeriesRepository {
   }
 
   setStatus(key: string, status: ReadingStatus | null): void { this.patch(key, { status }) }
+  setFavorite(key: string, at: number | null): void { this.patch(key, { favoritedAt: at }) }
   setNote(key: string, note: string): void { this.patch(key, { note }) }
   setRating(key: string, rating: number | null): void { this.patch(key, { rating }) }
   setTags(key: string, tags: string[]): void { this.patch(key, { tags: [...tags] }) }

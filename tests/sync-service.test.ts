@@ -31,7 +31,7 @@ function make(remoteText: string | null) {
 describe('SyncService.syncNow', () => {
   it('merges remote into local and uploads merged', async () => {
     const remote = buildSyncPayload(
-      [{ key: 'r1', seriesId: 'r1', url: 'u1', title: 'R', coverUrl: null, source: 'S', category: 'main', currentPage: 1, totalPages: 0, chapterLabel: null, chapterIndex: null, chapterTotal: null, status: 'planned', note: '', rating: null, tags: [], openedAt: 1, createdAt: 1, updatedAt: 2, deletedAt: null }],
+      [{ key: 'r1', seriesId: 'r1', url: 'u1', title: 'R', coverUrl: null, source: 'S', category: 'main', currentPage: 1, totalPages: 0, chapterLabel: null, chapterIndex: null, chapterTotal: null, status: 'planned', note: '', rating: null, tags: [], openedAt: 1, createdAt: 1, updatedAt: 2, deletedAt: null, favoritedAt: null }],
       { ...defaultSettings(), width_scale: 0.7 }, 100
     )
     const { svc, repo, uploaded, getSettings } = make(JSON.stringify(remote))

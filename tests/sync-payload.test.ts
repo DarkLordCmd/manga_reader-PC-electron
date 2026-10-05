@@ -10,7 +10,7 @@ const item = (over: Partial<LibraryItem> = {}): LibraryItem => ({
   key: 'k', seriesId: 'k', url: 'u', title: 'T', coverUrl: null, source: 'S', category: 'main',
   currentPage: 1, totalPages: 0, chapterLabel: null, chapterIndex: null, chapterTotal: null,
   status: 'reading', note: '', rating: null, tags: [], openedAt: 1, createdAt: 1, updatedAt: 1,
-  deletedAt: null, ...over
+  deletedAt: null, favoritedAt: null, ...over
 })
 
 describe('sync settings subset', () => {
