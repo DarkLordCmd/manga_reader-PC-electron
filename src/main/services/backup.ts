@@ -40,11 +40,17 @@ export function parseBackup(text: string): BackupFile {
   let obj: any
   try { obj = JSON.parse(text) } catch { throw new Error('Файл не является корректным JSON') }
   if (!obj || obj.format !== BACKUP_FORMAT) throw new Error('Это не файл резервной копии Manga Reader')
-  if (typeof obj.version !== 'number' || obj.version > BACKUP_VERSION) {
+  if (typeof obj.version !== 'number' || !Number.isInteger(obj.version) || obj.version < 1 || obj.version > BACKUP_VERSION) {
     throw new Error(`Неподдерживаемая версия бэкапа: ${obj.version}`)
   }
+  if (!obj.settings || typeof obj.settings !== 'object') throw new Error('Повреждённый бэкап: нет настроек')
   if (!Array.isArray(obj.series) || !Array.isArray(obj.downloads)) {
     throw new Error('Повреждённый бэкап: нет series/downloads')
+  }
+  for (const s of obj.series) {
+    if (!s || typeof s !== 'object' || typeof s.key !== 'string' || !s.key || typeof s.url !== 'string' || typeof s.title !== 'string') {
+      throw new Error('Повреждённый бэкап: некорректная запись серии')
+    }
   }
   return obj as BackupFile
 }

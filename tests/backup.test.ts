@@ -32,4 +32,16 @@ describe('parseBackup', () => {
     const text = JSON.stringify({ format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: 1, settings: defaultSettings(), series: [item()], downloads: [] })
     expect(parseBackup(text).series).toHaveLength(1)
   })
+  it('rejects a backup without settings', () => {
+    const text = JSON.stringify({ format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: 1, series: [item()], downloads: [] })
+    expect(() => parseBackup(text)).toThrow('Повреждённый бэкап: нет настроек')
+  })
+  it('rejects a non-positive/zero version', () => {
+    const text = JSON.stringify({ format: BACKUP_FORMAT, version: 0, exportedAt: 1, settings: defaultSettings(), series: [item()], downloads: [] })
+    expect(() => parseBackup(text)).toThrow()
+  })
+  it('rejects a series entry without a key', () => {
+    const text = JSON.stringify({ format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: 1, settings: defaultSettings(), series: [{ seriesId: 'nh:1' }], downloads: [] })
+    expect(() => parseBackup(text)).toThrow('Повреждённый бэкап: некорректная запись серии')
+  })
 })

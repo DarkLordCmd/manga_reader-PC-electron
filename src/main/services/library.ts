@@ -32,7 +32,7 @@ export class LibraryService {
       currentPage: 1, totalPages: 0, chapterLabel: null, chapterIndex: null, chapterTotal: null
     }
     const item = this.repo.upsertHistory(upsert)
-    this.repo.setStatus(item.key, 'planned')
+    if (item.status === null) this.repo.setStatus(item.key, 'planned')
     return this.repo.get(item.key)!
   }
 

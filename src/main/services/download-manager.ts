@@ -203,7 +203,7 @@ export class DownloadManager {
 
   adopt(task: DownloadTask): void {
     if (this.tasks.some((t) => t.sourceUrl === task.sourceUrl)) return
-    this.tasks.push({ ...task, state: task.state === 'running' ? 'queued' : task.state })
+    this.tasks.push({ ...task, id: randomUUID(), state: task.state === 'running' ? 'queued' : task.state })
     this.notify()
     void this.pump()
   }
