@@ -62,6 +62,23 @@ const api: Api = {
     const fn = (_e: unknown, tasks: DownloadTask[]): void => cb(tasks)
     ipcRenderer.on(CH.downloadsChanged, fn)
     return () => ipcRenderer.removeListener(CH.downloadsChanged, fn)
+  },
+  libraryList: (query) => ipcRenderer.invoke(CH.libraryList, query),
+  libraryGet: (key) => ipcRenderer.invoke(CH.libraryGet, key),
+  libraryAdd: (entry) => ipcRenderer.invoke(CH.libraryAdd, entry),
+  librarySetStatus: (key, status) => ipcRenderer.invoke(CH.librarySetStatus, key, status),
+  librarySetNote: (key, note) => ipcRenderer.invoke(CH.librarySetNote, key, note),
+  librarySetRating: (key, rating) => ipcRenderer.invoke(CH.librarySetRating, key, rating),
+  librarySetTags: (key, tags) => ipcRenderer.invoke(CH.librarySetTags, key, tags),
+  libraryRemove: (key) => ipcRenderer.invoke(CH.libraryRemove, key),
+  libraryDelete: (key) => ipcRenderer.invoke(CH.libraryDelete, key),
+  libraryCounts: () => ipcRenderer.invoke(CH.libraryCounts),
+  backupExport: (includeSecrets) => ipcRenderer.invoke(CH.backupExport, includeSecrets),
+  backupImport: () => ipcRenderer.invoke(CH.backupImport),
+  onLibraryChanged: (cb) => {
+    const fn = (): void => cb()
+    ipcRenderer.on(CH.libraryChanged, fn)
+    return () => ipcRenderer.removeListener(CH.libraryChanged, fn)
   }
 }
 

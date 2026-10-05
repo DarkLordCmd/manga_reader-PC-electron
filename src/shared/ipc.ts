@@ -2,6 +2,7 @@ import type { Settings } from './settings'
 import type { HistoryEntry } from './types'
 import type { MangaCard } from './mangadex'
 import type { DownloadTask } from './downloads'
+import type { LibraryItem, LibraryQuery, ReadingStatus } from './library'
 
 export interface OpenFolderResult {
   id: string
@@ -118,6 +119,23 @@ export interface ArchiveCost {
 
 export interface PinAttemptResult { locked: boolean; retryAfterSec: number }
 
+export interface BackupFile {
+  format: 'manga-reader-backup'
+  version: number
+  exportedAt: number
+  settings: Settings
+  series: LibraryItem[]
+  accounts?: ExAccount[]
+  downloads: DownloadTask[]
+}
+
+export interface BackupSummary {
+  seriesAdded: number
+  seriesUpdated: number
+  accountsAdded: number
+  downloadsMerged: number
+}
+
 export interface Api {
   getSettings(): Promise<Settings>
   setSettings(s: Settings): Promise<void>
@@ -170,6 +188,19 @@ export interface Api {
   pinFailedAttempt(): Promise<PinAttemptResult>
   onEhLimitsChanged(cb: (state: EhLimitState) => void): () => void
   onDownloadsChanged(cb: (tasks: DownloadTask[]) => void): () => void
+  libraryList(query: LibraryQuery): Promise<LibraryItem[]>
+  libraryGet(key: string): Promise<LibraryItem | null>
+  libraryAdd(entry: { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; category?: string }): Promise<LibraryItem>
+  librarySetStatus(key: string, status: ReadingStatus | null): Promise<void>
+  librarySetNote(key: string, note: string): Promise<void>
+  librarySetRating(key: string, rating: number | null): Promise<void>
+  librarySetTags(key: string, tags: string[]): Promise<void>
+  libraryRemove(key: string): Promise<void>
+  libraryDelete(key: string): Promise<void>
+  libraryCounts(): Promise<Record<string, number>>
+  backupExport(includeSecrets: boolean): Promise<{ canceled: boolean; path?: string }>
+  backupImport(): Promise<BackupSummary | null>
+  onLibraryChanged(cb: () => void): () => void
 }
 
 export const CH = {
@@ -224,7 +255,20 @@ export const CH = {
   pinVerifyPin: 'pin:verifyPin',
   pinFailedAttempt: 'pin:failedAttempt',
   ehLimitsChanged: 'eh-limits:changed',
-  settingsChanged: 'settings:changed'
+  settingsChanged: 'settings:changed',
+  libraryList: 'library:list',
+  libraryGet: 'library:get',
+  libraryAdd: 'library:add',
+  librarySetStatus: 'library:setStatus',
+  librarySetNote: 'library:setNote',
+  librarySetRating: 'library:setRating',
+  librarySetTags: 'library:setTags',
+  libraryRemove: 'library:remove',
+  libraryDelete: 'library:delete',
+  libraryCounts: 'library:counts',
+  libraryChanged: 'library:changed',
+  backupExport: 'backup:export',
+  backupImport: 'backup:import',
 } as const
 
 export type { MangaCard, DownloadTask }

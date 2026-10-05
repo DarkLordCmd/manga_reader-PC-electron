@@ -4,6 +4,8 @@ import { pathToFileURL } from 'url'
 import { readFileSync } from 'fs'
 import { SettingsService } from './services/settings'
 import { HistoryManager } from './services/history'
+import { openDatabase } from './services/db'
+import { LibraryService } from './services/library'
 import { galleryFromFolder, type Gallery } from './services/gallery'
 import { openZipGallery, readZipEntry, isZipPath, clearZipTmpAll } from './services/zip-gallery'
 import { fetchChapterList, searchMangaDex, fetchChapterCount } from './services/mangadex'
@@ -57,6 +59,7 @@ protocol.registerSchemesAsPrivileged([
 
 let settings: SettingsService
 let history: HistoryManager
+let library: LibraryService
 let exAccounts: ExAccountsService
 let downloads: DownloadManager
 let pin: PinService
@@ -132,8 +135,10 @@ app.whenReady().then(() => {
   ehWatcher.onChange(broadcastEhLimitState)
   ipcMain.handle(CH.ehLimitsState, () => ehWatcher.state())
   setEhSetCookieHandler((_host, setCookies) => exAccounts.mergeSetCookies(setCookies))
-  history = new HistoryManager()
+  const { repo } = openDatabase(app.getPath('userData'))
+  history = new HistoryManager(repo)
   history.load(settings.get().viewing_history)
+  library = new LibraryService(repo, { autoAdd: () => settings.get().library_auto_add })
 
   downloads = new DownloadManager(
     downloadsDirBase(settings.get().downloads_dir),
@@ -337,6 +342,26 @@ app.whenReady().then(() => {
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s)
   })
   ipcMain.handle(CH.getHistory, () => history.toVec())
+
+  function broadcastLibrary(): void {
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.libraryChanged)
+  }
+
+  ipcMain.handle(CH.libraryList, (_e, query) => library.list(query ?? {}))
+  ipcMain.handle(CH.libraryGet, (_e, key: string) => library.get(String(key)))
+  ipcMain.handle(CH.libraryAdd, (_e, entry) => {
+    const item = library.addFromCatalog(entry)
+    broadcastLibrary()
+    return item
+  })
+  ipcMain.handle(CH.librarySetStatus, (_e, key: string, status: any) => { library.setStatus(String(key), status); broadcastLibrary() })
+  ipcMain.handle(CH.librarySetNote, (_e, key: string, note: string) => { library.setNote(String(key), String(note ?? '')); broadcastLibrary() })
+  ipcMain.handle(CH.librarySetRating, (_e, key: string, rating: number | null) => { library.setRating(String(key), rating); broadcastLibrary() })
+  ipcMain.handle(CH.librarySetTags, (_e, key: string, tags: string[]) => { library.setTags(String(key), Array.isArray(tags) ? tags : []); broadcastLibrary() })
+  ipcMain.handle(CH.libraryRemove, (_e, key: string) => { library.removeFromLibrary(String(key)); broadcastLibrary() })
+  ipcMain.handle(CH.libraryDelete, (_e, key: string) => { library.deleteSeries(String(key)); broadcastLibrary() })
+  ipcMain.handle(CH.libraryCounts, () => library.countByStatus())
+
   ipcMain.handle(CH.recordProgress, (_e, url: string, page: number, total: number) => {
     history.updateProgress(url, page, total)
     settings.save({ ...settings.get(), viewing_history: history.toVec() })
@@ -402,6 +427,7 @@ app.whenReady().then(() => {
       category: trimmed.includes('nhentai') || trimmed.includes('exhentai') || trimmed.includes('e-hentai.org') ? 'r34' : 'main'
     })
     settings.save({ ...settings.get(), viewing_history: history.toVec() })
+    library.autoAddIfNeeded(trimmed, seriesId)
     if (startPage && startPage > 0 && startPage < result.pageUrls.length) setReadingPosition(gid, startPage)
     return { id: gid, title: result.title, pageCount: result.pageUrls.length, source: result.source, url: trimmed, mangaId: seriesId }
   })
