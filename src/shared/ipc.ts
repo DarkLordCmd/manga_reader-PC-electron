@@ -3,6 +3,7 @@ import type { HistoryEntry } from './types'
 import type { MangaCard } from './mangadex'
 import type { DownloadTask } from './downloads'
 import type { LibraryItem, LibraryQuery, ReadingStatus } from './library'
+import type { SyncState } from './sync'
 
 export interface OpenFolderResult {
   id: string
@@ -136,6 +137,8 @@ export interface BackupSummary {
   downloadsMerged: number
 }
 
+export interface GoogleAuthStatus { authed: boolean; email: string | null }
+
 export interface Api {
   getSettings(): Promise<Settings>
   setSettings(s: Settings): Promise<void>
@@ -200,6 +203,12 @@ export interface Api {
   libraryCounts(): Promise<Record<string, number>>
   backupExport(includeSecrets: boolean): Promise<{ canceled: boolean; path?: string }>
   backupImport(): Promise<BackupSummary | null>
+  googleAuthStatus(): Promise<GoogleAuthStatus>
+  googleLogin(): Promise<GoogleAuthStatus>
+  googleLogout(): Promise<void>
+  syncNow(): Promise<SyncState>
+  syncGetState(): Promise<SyncState>
+  onSyncChanged(cb: (s: SyncState) => void): () => void
   onLibraryChanged(cb: () => void): () => void
 }
 
@@ -256,6 +265,12 @@ export const CH = {
   pinFailedAttempt: 'pin:failedAttempt',
   ehLimitsChanged: 'eh-limits:changed',
   settingsChanged: 'settings:changed',
+  googleAuthStatus: 'google:status',
+  googleLogin: 'google:login',
+  googleLogout: 'google:logout',
+  syncNow: 'sync:now',
+  syncGetState: 'sync:state',
+  syncChanged: 'sync:changed',
   libraryList: 'library:list',
   libraryGet: 'library:get',
   libraryAdd: 'library:add',

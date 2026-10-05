@@ -40,6 +40,10 @@ import { initCookieStore } from './services/comx-gate'
 import { lookup as dnsPromiseLookup } from 'dns'
 import { DownloadManager } from './services/download-manager'
 import { buildBackup, parseBackup, SECRET_SETTINGS } from './services/backup'
+import { GoogleAuth } from './services/google-auth'
+import { GoogleDrive } from './services/google-drive'
+import { SyncService } from './services/sync'
+import { isPortableSettingsChanged } from './services/sync'
 import { CH } from '@shared/ipc'
 
 const galleries = new Map<string, Gallery>()
@@ -64,6 +68,7 @@ let library: LibraryService
 let exAccounts: ExAccountsService
 let downloads: DownloadManager
 let pin: PinService
+let sync: SyncService
 
 function downloadFetchOpts(sourceUrl: string): { proxy?: string; cookieHeader?: string } {
   const s = settings.get()
@@ -140,6 +145,30 @@ app.whenReady().then(() => {
   history = new HistoryManager(repo)
   history.load(settings.get().viewing_history)
   library = new LibraryService(repo, { autoAdd: () => settings.get().library_auto_add })
+
+  const googleAuth = new GoogleAuth(app.getPath('userData'))
+  const googleDrive = new GoogleDrive(googleAuth)
+  const syncStatePath = join(app.getPath('userData'), 'sync-state.json')
+  let settingsUpdatedAt = Date.now()
+  try { settingsUpdatedAt = JSON.parse(readFileSync(syncStatePath, 'utf8')).settingsUpdatedAt ?? settingsUpdatedAt } catch { /* ignore */ }
+  const persistSyncState = (): void => { try { writeFileSync(syncStatePath, JSON.stringify({ settingsUpdatedAt })) } catch { /* ignore */ } }
+  sync = new SyncService({
+    repo,
+    getSettings: () => settings.get(),
+    saveSettings: (s) => { settings.save(s); for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s) },
+    getSettingsUpdatedAt: () => settingsUpdatedAt,
+    drive: googleDrive,
+    authStatus: () => googleAuth.status(),
+    onChanged: (st) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.syncChanged, st) }
+  })
+  ipcMain.handle(CH.googleAuthStatus, () => googleAuth.status())
+  ipcMain.handle(CH.googleLogin, async () => { const r = await googleAuth.login(); return googleAuth.status() })
+  ipcMain.handle(CH.googleLogout, async () => { await googleAuth.logout() })
+  ipcMain.handle(CH.syncNow, () => sync!.syncNow())
+  ipcMain.handle(CH.syncGetState, () => sync!.getState())
+  if (settings.get().sync_enabled && googleAuth.status().authed) {
+    setTimeout(() => { void sync!.syncNow() }, 3000)
+  }
 
   downloads = new DownloadManager(
     downloadsDirBase(settings.get().downloads_dir),
@@ -407,16 +436,23 @@ app.whenReady().then(() => {
     setTorFallbackAddr(s?.tor_socks_addr || '127.0.0.1:9150')
     setLibMirror(s?.lib_image_server ?? null)
     setCustomDnsServers(parseDnsServerList(s?.custom_dns ?? ''))
-    const before = downloadsDirBase(settings.get().downloads_dir)
+    const prevSettings = settings.get()
+    const before = downloadsDirBase(prevSettings.downloads_dir)
     settings.save(s)
     const after = downloadsDirBase(s?.downloads_dir)
     if (before !== after) downloads.setOutDirBase(after)
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s)
+    if (isPortableSettingsChanged(prevSettings, s)) {
+      settingsUpdatedAt = Date.now()
+      persistSyncState()
+      if (s.sync_auto) sync?.scheduleSync()
+    }
   })
   ipcMain.handle(CH.getHistory, () => history.toVec())
 
   function broadcastLibrary(): void {
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.libraryChanged)
+    if (settings.get().sync_auto && settings.get().sync_enabled) sync?.scheduleSync()
   }
 
   ipcMain.handle(CH.libraryList, (_e, query) => library.list(query ?? {}))
@@ -437,6 +473,7 @@ app.whenReady().then(() => {
   ipcMain.handle(CH.recordProgress, (_e, url: string, page: number, total: number) => {
     history.updateProgress(url, page, total)
     settings.save({ ...settings.get(), viewing_history: history.toVec() })
+    if (settings.get().sync_auto && settings.get().sync_enabled) sync?.scheduleSync()
   })
   ipcMain.handle(CH.clearHistory, () => {
     history.clear()

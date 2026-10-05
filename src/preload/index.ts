@@ -75,6 +75,16 @@ const api: Api = {
   libraryCounts: () => ipcRenderer.invoke(CH.libraryCounts),
   backupExport: (includeSecrets) => ipcRenderer.invoke(CH.backupExport, includeSecrets),
   backupImport: () => ipcRenderer.invoke(CH.backupImport),
+  googleAuthStatus: () => ipcRenderer.invoke(CH.googleAuthStatus),
+  googleLogin: () => ipcRenderer.invoke(CH.googleLogin),
+  googleLogout: () => ipcRenderer.invoke(CH.googleLogout),
+  syncNow: () => ipcRenderer.invoke(CH.syncNow),
+  syncGetState: () => ipcRenderer.invoke(CH.syncGetState),
+  onSyncChanged: (cb) => {
+    const fn = (_e: unknown, s: import('@shared/sync').SyncState): void => cb(s)
+    ipcRenderer.on(CH.syncChanged, fn)
+    return () => ipcRenderer.removeListener(CH.syncChanged, fn)
+  },
   onLibraryChanged: (cb) => {
     const fn = (): void => cb()
     ipcRenderer.on(CH.libraryChanged, fn)

@@ -163,8 +163,8 @@ export class InMemorySeriesRepository extends BaseSeriesRepository {
     let updated = 0
     for (const item of items) {
       const cur = this.map.get(item.key)
-      if (!cur) { this.map.set(item.key, clone(item)); added++; continue }
-      if (item.updatedAt > cur.updatedAt) { this.map.set(item.key, clone(item)); updated++ }
+      if (!cur) { this.map.set(item.key, clone({ ...item, deletedAt: item.deletedAt ?? null })); added++; continue }
+      if (item.updatedAt > cur.updatedAt) { this.map.set(item.key, clone({ ...item, deletedAt: item.deletedAt ?? null })); updated++ }
     }
     return { added, updated }
   }

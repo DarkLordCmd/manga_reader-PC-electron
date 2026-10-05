@@ -70,31 +70,25 @@ function toUpsert(u: HistoryUpdate, key: string, seriesId: string): SeriesUpsert
 
 export class HistoryManager {
   private repo: SeriesRepository
-  private entries: HistoryEntry[] = []
 
   constructor(repo: SeriesRepository = new InMemorySeriesRepository()) {
     this.repo = repo
-    this.refresh()
-  }
-
-  private refresh(): void {
-    this.entries = this.repo.all().map(toHistoryEntry).sort((a, b) => b.opened_at - a.opened_at)
   }
 
   load(raw: HistoryEntry[]): void {
-    if (this.repo.all().length > 0 || raw.length === 0) { this.refresh(); return }
+    if (this.repo.allIncludingDeleted().length > 0 || raw.length === 0) return
     for (const item of normalizeHistory(raw)) this.repo.upsertHistory(item)
-    this.refresh()
   }
 
-  all(): HistoryEntry[] { return this.entries.map((e) => ({ ...e })) }
-  mainEntries(): HistoryEntry[] { return this.entries.filter((e) => e.category === 'main') }
-  r34Entries(): HistoryEntry[] { return this.entries.filter((e) => e.category === 'r34') }
+  all(): HistoryEntry[] {
+    return this.repo.all().map(toHistoryEntry).sort((a, b) => b.opened_at - a.opened_at)
+  }
+  mainEntries(): HistoryEntry[] { return this.all().filter((e) => e.category === 'main') }
+  r34Entries(): HistoryEntry[] { return this.all().filter((e) => e.category === 'r34') }
   toVec(): HistoryEntry[] { return this.all() }
 
   clear(): void {
     this.repo.clearHistory()
-    this.refresh()
   }
 
   addOrUpdate(update: HistoryUpdate): void {
@@ -120,13 +114,11 @@ export class HistoryManager {
     } else {
       this.repo.upsertHistory(toUpsert(update, key, update.series_id || update.url))
     }
-    this.refresh()
   }
 
   updateProgress(url: string, currentPage: number, totalPages: number): void {
     const key = seriesKeyForUrl(url)
     const item = this.repo.findByUrl(url) ?? (key ? this.repo.get(key) : null)
     if (item) this.repo.updateProgress(item.key, currentPage, totalPages, Date.now())
-    this.refresh()
   }
 }

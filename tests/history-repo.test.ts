@@ -32,6 +32,16 @@ describe('HistoryManager writes through to the repository', () => {
     expect(repo.get('nh:99')).toBeNull()
   })
 
+  it('does not resurrect a tombstoned row when load is called again', () => {
+    const repo = new InMemorySeriesRepository()
+    new HistoryManager(repo).load([{ ...base, url: 'https://nhentai.net/g/7/', series_id: 'x', current_page: 1, total_pages: 1, opened_at: 1 }])
+    repo.delete('nh:7')
+    expect(repo.all()).toHaveLength(0)
+    new HistoryManager(repo).load([{ ...base, url: 'https://nhentai.net/g/7/', series_id: 'x', current_page: 2, total_pages: 5, opened_at: 2 }])
+    expect(repo.all()).toHaveLength(0)
+    expect(repo.allIncludingDeleted()).toHaveLength(1)
+  })
+
   it('resets currentPage when opening a different chapter of the same series', () => {
     const repo = new InMemorySeriesRepository()
     const m = new HistoryManager(repo)

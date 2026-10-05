@@ -33,6 +33,8 @@ export interface Settings {
   custom_dns: string | null
   last_catalog_source: string | null
   library_auto_add: boolean
+  sync_enabled: boolean
+  sync_auto: boolean
 }
 
 export function defaultSettings(): Settings {
@@ -50,7 +52,9 @@ export function defaultSettings(): Settings {
     lib_image_server: null,
     custom_dns: null,
     last_catalog_source: null,
-    library_auto_add: true
+    library_auto_add: true,
+    sync_enabled: false,
+    sync_auto: true
   }
 }
 
@@ -114,6 +118,8 @@ export function parseSettings(raw: unknown): Settings {
     lib_image_server: typeof o.lib_image_server === 'string' && o.lib_image_server.trim() ? o.lib_image_server.trim() : null,
     custom_dns: typeof o.custom_dns === 'string' && o.custom_dns.trim() ? o.custom_dns.trim() : null,
     last_catalog_source: str(o.last_catalog_source, ''),
-    library_auto_add: bool(o.library_auto_add, true)
+    library_auto_add: bool(o.library_auto_add, true),
+    sync_enabled: bool(o.sync_enabled, false),
+    sync_auto: bool(o.sync_auto, true)
   }
 }
