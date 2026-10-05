@@ -1059,7 +1059,9 @@ git commit -m "feat(sync): orchestration service (pull/merge/apply/push, debounc
 
 **Files:**
 - Modify: `src/shared/ipc.ts`, `src/preload/index.ts`, `src/shared/settings.ts`, `src/main/index.ts`
-- Test: `tests/ipc-sync.test.ts`
+- Modify: `src/main/services/history.ts` (fix tombstone resurrection — Step 3b)
+- Modify: `src/main/services/series-repository.ts` (InMemory importItems parity — Step 3b)
+- Test: `tests/ipc-sync.test.ts`, `tests/history-repo.test.ts` (Step 3b)
 
 **Interfaces:**
 - Consumes: `GoogleAuth` (Task 3), `GoogleDrive` (Task 4), `SyncService` (Task 5).
@@ -1183,6 +1185,19 @@ export interface GoogleAuthStatus { authed: boolean; email: string | null }
 
 > `persistSyncState` хранит `settingsUpdatedAt`; при старте читается. Простейший вариант без отдельной обёртки — файл `sync-state.json` с одним полем.
 
+- [ ] **Step 3b: Fix tombstone resurrection + InMemory parity (Task 1 review findings)**
+
+**Причина:** `HistoryManager.load()` сидит, когда `repo.all().length === 0`; после soft-delete `all()` пустой, поэтому при старте история пере-засеивается из `settings.viewing_history` и tombstone'ы «воскресают». Плюс кэш `entries` не обновляется после `library.deleteSeries`, из-за чего удалённая запись может пере-сохраниться в `viewing_history`.
+
+- `src/main/services/history.ts`:
+  - `load(raw)`: guard → `if (this.repo.allIncludingDeleted().length > 0 || raw.length === 0) return`.
+  - Убрать кэш `entries`: `all()` возвращает `this.repo.all().map(toHistoryEntry)`; `mainEntries()`/`r34Entries()`/`toVec()` строятся на `all()`; `constructor`/`load`/`addOrUpdate`/`updateProgress` больше не вызывают `refresh()` (метод удалить).
+- `src/main/services/series-repository.ts` (InMemory): в `importItems` нормализовать `deletedAt` — `this.map.set(item.key, clone({ ...item, deletedAt: item.deletedAt ?? null }))` (паритет с SQLite; иначе `undefined` трактуется как tombstone в `all()`).
+- `tests/history-repo.test.ts`: добавить кейс — после `repo.delete(key)` и повторного `new HistoryManager(repo).load([{...}])` запись не воскресает (repo.all() пуст).
+
+Run: `npx vitest run tests/history-repo.test.ts && npm run typecheck && npm test`
+Expected: PASS.
+
 - [ ] **Step 4: Run test + typecheck**
 
 Run: `npx vitest run tests/ipc-sync.test.ts && npm run typecheck && npm test`
@@ -1191,7 +1206,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/shared/ipc.ts src/preload/index.ts src/shared/settings.ts src/main/index.ts tests/ipc-sync.test.ts
+git add src/shared/ipc.ts src/preload/index.ts src/shared/settings.ts src/main/index.ts src/main/services/history.ts src/main/services/series-repository.ts tests/ipc-sync.test.ts tests/history-repo.test.ts
 git commit -m "feat(sync): IPC channels, preload API and main wiring"
 ```
 
