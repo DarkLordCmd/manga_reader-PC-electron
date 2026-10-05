@@ -13,7 +13,11 @@ export interface Settings {
   tor_socks_addr: string
   tor_bridges: string
   exhentai_proxy_addr: string
+  mangalib_proxy_addr: string
+  builtin_tor: boolean
   onion_cookies_raw: string
+  nhentai_cookies_raw: string
+  senkuro_cookies_raw: string
   nhentai_onion_cookies_raw: string
   nhentai_onion_base: string
   infinite_scroll: boolean
@@ -27,6 +31,8 @@ export interface Settings {
   downloads_dir: string | null
   lib_image_server: string | null
   custom_dns: string | null
+  last_catalog_source: string | null
+  library_auto_add: boolean
 }
 
 export function defaultSettings(): Settings {
@@ -34,14 +40,17 @@ export function defaultSettings(): Settings {
     reading_mode: 'Scroll', book_direction: 'Rtl', width_scale: 0.85,
     pages_per_screen: 2, show_thumbnails: true, page_margin: 12,
     thumb_size: 110, last_folder: null, read_progress: {},
-    tor_socks_addr: '127.0.0.1:9150', tor_bridges: '', exhentai_proxy_addr: '',
-    onion_cookies_raw: '', nhentai_onion_cookies_raw: '', nhentai_onion_base: '',
+    tor_socks_addr: '127.0.0.1:9150', tor_bridges: '', exhentai_proxy_addr: '', mangalib_proxy_addr: '', builtin_tor: false,
+    onion_cookies_raw: '', nhentai_cookies_raw: '', nhentai_onion_cookies_raw: '', nhentai_onion_base: '',
+    senkuro_cookies_raw: '',
     infinite_scroll: false, tor_proxied_sites: [], nhentai_show_page_counts: true,
     enable_domain_fronting: false,
     viewing_history: [], show_r34_history: true, eh_tag_bookmarks: [], read_chapters: [],
     downloads_dir: null,
     lib_image_server: null,
-    custom_dns: null
+    custom_dns: null,
+    last_catalog_source: null,
+    library_auto_add: true
   }
 }
 
@@ -86,19 +95,25 @@ export function parseSettings(raw: unknown): Settings {
     tor_socks_addr: str(o.tor_socks_addr, d.tor_socks_addr),
     tor_bridges: str(o.tor_bridges, ''),
     exhentai_proxy_addr: str(o.exhentai_proxy_addr, ''),
+    mangalib_proxy_addr: str(o.mangalib_proxy_addr, ''),
     onion_cookies_raw: str(o.onion_cookies_raw, ''),
+    nhentai_cookies_raw: str(o.nhentai_cookies_raw, ''),
+    senkuro_cookies_raw: str(o.senkuro_cookies_raw, ''),
     nhentai_onion_cookies_raw: str(o.nhentai_onion_cookies_raw, ''),
     nhentai_onion_base: str(o.nhentai_onion_base, ''),
     infinite_scroll: bool(o.infinite_scroll, false),
     tor_proxied_sites: strArr(o.tor_proxied_sites),
     nhentai_show_page_counts: bool(o.nhentai_show_page_counts, true),
     enable_domain_fronting: bool(o.enable_domain_fronting, false),
+    builtin_tor: bool(o.builtin_tor, false),
     viewing_history: history,
     show_r34_history: bool(o.show_r34_history, true),
     eh_tag_bookmarks: strArr(o.eh_tag_bookmarks),
     read_chapters: strArr(o.read_chapters),
     downloads_dir: typeof o.downloads_dir === 'string' ? o.downloads_dir : null,
     lib_image_server: typeof o.lib_image_server === 'string' && o.lib_image_server.trim() ? o.lib_image_server.trim() : null,
-    custom_dns: typeof o.custom_dns === 'string' && o.custom_dns.trim() ? o.custom_dns.trim() : null
+    custom_dns: typeof o.custom_dns === 'string' && o.custom_dns.trim() ? o.custom_dns.trim() : null,
+    last_catalog_source: str(o.last_catalog_source, ''),
+    library_auto_add: bool(o.library_auto_add, true)
   }
 }
