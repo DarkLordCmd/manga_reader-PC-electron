@@ -23,6 +23,15 @@ describe('sync settings subset', () => {
     expect(back.width_scale).toBe(0.9)
     expect(back.onion_cookies_raw).toBe('SECRET') // not touched
   })
+
+  it('ignores foreign keys on the incoming sub (no secret leak / pollution)', () => {
+    const s = { ...defaultSettings(), onion_cookies_raw: 'SECRET' }
+    const sub = extractSyncSettings(s)
+    const back = applySyncSettings(s, { ...sub, onion_cookies_raw: 'X', downloads_dir: 'D:/evil' } as any)
+    expect(back.onion_cookies_raw).toBe('SECRET')
+    expect(back.downloads_dir).toBe(s.downloads_dir)
+    expect(back.width_scale).toBe(sub.width_scale)
+  })
 })
 
 describe('mergeSyncPayload', () => {

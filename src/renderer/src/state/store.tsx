@@ -32,6 +32,8 @@ export function StoreProvider({ children }: { children: ReactNode }): JSX.Elemen
     window.api.getSettings().then(setSettingsState)
   }, [])
 
+  useEffect(() => window.api.onSettingsChanged(setSettingsState), [])
+
   const setSettings = (s: Settings): void => {
     setSettingsState(s)
     window.api.setSettings(s)

@@ -17,7 +17,7 @@ export class GoogleDrive {
     const headers = { ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${token}` }
     let res = await this.fetchImpl(url, { ...init, headers })
     if (res.status === 401) {
-      const t2 = await this.auth.getAccessToken()
+      const t2 = await this.auth.getAccessToken(true)
       res = await this.fetchImpl(url, { ...init, headers: { ...headers, Authorization: `Bearer ${t2}` } })
     }
     return res

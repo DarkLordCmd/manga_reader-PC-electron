@@ -157,6 +157,9 @@ app.whenReady().then(() => {
     getSettings: () => settings.get(),
     saveSettings: (s) => { settings.save(s); for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s) },
     getSettingsUpdatedAt: () => settingsUpdatedAt,
+    setSettingsUpdatedAt: (t) => { settingsUpdatedAt = t; persistSyncState() },
+    isEnabled: () => settings.get().sync_auto && settings.get().sync_enabled,
+    onImported: () => broadcastLibrary(),
     drive: googleDrive,
     authStatus: () => googleAuth.status(),
     onChanged: (st) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.syncChanged, st) }
@@ -166,8 +169,8 @@ app.whenReady().then(() => {
   ipcMain.handle(CH.googleLogout, async () => { await googleAuth.logout() })
   ipcMain.handle(CH.syncNow, () => sync!.syncNow())
   ipcMain.handle(CH.syncGetState, () => sync!.getState())
-  if (settings.get().sync_enabled && googleAuth.status().authed) {
-    setTimeout(() => { void sync!.syncNow() }, 3000)
+  if (googleAuth.status().authed) {
+    setTimeout(() => { sync?.scheduleSync() }, 3000)
   }
 
   downloads = new DownloadManager(
@@ -443,16 +446,14 @@ app.whenReady().then(() => {
     if (before !== after) downloads.setOutDirBase(after)
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s)
     if (isPortableSettingsChanged(prevSettings, s)) {
-      settingsUpdatedAt = Date.now()
-      persistSyncState()
-      if (s.sync_auto) sync?.scheduleSync()
+      sync?.markSettingsChanged()
     }
   })
   ipcMain.handle(CH.getHistory, () => history.toVec())
 
   function broadcastLibrary(): void {
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.libraryChanged)
-    if (settings.get().sync_auto && settings.get().sync_enabled) sync?.scheduleSync()
+    sync?.scheduleSync()
   }
 
   ipcMain.handle(CH.libraryList, (_e, query) => library.list(query ?? {}))
@@ -473,11 +474,12 @@ app.whenReady().then(() => {
   ipcMain.handle(CH.recordProgress, (_e, url: string, page: number, total: number) => {
     history.updateProgress(url, page, total)
     settings.save({ ...settings.get(), viewing_history: history.toVec() })
-    if (settings.get().sync_auto && settings.get().sync_enabled) sync?.scheduleSync()
+    sync?.scheduleSync()
   })
   ipcMain.handle(CH.clearHistory, () => {
     history.clear()
     settings.save({ ...settings.get(), viewing_history: [] })
+    sync?.scheduleSync()
   })
   ipcMain.handle(CH.downloadsPickDir, async () => {
     const r = await dialog.showOpenDialog({ properties: ['openDirectory'] })

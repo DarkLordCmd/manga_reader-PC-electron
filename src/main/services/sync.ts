@@ -16,6 +16,9 @@ export interface SyncDeps {
   getSettings: () => Settings
   saveSettings: (s: Settings) => void
   getSettingsUpdatedAt: () => number
+  setSettingsUpdatedAt: (t: number) => void
+  isEnabled: () => boolean
+  onImported: () => void
   drive: DriveLike
   authStatus: () => { authed: boolean; email: string | null }
   onChanged: (s: SyncState) => void
@@ -27,18 +30,17 @@ export class SyncService {
   private state: SyncState
   private inFlight: Promise<SyncState> | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
-  private settingsUpdatedAt: number
 
   constructor(private deps: SyncDeps) {
-    this.settingsUpdatedAt = deps.getSettingsUpdatedAt()
     this.state = { state: 'idle', lastSyncAt: null, email: deps.authStatus().email, lastError: null }
   }
 
   getState(): SyncState { return { ...this.state } }
 
-  markSettingsChanged(): void { this.settingsUpdatedAt = Date.now() }
+  markSettingsChanged(): void { this.deps.setSettingsUpdatedAt(Date.now()) }
 
   scheduleSync(): void {
+    if (!this.deps.isEnabled()) return
     if (this.timer) clearTimeout(this.timer)
     this.timer = setTimeout(() => { this.timer = null; void this.syncNow() }, DEBOUNCE_MS)
   }
@@ -49,12 +51,14 @@ export class SyncService {
     this.inFlight = (async () => {
       try {
         const remoteText = await this.deps.drive.download()
-        const local = buildSyncPayload(this.deps.repo.allIncludingDeleted(), this.deps.getSettings(), this.settingsUpdatedAt)
+        const localUpdatedAt = this.deps.getSettingsUpdatedAt()
+        const local = buildSyncPayload(this.deps.repo.allIncludingDeleted(), this.deps.getSettings(), localUpdatedAt)
         const merged = remoteText ? mergeSyncPayload(local, parseSyncPayload(remoteText)) : local
-        this.deps.repo.importItems(merged.series)
-        if (merged.settingsUpdatedAt >= this.settingsUpdatedAt) {
+        const imported = this.deps.repo.importItems(merged.series)
+        if (imported.added + imported.updated > 0) this.deps.onImported()
+        if (merged.settingsUpdatedAt > localUpdatedAt) {
           this.deps.saveSettings(parseSettings(applySyncSettings(this.deps.getSettings(), merged.settings)))
-          this.settingsUpdatedAt = merged.settingsUpdatedAt
+          this.deps.setSettingsUpdatedAt(merged.settingsUpdatedAt)
         }
         await this.deps.drive.upload(JSON.stringify(merged))
         this.set({ state: 'idle', lastSyncAt: Date.now(), email: this.deps.authStatus().email, lastError: null })

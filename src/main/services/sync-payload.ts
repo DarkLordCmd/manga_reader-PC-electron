@@ -37,7 +37,10 @@ export function extractSyncSettings(s: Settings): SyncSettings {
 }
 
 export function applySyncSettings(s: Settings, sub: SyncSettings): Settings {
-  return { ...s, ...sub }
+  const out = { ...s }
+  const keys: (keyof SyncSettings)[] = ['reading_mode', 'book_direction', 'width_scale', 'pages_per_screen', 'page_margin', 'infinite_scroll', 'nhentai_show_page_counts', 'show_thumbnails', 'thumb_size', 'show_r34_history', 'library_auto_add']
+  for (const k of keys) (out as any)[k] = sub[k]
+  return out
 }
 
 export function buildSyncPayload(series: LibraryItem[], settings: Settings, settingsUpdatedAt: number): SyncPayload {

@@ -14,6 +14,8 @@ export default function History(): JSX.Element {
 
   useEffect(refresh, [refresh])
 
+  useEffect(() => window.api.onLibraryChanged(refresh), [refresh])
+
   const visible = activeTab === 1 && settings.show_r34_history
     ? entries.filter((e) => e.category === 'r34')
     : entries.filter((e) => e.category === 'main')

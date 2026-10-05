@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { CH, type Api } from '@shared/ipc'
 import type { DownloadTask } from '@shared/downloads'
 import type { EhLimitState } from '@shared/ipc'
+import type { Settings } from '@shared/settings'
 
 const api: Api = {
   getSettings: () => ipcRenderer.invoke(CH.getSettings),
@@ -89,6 +90,11 @@ const api: Api = {
     const fn = (): void => cb()
     ipcRenderer.on(CH.libraryChanged, fn)
     return () => ipcRenderer.removeListener(CH.libraryChanged, fn)
+  },
+  onSettingsChanged: (cb) => {
+    const fn = (_e: unknown, s: Settings): void => cb(s)
+    ipcRenderer.on(CH.settingsChanged, fn)
+    return () => ipcRenderer.removeListener(CH.settingsChanged, fn)
   }
 }
 

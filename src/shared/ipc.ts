@@ -210,6 +210,7 @@ export interface Api {
   syncGetState(): Promise<SyncState>
   onSyncChanged(cb: (s: SyncState) => void): () => void
   onLibraryChanged(cb: () => void): () => void
+  onSettingsChanged(cb: (s: Settings) => void): () => void
 }
 
 export const CH = {

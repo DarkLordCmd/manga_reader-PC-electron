@@ -130,10 +130,10 @@ export class GoogleAuth {
     return { email }
   }
 
-  async getAccessToken(): Promise<string> {
+  async getAccessToken(force = false): Promise<string> {
     const t = this.tokens
     if (!t) throw new Error('Не выполнен вход в Google')
-    if (t.access_token && Date.now() < t.expires_at - 60_000) return t.access_token
+    if (!force && t.access_token && Date.now() < t.expires_at - 60_000) return t.access_token
     const res = await fetch(GOOGLE_TOKEN_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
