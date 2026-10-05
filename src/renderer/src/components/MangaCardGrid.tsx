@@ -4,6 +4,7 @@ interface Props {
   cards: CatalogCard[]
   onSelect: (card: CatalogCard) => void
   progress?: Record<string, [number, number]>
+  onContextMenu?: (e: React.MouseEvent, card: CatalogCard) => void
 }
 
 function coverSrc(url: string): string {
@@ -29,7 +30,7 @@ function kindColor(kind: string | undefined): string {
   }
 }
 
-export default function MangaCardGrid({ cards, onSelect, progress }: Props): JSX.Element {
+export default function MangaCardGrid({ cards, onSelect, progress, onContextMenu }: Props): JSX.Element {
   return (
     <div className="catalog-grid">
       {cards.map((c, i) => {
@@ -38,7 +39,12 @@ export default function MangaCardGrid({ cards, onSelect, progress }: Props): JSX
           ? `${c.chapterCount} гл.`
           : c.pages != null ? `${c.pages} стр.` : ''
         return (
-          <div key={`${c.url}-${i}`} className="manga-card" onClick={() => onSelect(c)}>
+          <div
+            key={`${c.url}-${i}`}
+            className="manga-card"
+            onClick={() => onSelect(c)}
+            onContextMenu={onContextMenu ? (e) => onContextMenu(e, c) : undefined}
+          >
             <div className="manga-cover">
               {c.coverUrl
                 ? <img src={coverSrc(c.coverUrl)} alt={c.title} loading="lazy" />

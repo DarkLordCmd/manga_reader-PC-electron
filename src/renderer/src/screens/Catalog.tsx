@@ -3,6 +3,9 @@ import { useStore } from '../state/store'
 import type { CatalogCard, CatalogCursor, CatalogFilters, ChapterListItem, ExAccount } from '@shared/ipc'
 import { EH_CATEGORIES, MANGASHI_TAGS, REMANGA_GENRES, MD_LANGS, MD_POPULAR_TAGS, NH_POPULAR_TAGS } from '@shared/filters'
 import MangaCardGrid from '../components/MangaCardGrid'
+import ContextMenu, { type MenuItem } from '../components/ContextMenu'
+import { READING_STATUSES } from '@shared/library'
+import type { ReadingStatus } from '@shared/library'
 
 const SOURCES: { key: string; label: string }[] = [
   { key: 'mangadex', label: 'MangaDex' },
@@ -21,6 +24,10 @@ const SOURCES: { key: string; label: string }[] = [
   { key: 'mangapoisk', label: 'Mangapoisk' },
   { key: 'mangamello', label: 'MangaMello' }
 ]
+
+const STATUS_LABELS: Record<ReadingStatus, string> = {
+  reading: 'Читаю', planned: 'В планах', completed: 'Прочитано', on_hold: 'Отложено', dropped: 'Брошено'
+}
 
 const SORTS: { key: string; label: string }[] = [
   { key: 'relevance', label: 'По релевантности' },
@@ -115,6 +122,7 @@ export default function Catalog(): JSX.Element {
   const [mdActiveTags, setMdActiveTags] = useState<string[]>([])
   const [mdLangs, setMdLangs] = useState<string[]>([])
   const [nhFilterTags, setNhFilterTags] = useState<string[]>([])
+  const [menu, setMenu] = useState<{ x: number; y: number; card: CatalogCard; lookup: { key: string; favorited: boolean; status: ReadingStatus | null } | null } | null>(null)
 
   const sentinelRef = useRef<HTMLDivElement>(null)
   const infiniteScroll = settings.infinite_scroll
@@ -261,6 +269,39 @@ export default function Catalog(): JSX.Element {
     void search(0)
   }
 
+  const openCardMenu = useCallback(async (e: React.MouseEvent, card: CatalogCard) => {
+    e.preventDefault()
+    const lookup = await window.api.libraryLookup(card.url, card.url)
+    setMenu({ x: e.clientX, y: e.clientY, card, lookup })
+  }, [])
+
+  const entryOf = (card: CatalogCard): { url: string; title: string; coverUrl: string | null; source: string; seriesId: string } => ({
+    url: card.url, title: card.title, coverUrl: card.coverUrl,
+    source: SOURCES.find((s) => s.key === source)?.label ?? '', seriesId: card.url
+  })
+
+  const menuItems = (m: NonNullable<typeof menu>): MenuItem[] => {
+    const entry = entryOf(m.card)
+    const items: MenuItem[] = [
+      m.lookup?.favorited
+        ? { label: 'Убрать из избранного', checked: true, onClick: () => void window.api.librarySetFavorite(m.lookup!.key, null) }
+        : { label: '★ В избранное', onClick: () => void window.api.libraryAddFavorite(entry) },
+      { label: '', separator: true, onClick: () => {} },
+      { label: 'Статус', disabled: true, onClick: () => {} }
+    ]
+    for (const s of READING_STATUSES) {
+      items.push({
+        label: STATUS_LABELS[s], checked: m.lookup?.status === s,
+        onClick: () => void window.api.librarySetStatusFor(entry, s)
+      })
+    }
+    if (m.lookup?.status) {
+      items.push({ label: '', separator: true, onClick: () => {} })
+      items.push({ label: 'Убрать из библиотеки', danger: true, onClick: () => void window.api.libraryRemove(m.lookup!.key) })
+    }
+    return items
+  }
+
   return (
     <div className="catalog screen">
       <div className="catalog-toolbar">
@@ -349,6 +390,7 @@ export default function Catalog(): JSX.Element {
               cards={cards}
               onSelect={(c) => void openChapters(c)}
               progress={source === 'mangadex' ? settings.read_progress : undefined}
+              onContextMenu={openCardMenu}
             />
           )}
 
@@ -532,6 +574,10 @@ export default function Catalog(): JSX.Element {
             <button onClick={() => setPicked(null)}>Закрыть</button>
           </div>
         </div>
+      )}
+
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu)} onClose={() => setMenu(null)} />
       )}
     </div>
   )

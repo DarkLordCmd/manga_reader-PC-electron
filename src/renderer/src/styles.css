@@ -151,3 +151,10 @@ input[type='checkbox'].toggle-input { position: absolute; opacity: 0; width: 1px
 .library-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .library-note { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.context-menu { position: fixed; z-index: 1000; min-width: 190px; background: #141414; border: 1px solid var(--border); border-radius: 6px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.6); }
+.context-item { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; background: transparent; border: none; color: var(--text); padding: 5px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+.context-item:hover:not(:disabled) { background: #1e1410; color: var(--accent); }
+.context-item:disabled { color: var(--dim); cursor: default; }
+.context-item.danger:hover { color: #ef4444; }
+.context-check { width: 12px; color: var(--accent); }
+.context-sep { height: 1px; background: var(--border); margin: 4px 6px; }
