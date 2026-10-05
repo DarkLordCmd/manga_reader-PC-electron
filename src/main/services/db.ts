@@ -54,8 +54,11 @@ export function openDatabase(userDataDir: string): DbHandle {
   try {
     db = openAt(path)
   } catch {
-    if (existsSync(path)) {
-      try { renameSync(path, `${path}.corrupt-${Date.now()}`) } catch { /* ignore */ }
+    const ts = Date.now()
+    for (const f of [path, `${path}-wal`, `${path}-shm`]) {
+      if (existsSync(f)) {
+        try { renameSync(f, `${f}.corrupt-${ts}`) } catch { /* ignore */ }
+      }
     }
     db = openAt(path)
   }
