@@ -1,5 +1,7 @@
 import type { HistoryEntry } from '@shared/types'
+import type { LibraryItem, SeriesUpsert } from '@shared/library'
 import { mangaSeriesUrlFromChapterUrl } from './sources'
+import { InMemorySeriesRepository, type SeriesRepository } from './series-repository'
 import { galleryKeyForUrl, seriesKeyForUrl, sourceLabelForUrl } from './series-key'
 export { galleryKeyForUrl, seriesKeyForUrl, sourceLabelForUrl } from './series-key'
 
@@ -16,83 +18,112 @@ export interface HistoryUpdate {
   category: string
 }
 
-function matchesEntry(entry: HistoryEntry, key: string | null, seriesId: string, url: string): boolean {
-  if (key && seriesKeyForUrl(entry.url) === key) return true
-  return entry.series_id === seriesId || entry.url === url
+export function normalizeHistory(entries: HistoryEntry[]): SeriesUpsert[] {
+  const normalized = entries.map((e) => {
+    const seriesId = e.series_id || e.url
+    const key = seriesKeyForUrl(e.url) ?? mangaSeriesUrlFromChapterUrl(seriesId) ?? seriesId
+    return { e, key }
+  })
+  normalized.sort((a, b) => b.e.opened_at - a.e.opened_at)
+  const byKey = new Map<string, SeriesUpsert>()
+  for (const { e, key } of normalized) {
+    const existing = byKey.get(key)
+    if (!existing) {
+      byKey.set(key, {
+        key, seriesId: e.series_id || e.url, url: e.url, title: e.title,
+        coverUrl: e.cover_url, source: e.source, category: e.category,
+        currentPage: e.current_page, totalPages: e.total_pages,
+        chapterLabel: e.chapter_label, chapterIndex: e.chapter_index, chapterTotal: e.chapter_total,
+        openedAt: e.opened_at, createdAt: e.opened_at
+      })
+      continue
+    }
+    existing.currentPage = Math.max(existing.currentPage, e.current_page)
+    existing.totalPages = Math.max(existing.totalPages, e.total_pages)
+    existing.coverUrl = existing.coverUrl ?? e.cover_url
+    existing.chapterLabel = existing.chapterLabel ?? e.chapter_label
+    existing.chapterIndex = existing.chapterIndex ?? e.chapter_index
+    existing.chapterTotal = existing.chapterTotal ?? e.chapter_total
+    existing.openedAt = Math.max(existing.openedAt ?? 0, e.opened_at)
+    existing.createdAt = Math.min(existing.createdAt ?? e.opened_at, e.opened_at)
+  }
+  return [...byKey.values()]
+}
+
+function toHistoryEntry(i: LibraryItem): HistoryEntry {
+  return {
+    url: i.url, series_id: i.seriesId, title: i.title, cover_url: i.coverUrl,
+    source: i.source, chapter_label: i.chapterLabel, chapter_index: i.chapterIndex,
+    chapter_total: i.chapterTotal, current_page: i.currentPage, total_pages: i.totalPages,
+    category: i.category, opened_at: i.openedAt
+  }
+}
+
+function toUpsert(u: HistoryUpdate, key: string, seriesId: string): SeriesUpsert {
+  return {
+    key, seriesId: seriesId || u.url, url: u.url, title: u.title, coverUrl: u.cover_url,
+    source: u.source, category: u.category, currentPage: 1, totalPages: u.total_pages,
+    chapterLabel: u.chapter_label, chapterIndex: u.chapter_index, chapterTotal: u.chapter_total,
+    openedAt: Date.now()
+  }
 }
 
 export class HistoryManager {
-  entries: HistoryEntry[] = []
+  private repo: SeriesRepository
+  private entries: HistoryEntry[] = []
 
-  load(entries: HistoryEntry[]): void {
-    const normalized = entries.map((e) => {
-      const seriesId = e.series_id || e.url
-      const normalizedSeries = seriesKeyForUrl(e.url) ?? mangaSeriesUrlFromChapterUrl(seriesId) ?? seriesId
-      return { ...e, series_id: normalizedSeries }
-    })
-    normalized.sort((a, b) => b.opened_at - a.opened_at)
-    // One entry per gallery: clearnet and onion records of the same gallery
-    // collapse, keeping the newest url, best cover and the largest progress.
-    const byKey = new Map<string, HistoryEntry>()
-    for (const e of normalized) {
-      const key = e.series_id
-      const cur = byKey.get(key)
-      if (!cur) { byKey.set(key, e); continue }
-      cur.current_page = Math.max(cur.current_page, e.current_page)
-      cur.total_pages = Math.max(cur.total_pages, e.total_pages)
-      cur.cover_url = cur.cover_url ?? e.cover_url
-      cur.chapter_label = cur.chapter_label ?? e.chapter_label
-      cur.chapter_index = cur.chapter_index ?? e.chapter_index
-      cur.chapter_total = cur.chapter_total ?? e.chapter_total
-    }
-    this.entries = [...byKey.values()]
+  constructor(repo: SeriesRepository = new InMemorySeriesRepository()) {
+    this.repo = repo
+    this.refresh()
   }
 
-  all(): HistoryEntry[] { return this.entries }
+  private refresh(): void {
+    this.entries = this.repo.all().map(toHistoryEntry).sort((a, b) => b.opened_at - a.opened_at)
+  }
+
+  load(raw: HistoryEntry[]): void {
+    if (this.repo.all().length > 0 || raw.length === 0) { this.refresh(); return }
+    for (const item of normalizeHistory(raw)) this.repo.upsertHistory(item)
+    this.refresh()
+  }
+
+  all(): HistoryEntry[] { return this.entries.map((e) => ({ ...e })) }
   mainEntries(): HistoryEntry[] { return this.entries.filter((e) => e.category === 'main') }
   r34Entries(): HistoryEntry[] { return this.entries.filter((e) => e.category === 'r34') }
-  toVec(): HistoryEntry[] { return this.entries.map((e) => ({ ...e })) }
+  toVec(): HistoryEntry[] { return this.all() }
 
-  clear(): void { this.entries = [] }
+  clear(): void {
+    this.repo.clearHistory()
+    this.refresh()
+  }
 
   addOrUpdate(update: HistoryUpdate): void {
-    const seriesKey = seriesKeyForUrl(update.url)
-    const seriesId = update.series_id || update.url
-    const existing = this.entries.find((e) => matchesEntry(e, seriesKey, seriesId, update.url))
+    const key = seriesKeyForUrl(update.url) ?? update.series_id ?? update.url
+    const existing = this.repo.get(key) ?? this.repo.findByUrl(update.url)
     if (existing) {
+      if (existing.url !== update.url && update.chapter_index != null && existing.chapterIndex != null && update.chapter_index < existing.chapterIndex) {
+        return
+      }
+      const next = toUpsert(update, existing.key, existing.seriesId)
       if (existing.url === update.url) {
-        const current_page = Math.max(existing.current_page, 1)
-        const cover_url = update.cover_url ?? existing.cover_url
-        this.entries = this.entries.filter((e) => e !== existing)
-        this.entries.unshift(this.newEntry({ ...update, cover_url }, current_page))
-        return
+        next.currentPage = Math.max(existing.currentPage, 1)
+        next.totalPages = Math.max(existing.totalPages, update.total_pages)
+      } else {
+        next.coverUrl = update.cover_url ?? existing.coverUrl
+        next.currentPage = existing.currentPage
+        next.totalPages = Math.max(existing.totalPages, update.total_pages)
       }
-      if (update.chapter_index != null && existing.chapter_index != null && update.chapter_index < existing.chapter_index) {
-        return
-      }
-      update = { ...update, cover_url: update.cover_url ?? existing.cover_url }
+      this.repo.upsertHistory(next)
+    } else {
+      this.repo.upsertHistory(toUpsert(update, key, update.series_id || update.url))
     }
-    this.entries = this.entries.filter((e) => !matchesEntry(e, seriesKey, seriesId, update.url))
-    this.entries.unshift(this.newEntry(update, 1))
+    this.refresh()
   }
 
   updateProgress(url: string, currentPage: number, totalPages: number): void {
-    const seriesKey = seriesKeyForUrl(url)
-    const e = this.entries.find((x) => x.url === url)
-      ?? this.entries.find((x) => seriesKey && seriesKeyForUrl(x.url) === seriesKey)
-    if (e) {
-      e.current_page = currentPage
-      e.total_pages = Math.max(e.total_pages, totalPages)
-      e.opened_at = Date.now()
-    }
-  }
-
-  private newEntry(u: HistoryUpdate, current_page: number): HistoryEntry {
-    return {
-      url: u.url, series_id: u.series_id, title: u.title, cover_url: u.cover_url,
-      source: u.source, chapter_label: u.chapter_label, chapter_index: u.chapter_index,
-      chapter_total: u.chapter_total, current_page, total_pages: u.total_pages,
-      category: u.category, opened_at: Date.now()
-    }
+    const key = seriesKeyForUrl(url)
+    const item = this.repo.findByUrl(url) ?? (key ? this.repo.get(key) : null)
+    if (item) this.repo.updateProgress(item.key, currentPage, totalPages, Date.now())
+    this.refresh()
   }
 }
