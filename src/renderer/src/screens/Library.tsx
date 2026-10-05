@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useStore } from '../state/store'
 import type { LibraryItem, LibraryQuery, LibrarySort, ReadingStatus } from '@shared/library'
 import { READING_STATUSES } from '@shared/library'
@@ -22,7 +22,7 @@ function coverSrc(url: string): string {
 export default function Library(): JSX.Element {
   const { setScreen, setOpened, settings } = useStore()
   const [items, setItems] = useState<LibraryItem[]>([])
-  const [counts, setCounts] = useState<Record<string, number>>({})
+  const [allItems, setAllItems] = useState<LibraryItem[]>([])
   const [status, setStatus] = useState<ReadingStatus | 'all'>('all')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<LibrarySort>('last_read')
@@ -31,7 +31,7 @@ export default function Library(): JSX.Element {
   const refresh = useCallback(() => {
     const q: LibraryQuery = { status, search, sort, includeR34: settings.show_r34_history }
     void window.api.libraryList(q).then(setItems)
-    void window.api.libraryCounts().then(setCounts)
+    void window.api.libraryList({ status: 'all', includeR34: settings.show_r34_history }).then(setAllItems)
   }, [status, search, sort, settings.show_r34_history])
 
   useEffect(refresh, [refresh])
@@ -46,7 +46,12 @@ export default function Library(): JSX.Element {
     }
   }
 
-  const total = Object.values(counts).reduce((a, b) => a + b, 0)
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {}
+    for (const it of allItems) if (it.status) c[it.status] = (c[it.status] ?? 0) + 1
+    return c
+  }, [allItems])
+  const total = allItems.length
 
   return (
     <div className="screen library">
