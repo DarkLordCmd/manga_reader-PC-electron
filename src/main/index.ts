@@ -39,7 +39,7 @@ import { setCustomDnsServers, parseDnsServerList, checkCustomDns } from './servi
 import { initCookieStore } from './services/comx-gate'
 import { lookup as dnsPromiseLookup } from 'dns'
 import { DownloadManager } from './services/download-manager'
-import { buildBackup, parseBackup } from './services/backup'
+import { buildBackup, parseBackup, SECRET_SETTINGS } from './services/backup'
 import { CH } from '@shared/ipc'
 
 const galleries = new Map<string, Gallery>()
@@ -136,7 +136,7 @@ app.whenReady().then(() => {
   ehWatcher.onChange(broadcastEhLimitState)
   ipcMain.handle(CH.ehLimitsState, () => ehWatcher.state())
   setEhSetCookieHandler((_host, setCookies) => exAccounts.mergeSetCookies(setCookies))
-  const { repo } = openDatabase(app.getPath('userData'))
+  const { db, repo } = openDatabase(app.getPath('userData'))
   history = new HistoryManager(repo)
   history.load(settings.get().viewing_history)
   library = new LibraryService(repo, { autoAdd: () => settings.get().library_auto_add })
@@ -303,36 +303,43 @@ app.whenReady().then(() => {
       dialog.showErrorBox('Импорт не выполнен', e?.message ?? String(e))
       return null
     }
-    // safety copy of the current DB
+    // WAL-safe safety copy: checkpoint first so all committed data is in the
+    // main file, then copy just that file.
+    try { db.pragma('wal_checkpoint(TRUNCATE)') } catch { /* ignore */ }
     try { copyFileSync(join(app.getPath('userData'), 'library.db'), join(app.getPath('userData'), 'library.db.bak')) } catch { /* ignore */ }
 
-    const res = repo.importItems(backup.series ?? [])
+    try {
+      const res = repo.importItems(backup.series ?? [])
 
-    // settings: apply, but never let empty secret fields wipe current ones
-    const next = { ...settings.get(), ...backup.settings }
-    for (const k of ['onion_cookies_raw', 'nhentai_cookies_raw', 'nhentai_onion_cookies_raw', 'senkuro_cookies_raw', 'exhentai_proxy_addr', 'mangalib_proxy_addr', 'tor_bridges'] as const) {
-      if (String((backup.settings as any)[k] ?? '') === '') (next as any)[k] = (settings.get() as any)[k]
+      const next = { ...settings.get(), ...backup.settings }
+      for (const k of SECRET_SETTINGS) {
+        if (String((backup.settings as any)[k] ?? '') === '') (next as any)[k] = (settings.get() as any)[k]
+      }
+      settings.save(next)
+      setFrontingEnabled(!!next.enable_domain_fronting)
+      setLibMirror(next.lib_image_server ?? null)
+      setCustomDnsServers(parseDnsServerList(next.custom_dns ?? ''))
+
+      const accountsAdded = Array.isArray(backup.accounts) ? exAccounts.importAccounts(backup.accounts) : 0
+
+      let downloadsMerged = 0
+      const existing = new Set(downloads.list().map((t) => t.sourceUrl))
+      for (const t of backup.downloads ?? []) {
+        if (existing.has(t.sourceUrl)) continue
+        downloads.adopt(t)
+        existing.add(t.sourceUrl)
+        downloadsMerged++
+      }
+
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.libraryChanged)
+      const summary: import('@shared/ipc').BackupSummary = {
+        seriesAdded: res.added, seriesUpdated: res.updated, accountsAdded, downloadsMerged
+      }
+      return summary
+    } catch (e: any) {
+      dialog.showErrorBox('Импорт не выполнен', e?.message ?? String(e))
+      return null
     }
-    settings.save(next)
-    setFrontingEnabled(!!next.enable_domain_fronting)
-    setLibMirror(next.lib_image_server ?? null)
-    setCustomDnsServers(parseDnsServerList(next.custom_dns ?? ''))
-
-    const accountsAdded = Array.isArray(backup.accounts) ? exAccounts.importAccounts(backup.accounts) : 0
-
-    let downloadsMerged = 0
-    const existing = new Set(downloads.list().map((t) => t.sourceUrl))
-    for (const t of backup.downloads ?? []) {
-      if (existing.has(t.sourceUrl)) continue
-      downloads.adopt(t)
-      downloadsMerged++
-    }
-
-    for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.libraryChanged)
-    const summary: import('@shared/ipc').BackupSummary = {
-      seriesAdded: res.added, seriesUpdated: res.updated, accountsAdded, downloadsMerged
-    }
-    return summary
   })
 
   protocol.handle('manga', async (request) => {

@@ -353,7 +353,7 @@ export default function Settings(): JSX.Element {
             <button onClick={async () => {
               const s = await window.api.backupImport()
               setBackupMsg(s
-                ? `Импорт: +${s.seriesAdded} серий, ${s.seriesUpdated} обновлено, аккаунтов +${s.accountsAdded}`
+                ? `Импорт: +${s.seriesAdded} серий, ${s.seriesUpdated} обновлено, аккаунтов +${s.accountsAdded}, загрузок +${s.downloadsMerged}`
                 : 'Импорт отменён или не удался')
             }}>Импорт</button>
           </div>

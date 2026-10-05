@@ -6,7 +6,7 @@ import type { DownloadTask } from '@shared/downloads'
 export const BACKUP_FORMAT = 'manga-reader-backup' as const
 export const BACKUP_VERSION = 1
 
-const SECRET_SETTINGS = [
+export const SECRET_SETTINGS = [
   'onion_cookies_raw', 'nhentai_cookies_raw', 'nhentai_onion_cookies_raw',
   'senkuro_cookies_raw', 'exhentai_proxy_addr', 'mangalib_proxy_addr', 'tor_bridges'
 ] as const
