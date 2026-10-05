@@ -184,6 +184,17 @@ export default function Reader(): JSX.Element {
         {opened?.kind === 'online' && (
           <button onClick={() => setShowChapters(true)}>Главы</button>
         )}
+        {opened?.kind === 'online' && (
+          <button onClick={() => void (async () => {
+            await window.api.libraryAdd({
+              url: opened.url,
+              title: opened.title,
+              coverUrl: opened.coverUrl ?? null,
+              source: opened.source,
+              seriesId: opened.mangaId ?? opened.url
+            })
+          })()}>＋ Library</button>
+        )}
         {opened && (
           <button onClick={() => void window.api.recordProgress(opened.url, 0, 1)}>Сбросить</button>
         )}

@@ -138,3 +138,7 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .lock-card button:disabled { opacity: 0.5; cursor: default; }
 .lock-error { color: #ef4444; font-size: 12px; }
 
+.library-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
+.library-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.library-note { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+

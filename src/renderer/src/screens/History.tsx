@@ -60,7 +60,13 @@ export default function History(): JSX.Element {
       </div>
       {visible.length === 0
         ? <div className="empty muted">Нет истории просмотров</div>
-        : <HistoryCardGrid entries={visible} onContinue={(e) => void onContinue(e)} />}
+        : <HistoryCardGrid
+            entries={visible}
+            onContinue={(e) => void onContinue(e)}
+            onAddToLibrary={(e) => void window.api.libraryAdd({
+              url: e.url, title: e.title, coverUrl: e.cover_url, source: e.source, seriesId: e.series_id
+            })}
+          />}
     </div>
   )
 }

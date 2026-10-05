@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../state/store'
+import Toggle from '../components/Toggle'
 import type { TorStatus, BridgeStatus, SiteStatus, LibMirrorStatus, CustomDnsStatus, ExAccountsResult } from '@shared/ipc'
 
 // Display copy of the well-known blocker-circumvention DNS servers (main keeps
@@ -325,6 +326,14 @@ export default function Settings(): JSX.Element {
                 onChange={(e) => upd({ nhentai_show_page_counts: e.target.checked })}
               /> Показывать количество страниц в каталоге NHentai
             </label>
+          </div>
+        </Section>
+
+        <Section title="Библиотека">
+          <div className="row">
+            <Toggle checked={settings.library_auto_add} onChange={(v) => upd({ library_auto_add: v })}>
+              Авто-добавлять открытые галереи в библиотеку
+            </Toggle>
           </div>
         </Section>
 

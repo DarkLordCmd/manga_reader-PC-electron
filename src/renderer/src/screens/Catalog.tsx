@@ -500,6 +500,16 @@ export default function Catalog(): JSX.Element {
         <div className="overlay" onClick={() => setPicked(null)}>
           <div className="overlay-card chapters" onClick={(e) => e.stopPropagation()}>
             <h3>{picked.title}</h3>
+            <button onClick={() => void (async () => {
+              await window.api.libraryAdd({
+                url: picked.url,
+                title: picked.title,
+                coverUrl: picked.coverUrl,
+                source: SOURCES.find((s) => s.key === source)?.label ?? '',
+                seriesId: picked.url
+              })
+              setExNotice('Добавлено в библиотеку')
+            })()}>＋ В библиотеку</button>
             <div className="chapter-list">
               {chapterError && <div className="error-text">{chapterError}</div>}
               {!chapters && !chapterError && <div>Загрузка…</div>}

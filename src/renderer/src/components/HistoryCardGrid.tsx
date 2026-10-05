@@ -3,13 +3,14 @@ import type { HistoryEntry } from '@shared/types'
 interface Props {
   entries: HistoryEntry[]
   onContinue: (e: HistoryEntry) => void
+  onAddToLibrary?: (e: HistoryEntry) => void
 }
 
 function coverSrc(url: string): string {
   return `manga://cover/${encodeURIComponent(url)}`
 }
 
-export default function HistoryCardGrid({ entries, onContinue }: Props): JSX.Element {
+export default function HistoryCardGrid({ entries, onContinue, onAddToLibrary }: Props): JSX.Element {
   return (
     <div className="history-grid">
       {entries.map((e) => {
@@ -35,6 +36,9 @@ export default function HistoryCardGrid({ entries, onContinue }: Props): JSX.Ele
                 className="continue-btn"
                 onClick={(ev) => { ev.stopPropagation(); onContinue(e) }}
               >{btnLabel}</button>
+              {onAddToLibrary && (
+                <button className="continue-btn" onClick={(ev) => { ev.stopPropagation(); onAddToLibrary(e) }}>＋</button>
+              )}
             </div>
             <div className="history-bars">
               <div className="bar-track"><div className="bar-fill chapter" style={{ width: `${chapterFrac * 100}%` }} /></div>

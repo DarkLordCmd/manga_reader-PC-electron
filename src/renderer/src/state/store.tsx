@@ -3,7 +3,7 @@ import type { Settings } from '@shared/settings'
 import { defaultSettings } from '@shared/settings'
 import type { ChapterListItem } from '@shared/ipc'
 
-export type Screen = 'Reader' | 'Catalog' | 'History' | 'Downloads' | 'Settings'
+export type Screen = 'Reader' | 'Catalog' | 'Library' | 'History' | 'Downloads' | 'Settings'
 
 export type OpenedGallery =
   | { kind: 'local'; id: string; title: string; pageCount: number; pages: string[]; url: string; startPage: number }
