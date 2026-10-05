@@ -42,7 +42,10 @@ export class SyncService {
   scheduleSync(): void {
     if (!this.deps.isEnabled()) return
     if (this.timer) clearTimeout(this.timer)
-    this.timer = setTimeout(() => { this.timer = null; void this.syncNow() }, DEBOUNCE_MS)
+    this.timer = setTimeout(() => {
+      this.timer = null
+      if (this.deps.isEnabled()) void this.syncNow()
+    }, DEBOUNCE_MS)
   }
 
   async syncNow(): Promise<SyncState> {

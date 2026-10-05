@@ -447,6 +447,7 @@ app.whenReady().then(() => {
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s)
     if (isPortableSettingsChanged(prevSettings, s)) {
       sync?.markSettingsChanged()
+      sync?.scheduleSync()
     }
   })
   ipcMain.handle(CH.getHistory, () => history.toVec())
