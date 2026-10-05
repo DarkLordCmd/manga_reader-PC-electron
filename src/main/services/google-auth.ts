@@ -4,7 +4,7 @@ import { randomBytes, createHash } from 'crypto'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import {
-  GOOGLE_CLIENT_ID, GOOGLE_SCOPE, GOOGLE_AUTH_ENDPOINT, GOOGLE_TOKEN_ENDPOINT,
+  GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_SCOPE, GOOGLE_AUTH_ENDPOINT, GOOGLE_TOKEN_ENDPOINT,
   GOOGLE_REVOKE_ENDPOINT, GOOGLE_USERINFO_ENDPOINT
 } from './google-config'
 
@@ -114,11 +114,11 @@ export class GoogleAuth {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        client_id: GOOGLE_CLIENT_ID, code, code_verifier: verifier,
+        client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, code, code_verifier: verifier,
         grant_type: 'authorization_code', redirect_uri: redirectUri
       }).toString()
     })
-    if (!res.ok) throw new Error(`Обмен кода не удался (HTTP ${res.status})`)
+    if (!res.ok) throw new Error(`Обмен кода не удался (HTTP ${res.status}): ${(await res.text()).slice(0, 300)}`)
     const tok = await res.json() as { access_token: string; refresh_token?: string; expires_in: number }
     if (!tok.refresh_token) throw new Error('Google не выдал refresh-token (нужен prompt=consent)')
     let email = ''
@@ -137,9 +137,9 @@ export class GoogleAuth {
     const res = await fetch(GOOGLE_TOKEN_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, refresh_token: t.refresh_token, grant_type: 'refresh_token' }).toString()
+      body: new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, refresh_token: t.refresh_token, grant_type: 'refresh_token' }).toString()
     })
-    if (!res.ok) throw new Error(`Обновление токена не удалось (HTTP ${res.status})`)
+    if (!res.ok) throw new Error(`Обновление токена не удалось (HTTP ${res.status}): ${(await res.text()).slice(0, 300)}`)
     const tok = await res.json() as { access_token: string; expires_in: number }
     this.write({ ...t, access_token: tok.access_token, expires_at: Date.now() + tok.expires_in * 1000 })
     return tok.access_token
