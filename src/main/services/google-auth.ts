@@ -58,7 +58,8 @@ export class GoogleAuth {
     if (!existsSync(this.path)) return null
     try {
       const raw = readFileSync(this.path)
-      const text = safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(raw) : raw.toString('utf8')
+      if (!safeStorage.isEncryptionAvailable()) return null
+      const text = safeStorage.decryptString(raw)
       return JSON.parse(text) as StoredTokens
     } catch { return null }
   }
@@ -68,8 +69,8 @@ export class GoogleAuth {
     if (!t) { try { rmSync(this.path) } catch { /* ignore */ } return }
     mkdirSync(join(this.path, '..'), { recursive: true })
     const text = JSON.stringify(t)
-    if (safeStorage.isEncryptionAvailable()) writeFileSync(this.path, safeStorage.encryptString(text))
-    else writeFileSync(this.path, text, 'utf8')
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Шифрование ОС недоступно — вход через Google невозможен')
+    writeFileSync(this.path, safeStorage.encryptString(text))
   }
 
   status(): { authed: boolean; email: string | null } {
@@ -86,9 +87,9 @@ export class GoogleAuth {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
         res.end('<html><body style="font-family:sans-serif">Можно закрыть окно и вернуться в приложение.</body></html>')
         try { server.close() } catch { /* ignore */ }
-        if (win && !win.isDestroyed()) win.close()
         if (parsed.code) done(() => resolve({ code: parsed.code!, redirectUri }))
         else done(() => reject(new Error(parsed.error === 'access_denied' ? 'Доступ отклонён пользователем' : `Ошибка авторизации: ${parsed.error ?? 'unknown'}`)))
+        if (win && !win.isDestroyed()) win.close()
       })
       server.on('error', (e) => done(() => reject(e)))
       let redirectUri = ''
@@ -104,6 +105,7 @@ export class GoogleAuth {
   }
 
   async login(): Promise<{ email: string }> {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Шифрование ОС недоступно — вход через Google невозможен')
     const verifier = buildCodeVerifier()
     const challenge = codeChallenge(verifier)
     const { code, redirectUri } = await this.captureCode(challenge)
