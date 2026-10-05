@@ -36,16 +36,28 @@ export interface DbHandle {
   repo: SqliteSeriesRepository
 }
 
+function openAt(path: string): Database.Database {
+  const db = new Database(path)
+  try {
+    db.pragma('journal_mode = WAL')
+    db.exec(SCHEMA)
+    return db
+  } catch (e) {
+    try { db.close() } catch { /* ignore */ }
+    throw e
+  }
+}
+
 export function openDatabase(userDataDir: string): DbHandle {
   const path = join(userDataDir, 'library.db')
   let db: Database.Database
   try {
-    db = new Database(path)
+    db = openAt(path)
   } catch {
-    if (existsSync(path)) renameSync(path, `${path}.corrupt-${Date.now()}`)
-    db = new Database(path)
+    if (existsSync(path)) {
+      try { renameSync(path, `${path}.corrupt-${Date.now()}`) } catch { /* ignore */ }
+    }
+    db = openAt(path)
   }
-  db.pragma('journal_mode = WAL')
-  db.exec(SCHEMA)
   return { db, repo: new SqliteSeriesRepository(db) }
 }
