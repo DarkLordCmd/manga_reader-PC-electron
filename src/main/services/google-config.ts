@@ -1,0 +1,6 @@
+export const GOOGLE_CLIENT_ID = '59705917238-2tditham9qpns2gl7tecarqh77krg5bt.apps.googleusercontent.com'
+export const GOOGLE_SCOPE = 'openid email https://www.googleapis.com/auth/drive.appdata'
+export const GOOGLE_AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth'
+export const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
+export const GOOGLE_REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke'
+export const GOOGLE_USERINFO_ENDPOINT = 'https://www.googleapis.com/oauth2/v3/userinfo'
