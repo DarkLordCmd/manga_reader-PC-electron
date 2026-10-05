@@ -115,7 +115,8 @@ export class InMemorySeriesRepository extends BaseSeriesRepository {
         openedAt: item.openedAt ?? now,
         createdAt: existing.createdAt,
         updatedAt: now,
-        deletedAt: null
+        deletedAt: null,
+        favoritedAt: existing.favoritedAt
       }
       this.map.set(item.key, next)
       return clone(next)

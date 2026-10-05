@@ -56,7 +56,11 @@ export function mergeSyncPayload(local: SyncPayload, remote: SyncPayload): SyncP
   for (const i of local.series) map.set(i.key, i)
   for (const i of remote.series) {
     const cur = map.get(i.key)
-    if (!cur || i.updatedAt > cur.updatedAt) map.set(i.key, i)
+    if (!cur || i.updatedAt > cur.updatedAt) {
+      const hasFavoritedAt = Object.prototype.hasOwnProperty.call(i, 'favoritedAt')
+      const chosen: LibraryItem = hasFavoritedAt ? i : { ...i, favoritedAt: cur?.favoritedAt ?? null }
+      map.set(i.key, chosen)
+    }
   }
   const remoteWins = remote.settingsUpdatedAt > local.settingsUpdatedAt
   return {

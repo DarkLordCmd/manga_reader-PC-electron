@@ -48,6 +48,22 @@ describe('mergeSyncPayload', () => {
     expect(byKey.c.deletedAt).toBe(99)
   })
 
+  it('inherits local favoritedAt when an older-format remote item omits the field', () => {
+    const local = buildSyncPayload([item({ key: 'k', favoritedAt: 5, updatedAt: 10 })], defaultSettings(), 5)
+    const remoteItem = item({ key: 'k', updatedAt: 20 }) as any
+    delete remoteItem.favoritedAt
+    const remote = { ...buildSyncPayload([], defaultSettings(), 5), series: [remoteItem] }
+    const m = mergeSyncPayload(local, remote)
+    expect(m.series.find((i) => i.key === 'k')!.favoritedAt).toBe(5)
+  })
+
+  it('propagates an explicit null favoritedAt from a newer remote item', () => {
+    const local = buildSyncPayload([item({ key: 'k', favoritedAt: 5, updatedAt: 10 })], defaultSettings(), 5)
+    const remote = { ...buildSyncPayload([], defaultSettings(), 5), series: [item({ key: 'k', favoritedAt: null, updatedAt: 20 })] }
+    const m = mergeSyncPayload(local, remote)
+    expect(m.series.find((i) => i.key === 'k')!.favoritedAt).toBeNull()
+  })
+
   it('takes settings from the newer settingsUpdatedAt', () => {
     const a = buildSyncPayload([], { ...defaultSettings(), width_scale: 0.4 }, 10)
     const b = buildSyncPayload([], { ...defaultSettings(), width_scale: 0.8 }, 20)

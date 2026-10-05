@@ -37,4 +37,12 @@ describe('favorites', () => {
     r.upsertHistory(up({ currentPage: 3 }))
     expect(r.get('nh:1')!.favoritedAt).toBe(5)
   })
+
+  it('upsertHistory does not let a caller-supplied favoritedAt clobber the stored value', () => {
+    const r = new InMemorySeriesRepository()
+    r.upsertHistory(up())
+    r.setFavorite('nh:1', 5)
+    r.upsertHistory(up({ currentPage: 3, favoritedAt: 999 }))
+    expect(r.get('nh:1')!.favoritedAt).toBe(5)
+  })
 })

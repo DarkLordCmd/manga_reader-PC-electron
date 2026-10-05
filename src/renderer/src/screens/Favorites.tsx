@@ -52,6 +52,7 @@ export default function Favorites(): JSX.Element {
       <div className="history-grid">
         {items.map((it) => (
           <div key={it.key} className="history-card"
+            onClick={() => void open(it)}
             onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, item: it }) }}>
             <div className="history-cover">
               {it.coverUrl ? <img src={coverSrc(it.coverUrl)} alt="" loading="lazy" /> : <div className="cover-placeholder" />}
