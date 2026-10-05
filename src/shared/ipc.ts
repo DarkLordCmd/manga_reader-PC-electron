@@ -194,6 +194,10 @@ export interface Api {
   libraryList(query: LibraryQuery): Promise<LibraryItem[]>
   libraryGet(key: string): Promise<LibraryItem | null>
   libraryAdd(entry: { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; category?: string }): Promise<LibraryItem>
+  libraryLookup(url: string, seriesId: string): Promise<{ key: string; favorited: boolean; status: ReadingStatus | null } | null>
+  librarySetFavorite(key: string, at: number | null): Promise<void>
+  libraryAddFavorite(entry: { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; category?: string }): Promise<LibraryItem>
+  librarySetStatusFor(entry: { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; category?: string }, status: ReadingStatus): Promise<LibraryItem>
   librarySetStatus(key: string, status: ReadingStatus | null): Promise<void>
   librarySetNote(key: string, note: string): Promise<void>
   librarySetRating(key: string, rating: number | null): Promise<void>
@@ -275,6 +279,10 @@ export const CH = {
   libraryList: 'library:list',
   libraryGet: 'library:get',
   libraryAdd: 'library:add',
+  libraryLookup: 'library:lookup',
+  librarySetFavorite: 'library:setFavorite',
+  libraryAddFavorite: 'library:addFavorite',
+  librarySetStatusFor: 'library:setStatusFor',
   librarySetStatus: 'library:setStatus',
   librarySetNote: 'library:setNote',
   librarySetRating: 'library:setRating',

@@ -464,6 +464,10 @@ app.whenReady().then(() => {
     broadcastLibrary()
     return item
   })
+  ipcMain.handle(CH.libraryLookup, (_e, url: string, seriesId: string) => library.lookup(String(url), String(seriesId)))
+  ipcMain.handle(CH.librarySetFavorite, (_e, key: string, at: number | null) => { library.setFavorite(String(key), at); broadcastLibrary() })
+  ipcMain.handle(CH.libraryAddFavorite, (_e, entry) => { const it = library.addFavorite(entry); broadcastLibrary(); return it })
+  ipcMain.handle(CH.librarySetStatusFor, (_e, entry, status) => { const it = library.setStatusFor(entry, status); broadcastLibrary(); return it })
   ipcMain.handle(CH.librarySetStatus, (_e, key: string, status: any) => { library.setStatus(String(key), status); broadcastLibrary() })
   ipcMain.handle(CH.librarySetNote, (_e, key: string, note: string) => { library.setNote(String(key), String(note ?? '')); broadcastLibrary() })
   ipcMain.handle(CH.librarySetRating, (_e, key: string, rating: number | null) => { library.setRating(String(key), rating); broadcastLibrary() })
