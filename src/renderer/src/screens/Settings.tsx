@@ -70,6 +70,9 @@ export default function Settings(): JSX.Element {
   const [pinMsg, setPinMsg] = useState<string | null>(null)
   const [includeSecrets, setIncludeSecrets] = useState(false)
   const [backupMsg, setBackupMsg] = useState<string | null>(null)
+  const [google, setGoogle] = useState<{ authed: boolean; email: string | null }>({ authed: false, email: null })
+  const [syncState, setSyncState] = useState<import('@shared/sync').SyncState>({ state: 'idle', lastSyncAt: null, email: null, lastError: null })
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
 
   useEffect(() => {
     window.api.getExAccounts().then(setExAcc)
@@ -88,6 +91,12 @@ export default function Settings(): JSX.Element {
         }
       }).catch(() => {})
     }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    window.api.googleAuthStatus().then(setGoogle)
+    window.api.syncGetState().then(setSyncState)
+    return window.api.onSyncChanged(setSyncState)
   }, [])
 
   const upd = (patch: Partial<typeof settings>): void => setSettings({ ...settings, ...patch })
@@ -337,6 +346,46 @@ export default function Settings(): JSX.Element {
               Авто-добавлять открытые галереи в библиотеку
             </Toggle>
           </div>
+        </Section>
+
+        <Section title="Синхронизация (Google Drive)">
+          {!google.authed ? (
+            <>
+              <div className="row">
+                <button onClick={async () => {
+                  setSyncMsg('Открываю окно входа Google…')
+                  try { const r = await window.api.googleLogin(); setGoogle(r); setSyncMsg('Вход выполнен') }
+                  catch (e: any) { setSyncMsg(`Ошибка: ${e?.message ?? e}`) }
+                }}>Войти через Google</button>
+              </div>
+              <div className="row muted">Синхронизирует библиотеку и прогресс через вашу папку Google Drive.</div>
+            </>
+          ) : (
+            <>
+              <div className="row">
+                <label>Аккаунт:</label><span className="muted">{google.email || '—'}</span>
+              </div>
+              <div className="row">
+                <label>Последняя синхронизация:</label>
+                <span className="muted">{syncState.lastSyncAt ? new Date(syncState.lastSyncAt).toLocaleString() : 'ещё не было'}</span>
+              </div>
+              <div className="row">
+                <Toggle checked={settings.sync_enabled} onChange={(v) => upd({ sync_enabled: v })}>Включить синхронизацию</Toggle>
+              </div>
+              <div className="row">
+                <Toggle checked={settings.sync_auto} onChange={(v) => upd({ sync_auto: v })}>Авто-синхронизация</Toggle>
+              </div>
+              <div className="row">
+                <button disabled={syncState.state === 'syncing'} onClick={async () => {
+                  setSyncMsg('Синхронизирую…')
+                  try { await window.api.syncNow(); setSyncMsg('Готово') } catch (e: any) { setSyncMsg(`Ошибка: ${e?.message ?? e}`) }
+                }}>{syncState.state === 'syncing' ? 'Синхронизация…' : 'Синхронизировать сейчас'}</button>
+                <button onClick={async () => { await window.api.googleLogout(); setGoogle({ authed: false, email: null }); setSyncMsg('Вы вышли из Google') }}>Выйти</button>
+              </div>
+            </>
+          )}
+          {syncState.lastError && <div className="row muted">Ошибка синка: {syncState.lastError}</div>}
+          {syncMsg && <div className="row muted">{syncMsg}</div>}
         </Section>
 
         <Section title="Резервная копия">
