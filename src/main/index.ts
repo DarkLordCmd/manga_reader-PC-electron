@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol, net } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
-import { readFileSync } from 'fs'
+import { readFileSync, writeFileSync, copyFileSync } from 'fs'
 import { SettingsService } from './services/settings'
 import { HistoryManager } from './services/history'
 import { openDatabase } from './services/db'
@@ -39,6 +39,7 @@ import { setCustomDnsServers, parseDnsServerList, checkCustomDns } from './servi
 import { initCookieStore } from './services/comx-gate'
 import { lookup as dnsPromiseLookup } from 'dns'
 import { DownloadManager } from './services/download-manager'
+import { buildBackup, parseBackup } from './services/backup'
 import { CH } from '@shared/ipc'
 
 const galleries = new Map<string, Gallery>()
@@ -268,6 +269,70 @@ app.whenReady().then(() => {
       Referer: new URL(sourceUrl).origin + '/',
       ...(cookieHeader ? { Cookie: cookieHeader } : {})
     }, proxy)
+  })
+
+  ipcMain.handle(CH.backupExport, async (_e, includeSecrets: boolean) => {
+    const r = await dialog.showSaveDialog({
+      title: 'Экспорт данных',
+      defaultPath: `manga-reader-backup-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    })
+    if (r.canceled || !r.filePath) return { canceled: true }
+    const data = buildBackup(
+      settings.get(),
+      repo.all(),
+      exAccounts.accounts,
+      downloads.list(),
+      !!includeSecrets
+    )
+    writeFileSync(r.filePath, JSON.stringify(data, null, 2), 'utf8')
+    return { canceled: false, path: r.filePath }
+  })
+
+  ipcMain.handle(CH.backupImport, async () => {
+    const r = await dialog.showOpenDialog({
+      title: 'Импорт данных',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile']
+    })
+    if (r.canceled || r.filePaths.length === 0) return null
+    let backup
+    try {
+      backup = parseBackup(readFileSync(r.filePaths[0], 'utf8'))
+    } catch (e: any) {
+      dialog.showErrorBox('Импорт не выполнен', e?.message ?? String(e))
+      return null
+    }
+    // safety copy of the current DB
+    try { copyFileSync(join(app.getPath('userData'), 'library.db'), join(app.getPath('userData'), 'library.db.bak')) } catch { /* ignore */ }
+
+    const res = repo.importItems(backup.series ?? [])
+
+    // settings: apply, but never let empty secret fields wipe current ones
+    const next = { ...settings.get(), ...backup.settings }
+    for (const k of ['onion_cookies_raw', 'nhentai_cookies_raw', 'nhentai_onion_cookies_raw', 'senkuro_cookies_raw', 'exhentai_proxy_addr', 'mangalib_proxy_addr', 'tor_bridges'] as const) {
+      if (String((backup.settings as any)[k] ?? '') === '') (next as any)[k] = (settings.get() as any)[k]
+    }
+    settings.save(next)
+    setFrontingEnabled(!!next.enable_domain_fronting)
+    setLibMirror(next.lib_image_server ?? null)
+    setCustomDnsServers(parseDnsServerList(next.custom_dns ?? ''))
+
+    const accountsAdded = Array.isArray(backup.accounts) ? exAccounts.importAccounts(backup.accounts) : 0
+
+    let downloadsMerged = 0
+    const existing = new Set(downloads.list().map((t) => t.sourceUrl))
+    for (const t of backup.downloads ?? []) {
+      if (existing.has(t.sourceUrl)) continue
+      downloads.adopt(t)
+      downloadsMerged++
+    }
+
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.libraryChanged)
+    const summary: import('@shared/ipc').BackupSummary = {
+      seriesAdded: res.added, seriesUpdated: res.updated, accountsAdded, downloadsMerged
+    }
+    return summary
   })
 
   protocol.handle('manga', async (request) => {

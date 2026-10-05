@@ -201,6 +201,13 @@ export class DownloadManager {
     return task
   }
 
+  adopt(task: DownloadTask): void {
+    if (this.tasks.some((t) => t.sourceUrl === task.sourceUrl)) return
+    this.tasks.push({ ...task, state: task.state === 'running' ? 'queued' : task.state })
+    this.notify()
+    void this.pump()
+  }
+
   pause(id: string): void {
     const t = this.tasks.find((x) => x.id === id)
     if (t && t.state === 'running') { t.state = 'paused'; t.epoch = (t.epoch ?? 0) + 1; this.notify() }

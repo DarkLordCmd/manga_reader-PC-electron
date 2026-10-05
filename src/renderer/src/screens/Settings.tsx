@@ -68,6 +68,8 @@ export default function Settings(): JSX.Element {
   const [pinCurrent, setPinCurrent] = useState('')
   const [pinNew, setPinNew] = useState('')
   const [pinMsg, setPinMsg] = useState<string | null>(null)
+  const [includeSecrets, setIncludeSecrets] = useState(false)
+  const [backupMsg, setBackupMsg] = useState<string | null>(null)
 
   useEffect(() => {
     window.api.getExAccounts().then(setExAcc)
@@ -335,6 +337,27 @@ export default function Settings(): JSX.Element {
               Авто-добавлять открытые галереи в библиотеку
             </Toggle>
           </div>
+        </Section>
+
+        <Section title="Резервная копия">
+          <div className="row">
+            <Toggle checked={includeSecrets} onChange={setIncludeSecrets}>
+              Включить секреты (куки, прокси, аккаунты)
+            </Toggle>
+          </div>
+          <div className="row">
+            <button onClick={async () => {
+              const r = await window.api.backupExport(includeSecrets)
+              setBackupMsg(r.canceled ? 'Экспорт отменён' : `Сохранено: ${r.path}`)
+            }}>Экспорт</button>
+            <button onClick={async () => {
+              const s = await window.api.backupImport()
+              setBackupMsg(s
+                ? `Импорт: +${s.seriesAdded} серий, ${s.seriesUpdated} обновлено, аккаунтов +${s.accountsAdded}`
+                : 'Импорт отменён или не удался')
+            }}>Импорт</button>
+          </div>
+          {backupMsg && <div className="row muted">{backupMsg}</div>}
         </Section>
 
         <Section title="Network & Accounts">

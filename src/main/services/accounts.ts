@@ -127,6 +127,23 @@ export class ExAccountsService {
     return renumbered.length
   }
 
+  importAccounts(accounts: ExAccount[]): number {
+    const have = new Set(this.accounts.flatMap((a) => a.cookies.filter(([n]) => n === 'ipb_member_id').map(([, v]) => v)))
+    let added = 0
+    for (const a of accounts) {
+      const mid = a.cookies.find(([n]) => n === 'ipb_member_id')?.[1]
+      if (mid && have.has(mid)) continue
+      const id = this.accounts.reduce((m, x) => Math.max(m, x.id), 0) + 1
+      const acc: ExAccount = { ...a, id }
+      this.accounts.push(acc)
+      this.manualAccounts.push(acc)
+      if (mid) have.add(mid)
+      added++
+    }
+    if (added > 0) saveManualAccounts(this.userDataDir, this.manualAccounts)
+    return added
+  }
+
   /**
    * Password login to E-Hentai via the forums (same flow as JHenTai):
    * POST `act=Login&CODE=01` with username/password, capture the session
