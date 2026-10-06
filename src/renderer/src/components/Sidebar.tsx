@@ -12,10 +12,11 @@ const ITEMS: { key: 'Reader' | 'Catalog' | 'Popular' | 'Library' | 'Favorites' |
 ]
 
 export default function Sidebar(): JSX.Element {
-  const { screen, setScreen } = useStore()
+  const { screen, setScreen, settings } = useStore()
+  const items = settings.show_r34_history ? ITEMS : ITEMS.filter((it) => it.key !== 'Popular')
   return (
     <nav className="sidebar">
-      {ITEMS.map((it) => (
+      {items.map((it) => (
         <button
           key={it.key}
           title={it.label}

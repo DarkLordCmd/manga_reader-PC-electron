@@ -13,7 +13,12 @@ import Settings from './screens/Settings'
 import Downloads from './screens/Downloads'
 
 function Shell(): JSX.Element {
-  const { screen } = useStore()
+  const { screen, setScreen, settings } = useStore()
+  // Hide the R34-only Popular screen when the privacy toggle is off; if it was
+  // the active screen, fall back to the catalog.
+  useEffect(() => {
+    if (!settings.show_r34_history && screen === 'Popular') setScreen('Catalog')
+  }, [settings.show_r34_history, screen, setScreen])
   return (
     <div className="app">
       <Sidebar />
@@ -35,7 +40,7 @@ function Shell(): JSX.Element {
         >
           <Catalog />
         </div>
-        {screen === 'Popular' && <Popular />}
+        {screen === 'Popular' && settings.show_r34_history && <Popular />}
         {screen === 'Library' && <Library />}
         {screen === 'Favorites' && <Favorites />}
         {screen === 'History' && <History />}

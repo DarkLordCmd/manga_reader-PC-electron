@@ -755,7 +755,7 @@ export default function Settings(): JSX.Element {
         <Section title="🔒 Приватность">
           <div className="row">
             <Toggle checked={settings.show_r34_history} onChange={(v) => upd({ show_r34_history: v })}>
-              Показывать вкладку R34 в истории
+              Показывать контент R34 (источники каталога, «Популярное», вкладки R34)
             </Toggle>
           </div>
         </Section>

@@ -27,6 +27,9 @@ const SOURCES: { key: string; label: string }[] = [
   { key: 'mangamello', label: 'MangaMello' }
 ]
 
+/** Sources hidden when the "show R34" privacy setting is off. */
+const R34_SOURCES = ['exhentai', 'exhentai_onion', 'ehentai', 'nhentai', 'nhentai_onion']
+
 const SORTS: { key: string; label: string }[] = [
   { key: 'relevance', label: 'По релевантности' },
   { key: 'rating', label: 'По рейтингу' },
@@ -118,7 +121,10 @@ function TagChecklist({ items, selected, onToggle }: { items: [string, string][]
 
 export default function Catalog(): JSX.Element {
   const { setScreen, setOpened, settings, setSettings } = useStore()
-  const [source, setSource] = useState(settings.last_catalog_source || 'mangadex')
+  const [source, setSource] = useState(() => {
+    const s = settings.last_catalog_source || 'mangadex'
+    return !settings.show_r34_history && R34_SOURCES.includes(s) ? 'mangadex' : s
+  })
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState('relevance')
   const [page, setPage] = useState(0)
@@ -210,6 +216,10 @@ export default function Catalog(): JSX.Element {
   const nhTagSource = source === 'nhentai' || source === 'nhentai_onion'
   const showFilters = source === 'exhentai' || source === 'exhentai_onion' || source === 'ehentai'
     || source === 'mangashi' || source === 'remanga' || source === 'mangadex' || source === 'senkuro' || source === 'comx' || nhTagSource
+  const visibleSources = settings.show_r34_history ? SOURCES : SOURCES.filter((s) => !R34_SOURCES.includes(s.key))
+  const visibleQuickSearches = settings.show_r34_history
+    ? settings.quick_searches
+    : settings.quick_searches.filter((q) => !R34_SOURCES.includes(q.source))
 
   useEffect(() => {
     if (tagQuery.trim().length < 2) { setEhTags([]); setNhTags([]); return }
@@ -353,6 +363,13 @@ export default function Catalog(): JSX.Element {
     setSettings({ ...settings, last_catalog_source: s })
   }
 
+  // Turning the R34 privacy toggle off while an R34 source is active falls back
+  // to a safe source (also hides its now-excluded cards/search presets).
+  useEffect(() => {
+    if (!settings.show_r34_history && R34_SOURCES.includes(source)) changeSource('mangadex')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.show_r34_history])
+
   const resetFilters = (): void => {
     setEhExcludedCats(0)
     setEhMinRating(0)
@@ -466,7 +483,7 @@ export default function Catalog(): JSX.Element {
     <div className="catalog screen">
       <div className="catalog-toolbar">
         <select value={source} onChange={(e) => changeSource(e.target.value)}>
-          {SOURCES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+          {visibleSources.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
         {exIsAccountSource && (
           <select
@@ -499,8 +516,8 @@ export default function Catalog(): JSX.Element {
           <button className="tab" onClick={() => setQsOpen((v) => !v)}>★ Быстрые поиски ▾</button>
           {qsOpen && (
             <div className="quick-search-menu">
-              {settings.quick_searches.length === 0 && <div className="muted qs-empty">Нет сохранённых поисков</div>}
-              {settings.quick_searches.map((q, i) => (
+              {visibleQuickSearches.length === 0 && <div className="muted qs-empty">Нет сохранённых поисков</div>}
+              {visibleQuickSearches.map((q, i) => (
                 <div key={q.id} className="qs-row">
                   <button className="qs-launch" title={`${q.source}: ${q.query}`} onClick={() => {
                     setQsOpen(false)
