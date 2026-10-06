@@ -28,6 +28,7 @@ import { runLoginWindow } from './services/login'
 import { probeSocks5Handshake, probeBridgeLine, probeSite, allSiteKeys } from './services/tor-check'
 import { fetchEhTagSuggest, fetchNhentaiTagSuggestions } from './services/tags'
 import { fetchCoverBuffer } from './services/covers'
+import { CoverDiskCache } from './services/cover-cache'
 import { setFrontingEnabled } from './services/domain-fronting'
 import { setTorFallbackAddr } from './services/http'
 import { shutdownBrowserFetch } from './services/browser-fetch'
@@ -78,6 +79,7 @@ app.commandLine.appendSwitch('enable-features', 'EncryptedClientHello')
 const onlineHeaders = new Map<string, Record<string, string>>()
 const coverCache = new Map<string, Buffer>()
 const coverInFlight = new Map<string, Promise<Buffer>>()
+let coverDisk: CoverDiskCache | null = null
 const zipMeta = new Map<string, { zipPath: string; entries: string[] }>()
 const ZIP_TMP = join(app.getPath('userData'), 'tmp', 'zip')
 const SERIES_SOURCES = ['MangaDex', 'Remanga', 'Senkuro', 'Manga-shi', 'Readmanga', 'Mintmanga', 'Mangapoisk', 'MangaMello']
@@ -173,8 +175,14 @@ function getCover(url: string): Promise<Buffer> {
   if (inFlight) return inFlight
   const p = (async () => {
     try {
+      // L2: persistent on-disk cache — survives restarts so library/favorites/
+      // history covers are not refetched every launch.
+      const disk = coverDisk ?? (coverDisk = new CoverDiskCache(join(app.getPath('userData'), 'cover-cache')))
+      const onDisk = await disk.get(url)
+      if (onDisk) { coverCache.set(url, onDisk); return onDisk }
       const buf = await fetchCoverBuffer(url, settings.get(), exAccounts.currentCookieHeader())
       coverCache.set(url, buf)
+      void disk.put(url, buf)
       return buf
     } finally {
       coverInFlight.delete(url)
