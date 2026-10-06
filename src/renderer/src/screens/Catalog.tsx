@@ -485,6 +485,8 @@ export default function Catalog(): JSX.Element {
                     if (q.source !== source) changeSource(q.source)
                     setQuery(keyword)
                     setPickedTags(tags)
+                    setEhExcludedCats(q.ehExcludedCats ?? 0)
+                    setEhMinRating(q.ehMinRating ?? 0)
                     if (q.source === source) setQuickSearchSeq((n) => n + 1)
                   }}>{q.name}</button>
                   <button className="qs-icon" disabled={i === 0} onClick={() => setSettings({ ...settings, quick_searches: moveQuickSearch(settings.quick_searches, q.id, 'up') })}>↑</button>
@@ -498,7 +500,7 @@ export default function Catalog(): JSX.Element {
                 setSettings({
                   ...settings,
                   quick_searches: addQuickSearch(settings.quick_searches, {
-                    id: crypto.randomUUID(), name, source, query
+                    id: crypto.randomUUID(), name, source, query, ehExcludedCats, ehMinRating
                   })
                 })
                 setQsOpen(false)

@@ -3,6 +3,10 @@ export interface QuickSearch {
   name: string
   source: string
   query: string
+  /** E-Hentai category exclusion bitmask (same value as `CatalogFilters.ehExcludedCats`). */
+  ehExcludedCats?: number
+  /** Minimum rating (0 = any). */
+  ehMinRating?: number
 }
 
 export function normalizeQuickSearches(raw: unknown): QuickSearch[] {
@@ -12,12 +16,15 @@ export function normalizeQuickSearches(raw: unknown): QuickSearch[] {
     if (!r || typeof r !== 'object') continue
     const o = r as Record<string, unknown>
     if (typeof o.id !== 'string' || !o.id || typeof o.name !== 'string') continue
-    out.push({
+    const q: QuickSearch = {
       id: o.id,
       name: o.name,
       source: typeof o.source === 'string' && o.source ? o.source : 'exhentai',
       query: typeof o.query === 'string' ? o.query : ''
-    })
+    }
+    if (typeof o.ehExcludedCats === 'number' && isFinite(o.ehExcludedCats)) q.ehExcludedCats = o.ehExcludedCats
+    if (typeof o.ehMinRating === 'number' && isFinite(o.ehMinRating)) q.ehMinRating = o.ehMinRating
+    out.push(q)
   }
   return out
 }

@@ -23,6 +23,10 @@ describe('quick-search', () => {
     expect(moveQuickSearch(list, '1', 'down').map((x) => x.id)).toEqual(['2', '1', '3'])
     expect(moveQuickSearch(list, '3', 'down').map((x) => x.id)).toEqual(['1', '2', '3'])
   })
+  it('parses optional EH filter fields', () => {
+    expect(normalizeQuickSearches([{ id: '1', name: 'a', source: 'exhentai', query: 'x', ehExcludedCats: 505, ehMinRating: 3 }]))
+      .toEqual([{ id: '1', name: 'a', source: 'exhentai', query: 'x', ehExcludedCats: 505, ehMinRating: 3 }])
+  })
 })
 
 describe('settings.quick_searches', () => {
