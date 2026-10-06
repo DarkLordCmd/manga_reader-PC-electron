@@ -482,6 +482,7 @@ export default function Catalog(): JSX.Element {
                   <button className="qs-launch" title={`${q.source}: ${q.query}`} onClick={() => {
                     setQsOpen(false)
                     setQuery(q.query)
+                    setPickedTags([])
                     if (q.source === source) {
                       setQuickSearchSeq((n) => n + 1)
                     } else {
