@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '../state/store'
 import type { CatalogCard } from '@shared/ipc'
+import type { ReadingStatus } from '@shared/library'
 import MangaCardGrid from '../components/MangaCardGrid'
+import ContextMenu, { type MenuItem } from '../components/ContextMenu'
+import { buildLibraryMenuItems } from '../lib/library-menu'
 
 type PopularSource = 'ehentai' | 'exhentai' | 'exhentai_onion'
 const SOURCES: { key: PopularSource; label: string }[] = [
@@ -16,6 +19,7 @@ export default function Popular(): JSX.Element {
   const [cards, setCards] = useState<CatalogCard[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; card: CatalogCard; lookup: { key: string; favorited: boolean; status: ReadingStatus | null } | null } | null>(null)
 
   const reqRef = useRef(0)
   const load = useCallback(async () => {
@@ -40,6 +44,25 @@ export default function Popular(): JSX.Element {
     if (r) { setOpened({ kind: 'online', ...r, startPage: 0, coverUrl: c.coverUrl }); setScreen('Reader') }
   }
 
+  const openCardMenu = useCallback(async (e: React.MouseEvent, card: CatalogCard) => {
+    e.preventDefault()
+    const lookup = await window.api.libraryLookup(card.url, card.url)
+    setMenu({ x: e.clientX, y: e.clientY, card, lookup })
+  }, [])
+
+  const menuItems = (m: NonNullable<typeof menu>): MenuItem[] =>
+    buildLibraryMenuItems(
+      {
+        url: m.card.url, title: m.card.title, coverUrl: m.card.coverUrl,
+        source: SOURCES.find((s) => s.key === source)?.label ?? '', seriesId: m.card.url
+      },
+      {
+        key: m.lookup?.key ?? null,
+        favorited: !!m.lookup?.favorited,
+        status: m.lookup?.status ?? null
+      }
+    )
+
   return (
     <div className="screen catalog">
       <div className="catalog-toolbar">
@@ -52,10 +75,13 @@ export default function Popular(): JSX.Element {
         <div className="catalog-content">
           {error && <div className="error-text">{error}</div>}
           {loading && cards.length === 0 && <div className="muted">Загрузка…</div>}
-          {cards.length > 0 && <MangaCardGrid cards={cards} onSelect={(c) => void open(c)} />}
+          {cards.length > 0 && <MangaCardGrid cards={cards} onSelect={(c) => void open(c)} onContextMenu={openCardMenu} />}
           {!loading && !error && cards.length === 0 && <div className="muted">Пусто</div>}
         </div>
       </div>
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={menuItems(menu)} onClose={() => setMenu(null)} />
+      )}
     </div>
   )
 }
