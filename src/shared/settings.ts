@@ -1,4 +1,5 @@
 import type { BookDirection, HistoryEntry, ReadingMode } from './types'
+import { normalizeQuickSearches, type QuickSearch } from './quick-search'
 
 export interface Settings {
   reading_mode: ReadingMode
@@ -32,6 +33,7 @@ export interface Settings {
   lib_image_server: string | null
   custom_dns: string | null
   last_catalog_source: string | null
+  quick_searches: QuickSearch[]
   library_auto_add: boolean
   sync_enabled: boolean
   sync_auto: boolean
@@ -52,6 +54,7 @@ export function defaultSettings(): Settings {
     lib_image_server: null,
     custom_dns: null,
     last_catalog_source: null,
+    quick_searches: [],
     library_auto_add: true,
     sync_enabled: false,
     sync_auto: true
@@ -118,6 +121,7 @@ export function parseSettings(raw: unknown): Settings {
     lib_image_server: typeof o.lib_image_server === 'string' && o.lib_image_server.trim() ? o.lib_image_server.trim() : null,
     custom_dns: typeof o.custom_dns === 'string' && o.custom_dns.trim() ? o.custom_dns.trim() : null,
     last_catalog_source: str(o.last_catalog_source, ''),
+    quick_searches: normalizeQuickSearches(o.quick_searches),
     library_auto_add: bool(o.library_auto_add, true),
     sync_enabled: bool(o.sync_enabled, false),
     sync_auto: bool(o.sync_auto, true)
