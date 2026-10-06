@@ -72,6 +72,7 @@ const api: Api = {
   },
   libraryList: (query) => ipcRenderer.invoke(CH.libraryList, query),
   libraryGet: (key) => ipcRenderer.invoke(CH.libraryGet, key),
+  libraryStatuses: (urls) => ipcRenderer.invoke(CH.libraryStatuses, urls),
   libraryAdd: (entry) => ipcRenderer.invoke(CH.libraryAdd, entry),
   libraryLookup: (url, seriesId) => ipcRenderer.invoke(CH.libraryLookup, url, seriesId),
   librarySetFavorite: (key, at) => ipcRenderer.invoke(CH.librarySetFavorite, key, at),

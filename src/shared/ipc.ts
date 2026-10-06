@@ -206,6 +206,7 @@ export interface Api {
   onNhentaiCounts(cb: (entries: { url: string; pages: number }[]) => void): () => void
   libraryList(query: LibraryQuery): Promise<LibraryItem[]>
   libraryGet(key: string): Promise<LibraryItem | null>
+  libraryStatuses(urls: string[]): Promise<Record<string, ReadingStatus>>
   libraryAdd(entry: { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; category?: string; kind?: string | null }): Promise<LibraryItem>
   libraryLookup(url: string, seriesId: string): Promise<{ key: string; favorited: boolean; status: ReadingStatus | null } | null>
   librarySetFavorite(key: string, at: number | null): Promise<void>
@@ -305,6 +306,7 @@ export const CH = {
   libraryRemove: 'library:remove',
   libraryDelete: 'library:delete',
   libraryCounts: 'library:counts',
+  libraryStatuses: 'library:statuses',
   libraryChanged: 'library:changed',
   backupExport: 'backup:export',
   backupImport: 'backup:import',

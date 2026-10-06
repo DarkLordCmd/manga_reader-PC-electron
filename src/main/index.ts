@@ -650,6 +650,7 @@ app.whenReady().then(() => {
   ipcMain.handle(CH.libraryRemove, (_e, key: string) => { library.removeFromLibrary(String(key)); broadcastLibrary() })
   ipcMain.handle(CH.libraryDelete, (_e, key: string) => { library.deleteSeries(String(key)); broadcastLibrary() })
   ipcMain.handle(CH.libraryCounts, () => library.countByStatus())
+  ipcMain.handle(CH.libraryStatuses, (_e, urls: string[]) => library.statusesForUrls(Array.isArray(urls) ? urls.map(String) : []))
 
   ipcMain.handle(CH.recordProgress, (_e, url: string, page: number, total: number) => {
     history.updateProgress(url, page, total)

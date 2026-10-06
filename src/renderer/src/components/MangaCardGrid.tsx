@@ -1,11 +1,14 @@
 import { memo } from 'react'
 import type { CatalogCard } from '@shared/ipc'
+import type { ReadingStatus } from '@shared/library'
 import KindBadge from './KindBadge'
+import StatusBadge from './StatusBadge'
 
 interface Props {
   cards: CatalogCard[]
   onSelect: (card: CatalogCard) => void
   progress?: Record<string, [number, number]>
+  statuses?: Record<string, ReadingStatus>
   onContextMenu?: (e: React.MouseEvent, card: CatalogCard) => void
 }
 
@@ -16,13 +19,14 @@ function coverSrc(url: string): string {
 interface CardProps {
   card: CatalogCard
   progressEntry?: [number, number]
+  status?: ReadingStatus
   onSelect: (card: CatalogCard) => void
   onContextMenu?: (e: React.MouseEvent, card: CatalogCard) => void
 }
 
 /** Memoized so appending a page (a new `cards` array) does not re-render the
  * already-rendered cards — only the newly added ones mount. */
-const MangaCard = memo(function MangaCard({ card, progressEntry, onSelect, onContextMenu }: CardProps): JSX.Element {
+const MangaCard = memo(function MangaCard({ card, progressEntry, status, onSelect, onContextMenu }: CardProps): JSX.Element {
   const count = card.chapterCount != null
     ? `${card.chapterCount} гл.`
     : card.pages != null ? `${card.pages} стр.` : ''
@@ -39,6 +43,7 @@ const MangaCard = memo(function MangaCard({ card, progressEntry, onSelect, onCon
         {card.kind && (
           <KindBadge kind={card.kind} />
         )}
+        <StatusBadge status={status} />
         {progressEntry && (
           <div className="manga-progress">
             <div className="manga-progress-track">
@@ -59,7 +64,7 @@ const MangaCard = memo(function MangaCard({ card, progressEntry, onSelect, onCon
   )
 })
 
-function MangaCardGrid({ cards, onSelect, progress, onContextMenu }: Props): JSX.Element {
+function MangaCardGrid({ cards, onSelect, progress, statuses, onContextMenu }: Props): JSX.Element {
   return (
     <div className="catalog-grid">
       {cards.map((c) => (
@@ -67,6 +72,7 @@ function MangaCardGrid({ cards, onSelect, progress, onContextMenu }: Props): JSX
           key={c.url}
           card={c}
           progressEntry={progress?.[c.url]}
+          status={statuses?.[c.url]}
           onSelect={onSelect}
           onContextMenu={onContextMenu}
         />

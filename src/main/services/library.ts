@@ -63,6 +63,19 @@ export class LibraryService {
     return { key: item.key, favorited: item.favoritedAt !== null, status: item.status }
   }
 
+  /** Bulk status lookup for catalog cards: maps each input url to its reading
+   * status, omitting urls that are not in the library (or have no status). */
+  statusesForUrls(urls: string[]): Record<string, ReadingStatus> {
+    const out: Record<string, ReadingStatus> = {}
+    for (const url of urls) {
+      if (!url) continue
+      const key = seriesKeyForUrl(url) ?? url
+      const item = this.repo.get(key) ?? this.repo.findByUrl(url)
+      if (item?.status) out[url] = item.status
+    }
+    return out
+  }
+
   countFavorites(): number { return this.repo.list({ scope: 'favorites' }).length }
 
   get(key: string): LibraryItem | null { return this.repo.get(key) }

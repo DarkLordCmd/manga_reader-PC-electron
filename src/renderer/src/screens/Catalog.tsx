@@ -137,6 +137,7 @@ export default function Catalog(): JSX.Element {
   const [exNotice, setExNotice] = useState<string | null>(null)
   const [qsOpen, setQsOpen] = useState(false)
   const [quickSearchSeq, setQuickSearchSeq] = useState(0)
+  const [statuses, setStatuses] = useState<Record<string, ReadingStatus>>({})
 
   // ── Filters ──
   const [ehExcludedCats, setEhExcludedCats] = useState(0)
@@ -232,6 +233,23 @@ export default function Catalog(): JSX.Element {
       }))
     })
   }, [])
+
+  // Reading-status chips for cards already in the library. Refetched whenever
+  // the result set changes and on any library mutation (status set from here,
+  // or a change made in the Library screen).
+  useEffect(() => {
+    let cancelled = false
+    const run = (): void => {
+      if (cards.length === 0) { setStatuses({}); return }
+      void window.api.libraryStatuses(cards.map((c) => c.url))
+        .then((m) => { if (!cancelled) setStatuses(m) })
+        .catch(() => { /* best-effort */ })
+    }
+    run()
+    const off = window.api.onLibraryChanged(run)
+    return () => { cancelled = true; off() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards])
 
   // ensure_searched: auto-load the feed on open and whenever the source changes.
   // The previous in-flight search is invalidated: search() bumps searchIdRef and
@@ -583,6 +601,7 @@ export default function Catalog(): JSX.Element {
               cards={cards}
               onSelect={onSelectCard}
               progress={source === 'mangadex' ? settings.read_progress : undefined}
+              statuses={statuses}
               onContextMenu={openCardMenu}
             />
           )}
