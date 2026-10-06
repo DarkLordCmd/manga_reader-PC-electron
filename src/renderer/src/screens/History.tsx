@@ -38,7 +38,7 @@ export default function History(): JSX.Element {
       }
       return
     }
-    const r = await window.api.openUrl(e.url, Math.max(0, e.current_page - 1), e.series_id, e.cover_url ?? null)
+    const r = await window.api.openUrl(e.url, Math.max(0, e.current_page - 1), e.series_id, e.cover_url ?? null, e.kind ?? null)
     if (r) {
       setOpened({ kind: 'online', ...r, startPage: Math.max(0, e.current_page - 1), coverUrl: e.cover_url ?? null })
       setScreen('Reader')
@@ -77,7 +77,7 @@ export default function History(): JSX.Element {
             onContinue={(e) => void onContinue(e)}
             onContextMenu={(e, entry) => void openMenu(e, entry)}
             onAddToLibrary={(e) => void window.api.libraryAdd({
-              url: e.url, title: e.title, coverUrl: e.cover_url, source: e.source, seriesId: e.series_id
+              url: e.url, title: e.title, coverUrl: e.cover_url, source: e.source, seriesId: e.series_id, kind: e.kind ?? null
             })}
           />}
 
@@ -87,7 +87,7 @@ export default function History(): JSX.Element {
           y={menu.y}
           onClose={() => setMenu(null)}
           items={buildLibraryMenuItems(
-            { url: menu.entry.url, title: menu.entry.title, coverUrl: menu.entry.cover_url, source: menu.entry.source, seriesId: menu.entry.series_id },
+            { url: menu.entry.url, title: menu.entry.title, coverUrl: menu.entry.cover_url, source: menu.entry.source, seriesId: menu.entry.series_id, kind: menu.entry.kind },
             { key: menu.lookup?.key ?? null, favorited: !!menu.lookup?.favorited, status: menu.lookup?.status ?? null },
             [{
               label: 'Удалить из истории', danger: true, onClick: async () => {

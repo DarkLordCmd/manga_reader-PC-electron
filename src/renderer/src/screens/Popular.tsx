@@ -40,7 +40,7 @@ export default function Popular(): JSX.Element {
   useEffect(() => { void load() }, [load])
 
   const open = async (c: CatalogCard): Promise<void> => {
-    const r = await window.api.openUrl(c.url, 0, null, c.coverUrl)
+    const r = await window.api.openUrl(c.url, 0, null, c.coverUrl, c.kind ?? null)
     if (r) { setOpened({ kind: 'online', ...r, startPage: 0, coverUrl: c.coverUrl }); setScreen('Reader') }
   }
 
@@ -54,7 +54,7 @@ export default function Popular(): JSX.Element {
     buildLibraryMenuItems(
       {
         url: m.card.url, title: m.card.title, coverUrl: m.card.coverUrl,
-        source: SOURCES.find((s) => s.key === source)?.label ?? '', seriesId: m.card.url
+        source: SOURCES.find((s) => s.key === source)?.label ?? '', seriesId: m.card.url, kind: m.card.kind ?? null
       },
       {
         key: m.lookup?.key ?? null,

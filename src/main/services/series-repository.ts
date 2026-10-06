@@ -110,6 +110,7 @@ export class InMemorySeriesRepository extends BaseSeriesRepository {
       const next: LibraryItem = {
         ...existing,
         ...item,
+        kind: item.kind ?? existing.kind ?? null,
         coverUrl: item.coverUrl ?? existing.coverUrl,
         currentPage: Math.max(existing.currentPage, item.currentPage),
         totalPages: Math.max(existing.totalPages, item.totalPages),
@@ -124,6 +125,7 @@ export class InMemorySeriesRepository extends BaseSeriesRepository {
     }
     const row: LibraryItem = {
       ...item,
+      kind: item.kind ?? null,
       status: null, note: '', rating: null, tags: [],
       openedAt: item.openedAt ?? now,
       createdAt: item.createdAt ?? now,

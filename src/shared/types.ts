@@ -13,5 +13,7 @@ export interface HistoryEntry {
   current_page: number
   total_pages: number
   category: string
+  /** Work type (E-Hentai family category: «Doujinshi», «Manga», …). */
+  kind?: string | null
   opened_at: number
 }

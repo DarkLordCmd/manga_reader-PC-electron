@@ -4,6 +4,7 @@ import type { LibraryItem, LibrarySort, ReadingStatus } from '@shared/library'
 import { READING_STATUSES } from '@shared/library'
 import LibraryItemModal from '../components/LibraryItemModal'
 import CoverImg from '../components/CoverImg'
+import KindBadge from '../components/KindBadge'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import { buildLibraryMenuItems, STATUS_LABELS } from '../lib/library-menu'
 
@@ -36,7 +37,7 @@ export default function Library(): JSX.Element {
 
   const open = async (item: LibraryItem): Promise<void> => {
     const start = Math.max(0, item.currentPage - 1)
-    const r = await window.api.openUrl(item.url, start, item.seriesId, item.coverUrl)
+    const r = await window.api.openUrl(item.url, start, item.seriesId, item.coverUrl, item.kind ?? null)
     if (r) {
       setOpened({ kind: 'online', ...r, startPage: start, coverUrl: item.coverUrl })
       setScreen('Reader')
@@ -91,6 +92,7 @@ export default function Library(): JSX.Element {
             onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, item: it }) }}>
             <div className="history-cover">
               <CoverImg url={it.coverUrl} />
+              <KindBadge kind={it.kind} />
             </div>
             <div className="history-title" title={it.title}>{it.title || 'Без названия'}</div>
             <div className="history-meta">
@@ -118,7 +120,7 @@ export default function Library(): JSX.Element {
           y={menu.y}
           onClose={() => setMenu(null)}
           items={buildLibraryMenuItems(
-            { url: menu.item.url, title: menu.item.title, coverUrl: menu.item.coverUrl, source: menu.item.source, seriesId: menu.item.seriesId },
+            { url: menu.item.url, title: menu.item.title, coverUrl: menu.item.coverUrl, source: menu.item.source, seriesId: menu.item.seriesId, kind: menu.item.kind },
             { key: menu.item.key, favorited: menu.item.favoritedAt !== null, status: menu.item.status }
           )}
         />

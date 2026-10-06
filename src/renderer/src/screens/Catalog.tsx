@@ -408,7 +408,7 @@ export default function Catalog(): JSX.Element {
     const mangaId = picked?.url ?? null
     const coverUrl = picked?.coverUrl ?? null
     setOpening(true)
-    const r = await window.api.openUrl(chapterId, 0, mangaId, coverUrl)
+    const r = await window.api.openUrl(chapterId, 0, mangaId, coverUrl, picked?.kind ?? null)
     setOpening(false)
     if (r) {
       if (source === 'mangadex' && mangaId && chapters) {
@@ -432,9 +432,9 @@ export default function Catalog(): JSX.Element {
     setMenu({ x: e.clientX, y: e.clientY, card, lookup })
   }, [])
 
-  const entryOf = (card: CatalogCard): { url: string; title: string; coverUrl: string | null; source: string; seriesId: string } => ({
+  const entryOf = (card: CatalogCard): { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; kind: string | null } => ({
     url: card.url, title: card.title, coverUrl: card.coverUrl,
-    source: SOURCES.find((s) => s.key === source)?.label ?? '', seriesId: card.url
+    source: SOURCES.find((s) => s.key === source)?.label ?? '', seriesId: card.url, kind: card.kind ?? null
   })
 
   const menuItems = (m: NonNullable<typeof menu>): MenuItem[] =>

@@ -12,6 +12,8 @@ export interface MenuSubject {
   coverUrl: string | null
   source: string
   seriesId: string
+  category?: string
+  kind?: string | null
 }
 
 export interface MenuState {

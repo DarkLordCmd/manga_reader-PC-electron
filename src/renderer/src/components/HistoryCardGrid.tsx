@@ -1,5 +1,6 @@
 import type { HistoryEntry } from '@shared/types'
 import CoverImg from './CoverImg'
+import KindBadge from './KindBadge'
 
 interface Props {
   entries: HistoryEntry[]
@@ -26,6 +27,7 @@ export default function HistoryCardGrid({ entries, onContinue, onAddToLibrary, o
             onContextMenu={onContextMenu ? (ev) => onContextMenu(ev, e) : undefined}>
             <div className="history-cover">
               <CoverImg url={e.cover_url} />
+              <KindBadge kind={e.kind} />
             </div>
             <div className="history-title" title={e.title}>{e.title || 'Без названия'}</div>
             <div className="history-meta">

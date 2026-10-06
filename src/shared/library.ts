@@ -10,6 +10,7 @@ export interface LibraryItem {
   coverUrl: string | null
   source: string
   category: string
+  kind?: string | null
   currentPage: number
   totalPages: number
   chapterLabel: string | null
@@ -34,6 +35,7 @@ export interface SeriesUpsert {
   coverUrl: string | null
   source: string
   category: string
+  kind?: string | null
   currentPage: number
   totalPages: number
   chapterLabel: string | null

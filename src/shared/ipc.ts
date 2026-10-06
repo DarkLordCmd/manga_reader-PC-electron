@@ -158,7 +158,7 @@ export interface Api {
   getHistory(): Promise<HistoryEntry[]>
   recordProgress(url: string, page: number, total: number): Promise<void>
   clearHistory(): Promise<void>
-  openUrl(url: string, startPage?: number, mangaId?: string | null, coverUrl?: string | null): Promise<OpenResult | null>
+  openUrl(url: string, startPage?: number, mangaId?: string | null, coverUrl?: string | null, kind?: string | null): Promise<OpenResult | null>
   fetchChapterList(mangaId: string): Promise<ChapterListItem[]>
   searchCatalog(source: string, query: string, page: number, sort: string, filters?: CatalogFilters, cursor?: CatalogCursor): Promise<CatalogCard[]>
   catalogPopular(source: 'ehentai' | 'exhentai' | 'exhentai_onion'): Promise<CatalogCard[]>
@@ -206,11 +206,11 @@ export interface Api {
   onNhentaiCounts(cb: (entries: { url: string; pages: number }[]) => void): () => void
   libraryList(query: LibraryQuery): Promise<LibraryItem[]>
   libraryGet(key: string): Promise<LibraryItem | null>
-  libraryAdd(entry: { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; category?: string }): Promise<LibraryItem>
+  libraryAdd(entry: { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; category?: string; kind?: string | null }): Promise<LibraryItem>
   libraryLookup(url: string, seriesId: string): Promise<{ key: string; favorited: boolean; status: ReadingStatus | null } | null>
   librarySetFavorite(key: string, at: number | null): Promise<void>
-  libraryAddFavorite(entry: { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; category?: string }): Promise<LibraryItem>
-  librarySetStatusFor(entry: { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; category?: string }, status: ReadingStatus): Promise<LibraryItem>
+  libraryAddFavorite(entry: { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; category?: string; kind?: string | null }): Promise<LibraryItem>
+  librarySetStatusFor(entry: { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; category?: string; kind?: string | null }, status: ReadingStatus): Promise<LibraryItem>
   librarySetStatus(key: string, status: ReadingStatus | null): Promise<void>
   librarySetNote(key: string, note: string): Promise<void>
   librarySetRating(key: string, rating: number | null): Promise<void>

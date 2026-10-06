@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import { join } from 'path'
 import { existsSync, renameSync } from 'fs'
 import { SqliteSeriesRepository } from './sqlite-series-repository'
-import { needsDeletedAtColumn, needsFavoritedAtColumn } from './db-migrate'
+import { needsDeletedAtColumn, needsFavoritedAtColumn, needsKindColumn } from './db-migrate'
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS series (
@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS series (
   cover_url TEXT,
   source TEXT,
   category TEXT NOT NULL DEFAULT 'main',
+  kind TEXT,
   current_page INTEGER NOT NULL DEFAULT 1,
   total_pages INTEGER NOT NULL DEFAULT 0,
   chapter_label TEXT,
@@ -48,6 +49,9 @@ function migrate(db: Database.Database): void {
   if (needsFavoritedAtColumn(version, cols)) {
     db.exec('ALTER TABLE series ADD COLUMN favorited_at INTEGER')
   }
+  if (needsKindColumn(version, cols)) {
+    db.exec('ALTER TABLE series ADD COLUMN kind TEXT')
+  }
   if (version < 4) {
     // Backfill: rows added to the library/favorites from the catalog used to
     // default to category 'main' even for R34 sources (E-Hentai family /
@@ -57,7 +61,7 @@ function migrate(db: Database.Database): void {
       "AND (url LIKE '%exhentai%' OR url LIKE '%e-hentai.org%' OR url LIKE '%nhentai%')"
     )
   }
-  db.pragma('user_version = 4')
+  db.pragma('user_version = 5')
 }
 
 function openAt(path: string): Database.Database {

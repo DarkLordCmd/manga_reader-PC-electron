@@ -9,6 +9,7 @@ export interface CatalogAddEntry {
   source: string
   seriesId: string
   category?: string
+  kind?: string | null
 }
 
 export class LibraryService {
@@ -37,6 +38,7 @@ export class LibraryService {
     const upsert: SeriesUpsert = {
       key, seriesId: entry.seriesId, url: entry.url, title: entry.title,
       coverUrl: entry.coverUrl, source: entry.source, category: entry.category ?? categoryForUrl(entry.url),
+      kind: entry.kind ?? null,
       currentPage: 1, totalPages: 0, chapterLabel: null, chapterIndex: null, chapterTotal: null
     }
     return this.repo.upsertHistory(upsert)

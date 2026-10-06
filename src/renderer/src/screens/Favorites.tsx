@@ -3,6 +3,7 @@ import { useStore } from '../state/store'
 import type { LibraryItem } from '@shared/library'
 import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import CoverImg from '../components/CoverImg'
+import KindBadge from '../components/KindBadge'
 import { buildLibraryMenuItems, STATUS_LABELS } from '../lib/library-menu'
 
 export default function Favorites(): JSX.Element {
@@ -22,13 +23,13 @@ export default function Favorites(): JSX.Element {
 
   const open = async (item: LibraryItem): Promise<void> => {
     const start = Math.max(0, item.currentPage - 1)
-    const r = await window.api.openUrl(item.url, start, item.seriesId, item.coverUrl)
+    const r = await window.api.openUrl(item.url, start, item.seriesId, item.coverUrl, item.kind ?? null)
     if (r) { setOpened({ kind: 'online', ...r, startPage: start, coverUrl: item.coverUrl }); setScreen('Reader') }
   }
 
   const itemsFor = (it: LibraryItem): MenuItem[] =>
     buildLibraryMenuItems(
-      { url: it.url, title: it.title, coverUrl: it.coverUrl, source: it.source, seriesId: it.seriesId },
+      { url: it.url, title: it.title, coverUrl: it.coverUrl, source: it.source, seriesId: it.seriesId, kind: it.kind },
       { key: it.key, favorited: it.favoritedAt !== null, status: it.status }
     )
 
@@ -50,6 +51,7 @@ export default function Favorites(): JSX.Element {
             onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, item: it }) }}>
             <div className="history-cover">
               {it.coverUrl ? <CoverImg url={it.coverUrl} /> : <div className="cover-placeholder" />}
+              <KindBadge kind={it.kind} />
             </div>
             <div className="history-title" title={it.title}>{it.title || 'Без названия'}</div>
             <div className="history-meta">

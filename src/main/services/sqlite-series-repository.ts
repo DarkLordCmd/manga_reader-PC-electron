@@ -4,7 +4,7 @@ import type { LibraryItem, SeriesUpsert, ReadingStatus } from '@shared/library'
 
 interface SeriesRow {
   key: string; series_id: string; url: string; title: string; cover_url: string | null
-  source: string | null; category: string; current_page: number; total_pages: number
+  source: string | null; category: string; kind: string | null; current_page: number; total_pages: number
   chapter_label: string | null; chapter_index: number | null; chapter_total: number | null
   status: ReadingStatus | null; note: string; rating: number | null; tags: string
   opened_at: number; created_at: number; updated_at: number; deleted_at: number | null
@@ -16,7 +16,7 @@ function rowToItem(r: SeriesRow): LibraryItem {
   try { const p = JSON.parse(r.tags); if (Array.isArray(p)) tags = p.filter((x) => typeof x === 'string') } catch { /* ignore */ }
   return {
     key: r.key, seriesId: r.series_id, url: r.url, title: r.title, coverUrl: r.cover_url,
-    source: r.source ?? '', category: r.category, currentPage: r.current_page, totalPages: r.total_pages,
+    source: r.source ?? '', category: r.category, kind: r.kind, currentPage: r.current_page, totalPages: r.total_pages,
     chapterLabel: r.chapter_label, chapterIndex: r.chapter_index, chapterTotal: r.chapter_total,
     status: r.status, note: r.note, rating: r.rating, tags,
     openedAt: r.opened_at, createdAt: r.created_at, updatedAt: r.updated_at, deletedAt: r.deleted_at,
@@ -56,7 +56,7 @@ export class SqliteSeriesRepository extends BaseSeriesRepository {
     if (existing) {
       this.db.prepare(`
         UPDATE series SET series_id = @series_id, url = @url, title = @title,
-          cover_url = @cover_url, source = @source, category = @category,
+          cover_url = @cover_url, source = @source, category = @category, kind = @kind,
           current_page = @current_page, total_pages = @total_pages,
           chapter_label = @chapter_label, chapter_index = @chapter_index, chapter_total = @chapter_total,
           opened_at = @opened_at, updated_at = @updated_at, deleted_at = NULL
@@ -64,6 +64,7 @@ export class SqliteSeriesRepository extends BaseSeriesRepository {
       `).run({
         key: item.key, series_id: item.seriesId, url: item.url, title: item.title,
         cover_url: item.coverUrl ?? existing.coverUrl, source: item.source, category: item.category,
+        kind: item.kind ?? existing.kind ?? null,
         current_page: Math.max(existing.currentPage, item.currentPage),
         total_pages: Math.max(existing.totalPages, item.totalPages),
         chapter_label: item.chapterLabel, chapter_index: item.chapterIndex, chapter_total: item.chapterTotal,
@@ -71,15 +72,15 @@ export class SqliteSeriesRepository extends BaseSeriesRepository {
       })
     } else {
       this.db.prepare(`
-        INSERT INTO series (key, series_id, url, title, cover_url, source, category,
+        INSERT INTO series (key, series_id, url, title, cover_url, source, category, kind,
           current_page, total_pages, chapter_label, chapter_index, chapter_total,
           status, note, rating, tags, opened_at, created_at, updated_at, deleted_at, favorited_at)
-        VALUES (@key, @series_id, @url, @title, @cover_url, @source, @category,
+        VALUES (@key, @series_id, @url, @title, @cover_url, @source, @category, @kind,
           @current_page, @total_pages, @chapter_label, @chapter_index, @chapter_total,
           NULL, '', NULL, '[]', @opened_at, @created_at, @updated_at, NULL, NULL)
       `).run({
         key: item.key, series_id: item.seriesId, url: item.url, title: item.title,
-        cover_url: item.coverUrl, source: item.source, category: item.category,
+        cover_url: item.coverUrl, source: item.source, category: item.category, kind: item.kind ?? null,
         current_page: item.currentPage, total_pages: item.totalPages,
         chapter_label: item.chapterLabel, chapter_index: item.chapterIndex, chapter_total: item.chapterTotal,
         opened_at: item.openedAt ?? now, created_at: item.createdAt ?? now, updated_at: now
@@ -127,15 +128,15 @@ export class SqliteSeriesRepository extends BaseSeriesRepository {
         const cur = this.getIncludingDeleted(i.key)
         if (!cur) {
           this.db.prepare(`
-            INSERT INTO series (key, series_id, url, title, cover_url, source, category,
+            INSERT INTO series (key, series_id, url, title, cover_url, source, category, kind,
               current_page, total_pages, chapter_label, chapter_index, chapter_total,
               status, note, rating, tags, opened_at, created_at, updated_at, deleted_at, favorited_at)
-            VALUES (@key, @series_id, @url, @title, @cover_url, @source, @category,
+            VALUES (@key, @series_id, @url, @title, @cover_url, @source, @category, @kind,
               @current_page, @total_pages, @chapter_label, @chapter_index, @chapter_total,
               @status, @note, @rating, @tags, @opened_at, @created_at, @updated_at, @deleted_at, @favorited_at)
           `).run({
             key: i.key, series_id: i.seriesId, url: i.url, title: i.title, cover_url: i.coverUrl,
-            source: i.source, category: i.category, current_page: i.currentPage, total_pages: i.totalPages,
+            source: i.source, category: i.category, kind: i.kind ?? null, current_page: i.currentPage, total_pages: i.totalPages,
             chapter_label: i.chapterLabel, chapter_index: i.chapterIndex, chapter_total: i.chapterTotal,
             status: i.status, note: i.note, rating: i.rating, tags: JSON.stringify(i.tags),
             opened_at: i.openedAt, created_at: i.createdAt, updated_at: i.updatedAt,
@@ -145,7 +146,7 @@ export class SqliteSeriesRepository extends BaseSeriesRepository {
         } else if (i.updatedAt > cur.updatedAt) {
           this.db.prepare(`
             UPDATE series SET series_id=@series_id, url=@url, title=@title, cover_url=@cover_url,
-              source=@source, category=@category, current_page=@current_page, total_pages=@total_pages,
+              source=@source, category=@category, kind=@kind, current_page=@current_page, total_pages=@total_pages,
               chapter_label=@chapter_label, chapter_index=@chapter_index, chapter_total=@chapter_total,
               status=@status, note=@note, rating=@rating, tags=@tags,
               opened_at=@opened_at, created_at=@created_at, updated_at=@updated_at, deleted_at=@deleted_at,
@@ -153,7 +154,7 @@ export class SqliteSeriesRepository extends BaseSeriesRepository {
             WHERE key=@key
           `).run({
             key: i.key, series_id: i.seriesId, url: i.url, title: i.title, cover_url: i.coverUrl,
-            source: i.source, category: i.category, current_page: i.currentPage, total_pages: i.totalPages,
+            source: i.source, category: i.category, kind: i.kind ?? null, current_page: i.currentPage, total_pages: i.totalPages,
             chapter_label: i.chapterLabel, chapter_index: i.chapterIndex, chapter_total: i.chapterTotal,
             status: i.status, note: i.note, rating: i.rating, tags: JSON.stringify(i.tags),
             opened_at: i.openedAt, created_at: i.createdAt, updated_at: i.updatedAt,

@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import type { CatalogCard } from '@shared/ipc'
+import KindBadge from './KindBadge'
 
 interface Props {
   cards: CatalogCard[]
@@ -10,25 +11,6 @@ interface Props {
 
 function coverSrc(url: string): string {
   return `manga://cover/${encodeURIComponent(url)}`
-}
-
-function kindColor(kind: string | undefined): string {
-  switch ((kind ?? '').toLowerCase()) {
-    case 'doujinshi': return '#f02e2e'
-    case 'manga': return '#f38a24'
-    case 'artist cg': return '#d5a311'
-    case 'game cg': return '#308430'
-    case 'western': return '#8f8f00'
-    case 'non-h': return '#1a9dc0'
-    case 'image set': return '#2e54c4'
-    case 'cosplay': return '#6e2ec4'
-    case 'asian porn': return '#c42e8e'
-    case 'misc': return '#606060'
-    case 'манга': return '#f38a24'
-    case 'манхва': return '#d5a311'
-    case 'маньхуа': return '#1a9dc0'
-    default: return '#505050'
-  }
 }
 
 interface CardProps {
@@ -55,7 +37,7 @@ const MangaCard = memo(function MangaCard({ card, progressEntry, onSelect, onCon
           ? <img src={coverSrc(card.coverUrl)} alt={card.title} loading="lazy" />
           : <div className="cover-placeholder" />}
         {card.kind && (
-          <span className="manga-badge" style={{ background: kindColor(card.kind) }}>{card.kind}</span>
+          <KindBadge kind={card.kind} />
         )}
         {progressEntry && (
           <div className="manga-progress">

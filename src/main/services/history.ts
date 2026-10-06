@@ -16,6 +16,7 @@ export interface HistoryUpdate {
   chapter_total: number | null
   total_pages: number
   category: string
+  kind?: string | null
 }
 
 export function normalizeHistory(entries: HistoryEntry[]): SeriesUpsert[] {
@@ -31,7 +32,7 @@ export function normalizeHistory(entries: HistoryEntry[]): SeriesUpsert[] {
     if (!existing) {
       byKey.set(key, {
         key, seriesId: e.series_id || e.url, url: e.url, title: e.title,
-        coverUrl: e.cover_url, source: e.source, category: e.category,
+        coverUrl: e.cover_url, source: e.source, category: e.category, kind: e.kind ?? null,
         currentPage: e.current_page, totalPages: e.total_pages,
         chapterLabel: e.chapter_label, chapterIndex: e.chapter_index, chapterTotal: e.chapter_total,
         openedAt: e.opened_at, createdAt: e.opened_at
@@ -55,14 +56,14 @@ function toHistoryEntry(i: LibraryItem): HistoryEntry {
     url: i.url, series_id: i.seriesId, title: i.title, cover_url: i.coverUrl,
     source: i.source, chapter_label: i.chapterLabel, chapter_index: i.chapterIndex,
     chapter_total: i.chapterTotal, current_page: i.currentPage, total_pages: i.totalPages,
-    category: i.category, opened_at: i.openedAt
+    category: i.category, kind: i.kind ?? null, opened_at: i.openedAt
   }
 }
 
 function toUpsert(u: HistoryUpdate, key: string, seriesId: string): SeriesUpsert {
   return {
     key, seriesId: seriesId || u.url, url: u.url, title: u.title, coverUrl: u.cover_url,
-    source: u.source, category: u.category, currentPage: 1, totalPages: u.total_pages,
+    source: u.source, category: u.category, kind: u.kind ?? null, currentPage: 1, totalPages: u.total_pages,
     chapterLabel: u.chapter_label, chapterIndex: u.chapter_index, chapterTotal: u.chapter_total,
     openedAt: Date.now()
   }
@@ -104,6 +105,7 @@ export class HistoryManager {
         return
       }
       const next = toUpsert(update, existing.key, existing.seriesId)
+      next.kind = update.kind ?? existing.kind ?? null
       if (existing.url === update.url) {
         next.currentPage = Math.max(existing.currentPage, 1)
         next.totalPages = Math.max(existing.totalPages, update.total_pages)
