@@ -1,8 +1,9 @@
 import { useStore } from '../state/store'
 
-const ITEMS: { key: 'Reader' | 'Catalog' | 'Library' | 'Favorites' | 'History' | 'Downloads' | 'Settings'; icon: string; label: string }[] = [
+const ITEMS: { key: 'Reader' | 'Catalog' | 'Popular' | 'Library' | 'Favorites' | 'History' | 'Downloads' | 'Settings'; icon: string; label: string }[] = [
   { key: 'Reader', icon: '\u25B6', label: 'Reader' },
   { key: 'Catalog', icon: '\u2630', label: 'Catalog' },
+  { key: 'Popular', icon: '\u{1F525}', label: 'Popular' },
   { key: 'Library', icon: '\u2605', label: 'Library' },
   { key: 'Favorites', icon: '\u2665', label: 'Favorites' },
   { key: 'History', icon: '\u{1F4DC}', label: 'History' },

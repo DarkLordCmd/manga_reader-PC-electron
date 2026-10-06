@@ -5,6 +5,7 @@ import TopBar from './components/TopBar'
 import LockScreen from './components/LockScreen'
 import Reader from './screens/Reader'
 import Catalog from './screens/Catalog'
+import Popular from './screens/Popular'
 import Library from './screens/Library'
 import Favorites from './screens/Favorites'
 import History from './screens/History'
@@ -34,6 +35,7 @@ function Shell(): JSX.Element {
         >
           <Catalog />
         </div>
+        {screen === 'Popular' && <Popular />}
         {screen === 'Library' && <Library />}
         {screen === 'Favorites' && <Favorites />}
         {screen === 'History' && <History />}
