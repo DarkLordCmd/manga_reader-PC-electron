@@ -48,10 +48,14 @@ export default function Popular(): JSX.Element {
         </select>
         <button disabled={loading} onClick={() => void load()}>Обновить</button>
       </div>
-      {error && <div className="error-text">{error}</div>}
-      {loading && cards.length === 0 && <div className="muted">Загрузка…</div>}
-      {cards.length > 0 && <MangaCardGrid cards={cards} onSelect={(c) => void open(c)} />}
-      {!loading && !error && cards.length === 0 && <div className="muted">Пусто</div>}
+      <div className="catalog-body">
+        <div className="catalog-content">
+          {error && <div className="error-text">{error}</div>}
+          {loading && cards.length === 0 && <div className="muted">Загрузка…</div>}
+          {cards.length > 0 && <MangaCardGrid cards={cards} onSelect={(c) => void open(c)} />}
+          {!loading && !error && cards.length === 0 && <div className="muted">Пусто</div>}
+        </div>
+      </div>
     </div>
   )
 }
