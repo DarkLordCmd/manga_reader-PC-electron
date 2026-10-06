@@ -161,6 +161,7 @@ export interface Api {
   openUrl(url: string, startPage?: number, mangaId?: string | null, coverUrl?: string | null): Promise<OpenResult | null>
   fetchChapterList(mangaId: string): Promise<ChapterListItem[]>
   searchCatalog(source: string, query: string, page: number, sort: string, filters?: CatalogFilters, cursor?: CatalogCursor): Promise<CatalogCard[]>
+  catalogPopular(source: 'ehentai' | 'exhentai' | 'exhentai_onion'): Promise<CatalogCard[]>
   loginSite(url: string): Promise<string | null>
   loginPassword(user: string, pass: string): Promise<PasswordLoginResult>
   cookieLogin(input: CookieLoginInput): Promise<PasswordLoginResult>
@@ -241,6 +242,7 @@ export const CH = {
   openUrl: 'url:open',
   fetchChapterList: 'manga:chapters',
   searchCatalog: 'catalog:search',
+  catalogPopular: 'catalog:popular',
   loginSite: 'login:site',
   loginPassword: 'ex:passwordlogin',
   cookieLogin: 'ex:cookielogin',

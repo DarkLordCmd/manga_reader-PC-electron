@@ -22,6 +22,7 @@ import type { SimpleSiteConfig } from './services/sources/catalog-types'
 import { searchExHentai, searchMangaShi, searchMangaMello, searchNhentai, searchRemanga, searchSenkuro, searchSimpleSite, extractGidToken } from './services/catalog-search'
 import type { CatalogItem } from './services/sources/catalog-types'
 import { enrichNhentaiPageCounts } from './services/sources/nhentai'
+import { fetchEhPopular } from './services/sources/eh'
 import { fetchArchiveCost, buyArchive } from './services/eh-archive'
 import { runLoginWindow } from './services/login'
 import { probeSocks5Handshake, probeBridgeLine, probeSite, allSiteKeys } from './services/tor-check'
@@ -858,6 +859,20 @@ app.whenReady().then(() => {
       return items
     }
     return []
+  })
+  ipcMain.handle(CH.catalogPopular, async (_e, source: 'ehentai' | 'exhentai' | 'exhentai_onion') => {
+    const s = settings.get()
+    if (s.builtin_tor && !embeddedTorSocks()) {
+      try { await whenEmbeddedTorReady(120_000) } catch { /* fall through */ }
+    }
+    const torSocks = effectiveTorSocks()
+    const useOnion = source === 'exhentai_onion'
+    const torProxied = useOnion || s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai')
+    const cookieHeader = useOnion ? s.onion_cookies_raw : exAccounts.currentCookieHeader()
+    const ex = await fetchEhPopular(source, {
+      cookieHeader, torSocksAddr: torSocks, exProxyAddr: s.exhentai_proxy_addr, torProxied
+    })
+    return ex.map((c) => ({ url: c.url, title: c.title, coverUrl: c.coverUrl, pages: c.pages, score: c.rating, kind: c.category }))
   })
   ipcMain.handle(CH.loginSite, async (_e, url: string) => {
     const s = settings.get()

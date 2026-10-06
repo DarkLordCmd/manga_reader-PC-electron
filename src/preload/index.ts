@@ -16,6 +16,7 @@ const api: Api = {
   openUrl: (url, startPage, mangaId, coverUrl) => ipcRenderer.invoke(CH.openUrl, url, startPage, mangaId, coverUrl),
   fetchChapterList: (mangaId) => ipcRenderer.invoke(CH.fetchChapterList, mangaId),
   searchCatalog: (source, query, page, sort, filters, cursor) => ipcRenderer.invoke(CH.searchCatalog, source, query, page, sort, filters, cursor),
+  catalogPopular: (source) => ipcRenderer.invoke(CH.catalogPopular, source),
   loginSite: (url) => ipcRenderer.invoke(CH.loginSite, url),
   loginPassword: (user, pass) => ipcRenderer.invoke(CH.loginPassword, user, pass),
   cookieLogin: (input) => ipcRenderer.invoke(CH.cookieLogin, input),
