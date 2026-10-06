@@ -168,6 +168,14 @@ function downloadFetchOpts(sourceUrl: string): { proxy?: string; cookieHeader?: 
   return { proxy, cookieHeader }
 }
 
+function getCoverDisk(): CoverDiskCache {
+  if (!coverDisk) {
+    const mb = Math.max(16, Number(settings.get().cover_cache_mb) || 256)
+    coverDisk = new CoverDiskCache(join(app.getPath('userData'), 'cover-cache'), mb * 1024 * 1024)
+  }
+  return coverDisk
+}
+
 function getCover(url: string): Promise<Buffer> {
   const cached = coverCache.get(url)
   if (cached) return Promise.resolve(cached)
@@ -177,7 +185,7 @@ function getCover(url: string): Promise<Buffer> {
     try {
       // L2: persistent on-disk cache — survives restarts so library/favorites/
       // history covers are not refetched every launch.
-      const disk = coverDisk ?? (coverDisk = new CoverDiskCache(join(app.getPath('userData'), 'cover-cache')))
+      const disk = getCoverDisk()
       const onDisk = await disk.get(url)
       if (onDisk) { coverCache.set(url, onDisk); return onDisk }
       const buf = await fetchCoverBuffer(url, settings.get(), exAccounts.currentCookieHeader())
@@ -625,6 +633,7 @@ app.whenReady().then(() => {
     const prevSettings = settings.get()
     const before = downloadsDirBase(prevSettings.downloads_dir)
     settings.save(s)
+    coverDisk?.setMaxBytes(Math.max(16, Number(s?.cover_cache_mb) || 256) * 1024 * 1024)
     const after = downloadsDirBase(s?.downloads_dir)
     if (before !== after) downloads.setOutDirBase(after)
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s)
@@ -659,6 +668,8 @@ app.whenReady().then(() => {
   ipcMain.handle(CH.libraryDelete, (_e, key: string) => { library.deleteSeries(String(key)); broadcastLibrary() })
   ipcMain.handle(CH.libraryCounts, () => library.countByStatus())
   ipcMain.handle(CH.libraryStatuses, (_e, urls: string[]) => library.statusesForUrls(Array.isArray(urls) ? urls.map(String) : []))
+  ipcMain.handle(CH.coverCacheInfo, () => getCoverDisk().stats())
+  ipcMain.handle(CH.coverCacheClear, async () => { await getCoverDisk().clear(); coverCache.clear() })
 
   ipcMain.handle(CH.recordProgress, (_e, url: string, page: number, total: number) => {
     history.updateProgress(url, page, total)

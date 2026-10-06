@@ -37,6 +37,7 @@ export interface Settings {
   library_auto_add: boolean
   sync_enabled: boolean
   sync_auto: boolean
+  cover_cache_mb: number
 }
 
 export function defaultSettings(): Settings {
@@ -57,7 +58,8 @@ export function defaultSettings(): Settings {
     quick_searches: [],
     library_auto_add: true,
     sync_enabled: false,
-    sync_auto: true
+    sync_auto: true,
+    cover_cache_mb: 256
   }
 }
 
@@ -124,6 +126,7 @@ export function parseSettings(raw: unknown): Settings {
     quick_searches: normalizeQuickSearches(o.quick_searches),
     library_auto_add: bool(o.library_auto_add, true),
     sync_enabled: bool(o.sync_enabled, false),
-    sync_auto: bool(o.sync_auto, true)
+    sync_auto: bool(o.sync_auto, true),
+    cover_cache_mb: Math.max(16, Math.min(8192, num(o.cover_cache_mb, 256)))
   }
 }

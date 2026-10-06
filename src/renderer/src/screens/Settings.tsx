@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useStore } from '../state/store'
 import Toggle from '../components/Toggle'
 import type { TorStatus, BridgeStatus, SiteStatus, LibMirrorStatus, CustomDnsStatus, ExAccountsResult } from '@shared/ipc'
@@ -73,6 +73,21 @@ export default function Settings(): JSX.Element {
   const [google, setGoogle] = useState<{ authed: boolean; email: string | null }>({ authed: false, email: null })
   const [syncState, setSyncState] = useState<import('@shared/sync').SyncState>({ state: 'idle', lastSyncAt: null, email: null, lastError: null })
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  const [cacheInfo, setCacheInfo] = useState<{ files: number; bytes: number; maxBytes: number } | null>(null)
+  const [cacheMb, setCacheMb] = useState(String(settings.cover_cache_mb))
+
+  const refreshCacheInfo = useCallback(() => {
+    void window.api.coverCacheInfo().then(setCacheInfo).catch(() => {})
+  }, [])
+
+  useEffect(() => { refreshCacheInfo() }, [refreshCacheInfo])
+  useEffect(() => { setCacheMb(String(settings.cover_cache_mb)) }, [settings.cover_cache_mb])
+
+  const clearCoverCache = async (): Promise<void> => {
+    if (!window.confirm('Очистить кэш обложек? Обложки будут загружены заново.')) return
+    await window.api.coverCacheClear()
+    refreshCacheInfo()
+  }
 
   useEffect(() => {
     window.api.getExAccounts().then(setExAcc)
@@ -749,6 +764,32 @@ export default function Settings(): JSX.Element {
           <div className="row">
             <label>igneous (только для ExHentai)</label>
             <input className="text-input" value={exIgneous} onChange={(e) => setExIgneous(e.target.value)} />
+          </div>
+        </Section>
+
+        <Section title="🗄️ Кэш обложек">
+          <div className="row">
+            <label>Максимальный размер (МБ):</label>
+            <input
+              className="text-input"
+              type="number" min={16} max={8192} step={16}
+              value={cacheMb}
+              onChange={(e) => setCacheMb(e.target.value)}
+              onBlur={() => {
+                const n = Math.round(Number(cacheMb))
+                const v = Number.isFinite(n) ? Math.max(16, Math.min(8192, n)) : 256
+                setCacheMb(String(v))
+                if (v !== settings.cover_cache_mb) upd({ cover_cache_mb: v })
+              }}
+            />
+          </div>
+          <div className="row">
+            <button onClick={() => void clearCoverCache()}>🗑 Очистить кэш обложек</button>
+            {cacheInfo && (
+              <span className="muted">
+                Занято {(cacheInfo.bytes / 1048576).toFixed(1)} МБ · {cacheInfo.files} файлов
+              </span>
+            )}
           </div>
         </Section>
 

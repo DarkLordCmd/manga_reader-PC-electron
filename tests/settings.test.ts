@@ -11,6 +11,14 @@ describe('parseSettings', () => {
     expect(s.show_thumbnails).toBe(true)
     expect(s.nhentai_show_page_counts).toBe(true)
     expect(s.show_r34_history).toBe(true)
+    expect(s.cover_cache_mb).toBe(256)
+  })
+
+  it('clamps cover_cache_mb to a sane range', () => {
+    expect(parseSettings({ cover_cache_mb: 1024 }).cover_cache_mb).toBe(1024)
+    expect(parseSettings({ cover_cache_mb: 1 }).cover_cache_mb).toBe(16)
+    expect(parseSettings({ cover_cache_mb: 999999 }).cover_cache_mb).toBe(8192)
+    expect(parseSettings({ cover_cache_mb: 'x' }).cover_cache_mb).toBe(256)
   })
 
   it('preserves known fields and drops unknown ones', () => {

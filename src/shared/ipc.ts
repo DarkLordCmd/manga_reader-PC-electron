@@ -207,6 +207,8 @@ export interface Api {
   libraryList(query: LibraryQuery): Promise<LibraryItem[]>
   libraryGet(key: string): Promise<LibraryItem | null>
   libraryStatuses(urls: string[]): Promise<Record<string, ReadingStatus>>
+  coverCacheInfo(): Promise<{ files: number; bytes: number; maxBytes: number }>
+  coverCacheClear(): Promise<void>
   libraryAdd(entry: { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; category?: string; kind?: string | null }): Promise<LibraryItem>
   libraryLookup(url: string, seriesId: string): Promise<{ key: string; favorited: boolean; status: ReadingStatus | null } | null>
   librarySetFavorite(key: string, at: number | null): Promise<void>
@@ -307,6 +309,8 @@ export const CH = {
   libraryDelete: 'library:delete',
   libraryCounts: 'library:counts',
   libraryStatuses: 'library:statuses',
+  coverCacheInfo: 'coverCache:info',
+  coverCacheClear: 'coverCache:clear',
   libraryChanged: 'library:changed',
   backupExport: 'backup:export',
   backupImport: 'backup:import',

@@ -96,4 +96,29 @@ export class CoverDiskCache {
       for (const e of entries) { try { await fs.unlink(join(this.dir, e)) } catch { /* ignore */ } }
     } catch { /* ignore */ }
   }
+
+  /** Change the byte budget at runtime (from settings) and evict if needed. */
+  setMaxBytes(maxBytes: number): void {
+    this.maxBytes = maxBytes
+    void this.sweep()
+  }
+
+  async stats(): Promise<{ files: number; bytes: number; maxBytes: number }> {
+    await this.init()
+    try {
+      const entries = await fs.readdir(this.dir)
+      let bytes = 0
+      let files = 0
+      for (const e of entries) {
+        try {
+          const st = await fs.stat(join(this.dir, e))
+          if (st.isFile()) { bytes += st.size; files++ }
+        } catch { /* ignore */ }
+      }
+      this.bytes = bytes
+      return { files, bytes, maxBytes: this.maxBytes }
+    } catch {
+      return { files: 0, bytes: 0, maxBytes: this.maxBytes }
+    }
+  }
 }
