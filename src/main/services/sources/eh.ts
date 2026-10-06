@@ -295,7 +295,7 @@ export async function fetchEhPopular(
   const useProxy = useOnion || opts.torProxied
   const proxy = useProxy ? opts.torSocksAddr : (opts.exProxyAddr?.trim() || undefined)
   const ua = useProxy ? TOR_UA : UA
-  return await ehFetchListing(`${base}/popular`, base, {
+  return await ehFetchListing(`${base}/popular?inline_set=dm_t`, base, {
     cookieHeader: opts.cookieHeader, proxy, ua,
     gdataApiBase: source === 'ehentai' ? 'https://api.e-hentai.org/api.php' : 'https://exhentai.org/api.php'
   })

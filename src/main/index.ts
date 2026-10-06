@@ -862,12 +862,12 @@ app.whenReady().then(() => {
   })
   ipcMain.handle(CH.catalogPopular, async (_e, source: 'ehentai' | 'exhentai' | 'exhentai_onion') => {
     const s = settings.get()
-    if (s.builtin_tor && !embeddedTorSocks()) {
+    const useOnion = source === 'exhentai_onion'
+    const torProxied = useOnion || s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai')
+    if (s.builtin_tor && !embeddedTorSocks() && torProxied) {
       try { await whenEmbeddedTorReady(120_000) } catch { /* fall through */ }
     }
     const torSocks = effectiveTorSocks()
-    const useOnion = source === 'exhentai_onion'
-    const torProxied = useOnion || s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai')
     const cookieHeader = useOnion ? s.onion_cookies_raw : exAccounts.currentCookieHeader()
     const ex = await fetchEhPopular(source, {
       cookieHeader, torSocksAddr: torSocks, exProxyAddr: s.exhentai_proxy_addr, torProxied

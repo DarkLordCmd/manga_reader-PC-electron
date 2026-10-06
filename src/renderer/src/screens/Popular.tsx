@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStore } from '../state/store'
 import type { CatalogCard } from '@shared/ipc'
 import MangaCardGrid from '../components/MangaCardGrid'
@@ -17,14 +17,19 @@ export default function Popular(): JSX.Element {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const reqRef = useRef(0)
   const load = useCallback(async () => {
+    const id = ++reqRef.current
     setLoading(true); setError(null)
     try {
-      setCards(await window.api.catalogPopular(source))
+      const res = await window.api.catalogPopular(source)
+      if (id !== reqRef.current) return
+      setCards(res)
     } catch (e: any) {
+      if (id !== reqRef.current) return
       setCards([]); setError(String(e?.message ?? e))
     } finally {
-      setLoading(false)
+      if (id === reqRef.current) setLoading(false)
     }
   }, [source])
 
