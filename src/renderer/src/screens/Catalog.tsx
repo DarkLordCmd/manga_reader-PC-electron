@@ -136,6 +136,7 @@ export default function Catalog(): JSX.Element {
   const [exCurrentId, setExCurrentId] = useState(0)
   const [exNotice, setExNotice] = useState<string | null>(null)
   const [qsOpen, setQsOpen] = useState(false)
+  const [quickSearchSeq, setQuickSearchSeq] = useState(0)
 
   // ── Filters ──
   const [ehExcludedCats, setEhExcludedCats] = useState(0)
@@ -358,6 +359,16 @@ export default function Catalog(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterSig, sort])
 
+  // Quick-search preset launch for the SAME source: [source] won't change, so
+  // the auto-search effect above never fires. A sequence bump re-renders with a
+  // fresh `search` closure carrying the new query.
+  const firstQuickRun = useRef(true)
+  useEffect(() => {
+    if (firstQuickRun.current) { firstQuickRun.current = false; return }
+    void search(0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quickSearchSeq])
+
   // Infinite scroll sentinel. Deps are intentionally minimal: the observer is
   // recreated only when the card count grows (to keep filling the viewport),
   // when infinite scroll is toggled, or when the list ends — NOT on every render
@@ -470,9 +481,12 @@ export default function Catalog(): JSX.Element {
                 <div key={q.id} className="qs-row">
                   <button className="qs-launch" title={`${q.source}: ${q.query}`} onClick={() => {
                     setQsOpen(false)
-                    changeSource(q.source)
                     setQuery(q.query)
-                    setTimeout(() => void search(0), 0)
+                    if (q.source === source) {
+                      setQuickSearchSeq((n) => n + 1)
+                    } else {
+                      changeSource(q.source)
+                    }
                   }}>{q.name}</button>
                   <button className="qs-icon" disabled={i === 0} onClick={() => setSettings({ ...settings, quick_searches: moveQuickSearch(settings.quick_searches, q.id, 'up') })}>↑</button>
                   <button className="qs-icon" disabled={i === settings.quick_searches.length - 1} onClick={() => setSettings({ ...settings, quick_searches: moveQuickSearch(settings.quick_searches, q.id, 'down') })}>↓</button>
