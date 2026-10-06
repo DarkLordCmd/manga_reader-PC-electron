@@ -7,6 +7,7 @@ import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import Toggle from '../components/Toggle'
 import type { ReadingStatus } from '@shared/library'
 import { buildLibraryMenuItems } from '../lib/library-menu'
+import { addQuickSearch, removeQuickSearch, moveQuickSearch } from '@shared/quick-search'
 
 const SOURCES: { key: string; label: string }[] = [
   { key: 'mangadex', label: 'MangaDex' },
@@ -134,9 +135,11 @@ export default function Catalog(): JSX.Element {
   const [exAccounts, setExAccounts] = useState<ExAccount[]>([])
   const [exCurrentId, setExCurrentId] = useState(0)
   const [exNotice, setExNotice] = useState<string | null>(null)
+  const [qsOpen, setQsOpen] = useState(false)
 
   // ── Filters ──
   const [ehExcludedCats, setEhExcludedCats] = useState(0)
+  const [ehMinRating, setEhMinRating] = useState(0)
   const [msSort, setMsSort] = useState('')
   const [msStatus, setMsStatus] = useState('')
   const [msType, setMsType] = useState('')
@@ -184,6 +187,7 @@ export default function Catalog(): JSX.Element {
 
   const filters: CatalogFilters = {
     ehExcludedCats,
+    ehMinRating,
     mangadexTags: mdActiveTags,
     mangadexLangs: mdLangs,
     mangashiSort: msSort, mangashiStatus: msStatus, mangashiType: msType,
@@ -329,6 +333,7 @@ export default function Catalog(): JSX.Element {
 
   const resetFilters = (): void => {
     setEhExcludedCats(0)
+    setEhMinRating(0)
     setMdActiveTags([])
     setMdLangs([])
     setNhFilterTags([])
@@ -456,6 +461,38 @@ export default function Catalog(): JSX.Element {
           </select>
         )}
         <button onClick={() => void search(0)}>Найти</button>
+        <div className="quick-search">
+          <button className="tab" onClick={() => setQsOpen((v) => !v)}>★ Быстрые поиски ▾</button>
+          {qsOpen && (
+            <div className="quick-search-menu">
+              {settings.quick_searches.length === 0 && <div className="muted qs-empty">Нет сохранённых поисков</div>}
+              {settings.quick_searches.map((q, i) => (
+                <div key={q.id} className="qs-row">
+                  <button className="qs-launch" title={`${q.source}: ${q.query}`} onClick={() => {
+                    setQsOpen(false)
+                    changeSource(q.source)
+                    setQuery(q.query)
+                    setTimeout(() => void search(0), 0)
+                  }}>{q.name}</button>
+                  <button className="qs-icon" disabled={i === 0} onClick={() => setSettings({ ...settings, quick_searches: moveQuickSearch(settings.quick_searches, q.id, 'up') })}>↑</button>
+                  <button className="qs-icon" disabled={i === settings.quick_searches.length - 1} onClick={() => setSettings({ ...settings, quick_searches: moveQuickSearch(settings.quick_searches, q.id, 'down') })}>↓</button>
+                  <button className="qs-icon" onClick={() => setSettings({ ...settings, quick_searches: removeQuickSearch(settings.quick_searches, q.id) })}>✕</button>
+                </div>
+              ))}
+              <button className="qs-save" onClick={() => {
+                const name = window.prompt('Название быстрого поиска', query.trim() || source)
+                if (!name) return
+                setSettings({
+                  ...settings,
+                  quick_searches: addQuickSearch(settings.quick_searches, {
+                    id: crypto.randomUUID(), name, source, query
+                  })
+                })
+                setQsOpen(false)
+              }}>＋ Сохранить текущий поиск</button>
+            </div>
+          )}
+        </div>
       </div>
 
       {(tagSource || nhTagSource) && (
@@ -571,6 +608,14 @@ export default function Catalog(): JSX.Element {
                     )
                   })}
                 </div>
+                <div className="filter-title">Мин. рейтинг</div>
+                <select className="filter-select" value={String(ehMinRating)} onChange={(e) => setEhMinRating(Number(e.target.value))}>
+                  <option value="0">Любой</option>
+                  <option value="2">2+</option>
+                  <option value="3">3+</option>
+                  <option value="4">4+</option>
+                  <option value="5">5</option>
+                </select>
               </>
             )}
 
