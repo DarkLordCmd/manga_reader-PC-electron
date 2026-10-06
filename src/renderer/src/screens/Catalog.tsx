@@ -177,6 +177,8 @@ export default function Catalog(): JSX.Element {
   const [menu, setMenu] = useState<{ x: number; y: number; card: CatalogCard; lookup: { key: string; favorited: boolean; status: ReadingStatus | null } | null } | null>(null)
 
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const scrollToTop = (): void => { contentRef.current?.scrollTo({ top: 0 }) }
   const searchIdRef = useRef(0)
   const searchRef = useRef<(p: number, append?: boolean) => Promise<void>>(async () => {})
   const loadingRef = useRef(false)
@@ -328,6 +330,7 @@ export default function Catalog(): JSX.Element {
     setPage(0)
     setHasMore(true)
     setPickedTags([])
+    scrollToTop()
     // Remember the source for later visits to this screen
     setSettings({ ...settings, last_catalog_source: s })
   }
@@ -352,6 +355,7 @@ export default function Catalog(): JSX.Element {
   const firstFilterRun = useRef(true)
   useEffect(() => {
     if (firstFilterRun.current) { firstFilterRun.current = false; return }
+    scrollToTop()
     const t = setTimeout(() => { void search(0) }, 450)
     return () => clearTimeout(t)
     // search is recreated with the fresh filters on each render — the timer
@@ -365,6 +369,7 @@ export default function Catalog(): JSX.Element {
   const firstQuickRun = useRef(true)
   useEffect(() => {
     if (firstQuickRun.current) { firstQuickRun.current = false; return }
+    scrollToTop()
     void search(0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quickSearchSeq])
@@ -570,7 +575,7 @@ export default function Catalog(): JSX.Element {
       )}
 
       <div className="catalog-body">
-        <div className="catalog-content">
+        <div className="catalog-content" ref={contentRef}>
           {error && <div className="error-text">{error}</div>}
           {loading && cards.length === 0 && <div className="muted">Поиск…</div>}
           {cards.length > 0 && (
