@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeQuickSearches, addQuickSearch, removeQuickSearch, moveQuickSearch, type QuickSearch } from '../src/shared/quick-search'
+import { normalizeQuickSearches, addQuickSearch, removeQuickSearch, moveQuickSearch, parseEhQueryToTags, type QuickSearch } from '../src/shared/quick-search'
 import { defaultSettings, parseSettings } from '../src/shared/settings'
 
 const q = (id: string, name: string): QuickSearch => ({ id, name, source: 'exhentai', query: name })
@@ -30,5 +30,13 @@ describe('settings.quick_searches', () => {
     expect(defaultSettings().quick_searches).toEqual([])
     expect(parseSettings({ quick_searches: [{ id: '1', name: 'a', source: 'exhentai', query: 'x' }, { bad: 1 }] }).quick_searches)
       .toEqual([{ id: '1', name: 'a', source: 'exhentai', query: 'x' }])
+  })
+})
+
+describe('parseEhQueryToTags', () => {
+  it('splits tags/exclusions into the tag bar and keeps free text as keyword', () => {
+    expect(parseEhQueryToTags('female:lolicon -male:"yaoi$"')).toEqual({ keyword: '', tags: ['female:lolicon', '!male:yaoi'] })
+    expect(parseEhQueryToTags('berserk female:yuri other:uncensored')).toEqual({ keyword: 'berserk', tags: ['female:yuri', 'other:uncensored'] })
+    expect(parseEhQueryToTags('')).toEqual({ keyword: '', tags: [] })
   })
 })

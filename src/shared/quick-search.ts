@@ -39,3 +39,37 @@ export function moveQuickSearch(list: QuickSearch[], id: string, dir: 'up' | 'do
   ;[next[i], next[j]] = [next[j], next[i]]
   return next
 }
+
+/** Splits an E-Hentai search expression (as saved in a quick-search preset)
+ * into free-text `keyword` and tag-bar `tags`. Tag tokens (namespace:tag or an
+ * exclusion) go to the tag bar; exclusions keep the UI's `!` marker and quotes
+ * / the `$` exact-match suffix are stripped. */
+export function parseEhQueryToTags(query: string): { keyword: string; tags: string[] } {
+  const tokens: string[] = []
+  let cur = ''
+  let inQuote = false
+  for (const ch of query) {
+    if (ch === '"') { inQuote = !inQuote; cur += ch; continue }
+    if (/\s/.test(ch) && !inQuote) { if (cur) tokens.push(cur); cur = ''; continue }
+    cur += ch
+  }
+  if (cur) tokens.push(cur)
+
+  const tags: string[] = []
+  const keyword: string[] = []
+  const strip = (v: string): string => {
+    if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1)
+    if (v.endsWith('$')) v = v.slice(0, -1)
+    return v
+  }
+  for (const raw of tokens) {
+    const excl = raw.startsWith('-')
+    let body = excl ? raw.slice(1) : raw
+    const colon = body.indexOf(':')
+    body = colon >= 0 ? `${body.slice(0, colon)}:${strip(body.slice(colon + 1))}` : strip(body)
+    if (!body) continue
+    if (body.includes(':')) tags.push(`${excl ? '!' : ''}${body}`)
+    else keyword.push(excl ? `-${body}` : body)
+  }
+  return { keyword: keyword.join(' '), tags }
+}

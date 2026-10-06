@@ -7,7 +7,7 @@ import ContextMenu, { type MenuItem } from '../components/ContextMenu'
 import Toggle from '../components/Toggle'
 import type { ReadingStatus } from '@shared/library'
 import { buildLibraryMenuItems } from '../lib/library-menu'
-import { addQuickSearch, removeQuickSearch, moveQuickSearch } from '@shared/quick-search'
+import { addQuickSearch, removeQuickSearch, moveQuickSearch, parseEhQueryToTags } from '@shared/quick-search'
 
 const SOURCES: { key: string; label: string }[] = [
   { key: 'mangadex', label: 'MangaDex' },
@@ -481,13 +481,11 @@ export default function Catalog(): JSX.Element {
                 <div key={q.id} className="qs-row">
                   <button className="qs-launch" title={`${q.source}: ${q.query}`} onClick={() => {
                     setQsOpen(false)
-                    setQuery(q.query)
-                    setPickedTags([])
-                    if (q.source === source) {
-                      setQuickSearchSeq((n) => n + 1)
-                    } else {
-                      changeSource(q.source)
-                    }
+                    const { keyword, tags } = parseEhQueryToTags(q.query)
+                    if (q.source !== source) changeSource(q.source)
+                    setQuery(keyword)
+                    setPickedTags(tags)
+                    if (q.source === source) setQuickSearchSeq((n) => n + 1)
                   }}>{q.name}</button>
                   <button className="qs-icon" disabled={i === 0} onClick={() => setSettings({ ...settings, quick_searches: moveQuickSearch(settings.quick_searches, q.id, 'up') })}>↑</button>
                   <button className="qs-icon" disabled={i === settings.quick_searches.length - 1} onClick={() => setSettings({ ...settings, quick_searches: moveQuickSearch(settings.quick_searches, q.id, 'down') })}>↓</button>
