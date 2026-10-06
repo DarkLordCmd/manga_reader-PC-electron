@@ -12,7 +12,7 @@ function siteKeyForUrl(url: string): string | null {
   if (l.includes('senkuro')) return 'senkuro'
   if (l.includes('remanga')) return 'remanga'
   if (l.includes('manga-shi')) return 'mangashi'
-  if (l.includes('mangalib')) return 'mangalib'
+  if (l.includes('mangalib') || l.includes('cdnlibs.org') || l.includes('imglib.info') || l.includes('imgslib.link')) return 'mangalib'
   if (l.includes('com-x.life')) return 'comx'
   // Grouple cover CDNs live on separate hosts (e.g. mmm/resrmr.one-way.work).
   if (l.includes('one-way.work') || l.includes('readmanga') || l.includes('mintmanga') || l.includes('mangapoisk')) return 'grouple'
@@ -43,6 +43,8 @@ function coverProxy(siteKey: string | null, url: string, s: Settings): string | 
   const tor = s.tor_socks_addr || '127.0.0.1:9150'
   const site = siteKey === 'ehgt' ? 'ehentai' : siteKey
   if (url.includes('.onion')) return tor
+  // Grouple CDN hosts (one-way.work etc.) are SNI/TCP-blocked like the sites.
+  if (site === 'grouple') return tor
   if (site && s.tor_proxied_sites.includes(site)) return tor
   if ((site === 'exhentai' || site === 'ehentai') && s.exhentai_proxy_addr.trim()) return s.exhentai_proxy_addr.trim()
   return undefined
@@ -54,7 +56,7 @@ function coverCookie(siteKey: string | null, url: string, s: Settings, accountCo
     if (url.includes('.onion')) return s.onion_cookies_raw || undefined
     return accountCookieHeader || undefined
   }
-  if (siteKey === 'nhentai' && url.includes('.onion')) return s.nhentai_onion_cookies_raw || undefined
+  if (siteKey === 'nhentai') return url.includes('.onion') ? (s.nhentai_onion_cookies_raw || undefined) : (s.nhentai_cookies_raw || undefined)
   return undefined
 }
 
@@ -72,8 +74,11 @@ export async function fetchCoverBuffer(
   if (cookie) headers.Cookie = cookie
 
   const proxy = coverProxy(siteKey, url, s)
+  // Clearnet nhentai is routinely DNS-poisoned/rejected in RU — allow the
+  // custom-DNS→Tor fallback chain on its HTTP failures.
+  const allowHttpFallback = siteKey === 'nhentai' && !url.includes('.onion')
   try {
-    const bytes = await httpFetchBinary(url, headers, proxy, proxy ? 90_000 : 30_000)
+    const bytes = await httpFetchBinary(url, headers, proxy, proxy ? 90_000 : 30_000, allowHttpFallback)
     return Buffer.from(bytes)
   } catch (e) {
     // nhentai thumbnail fallback: the HTML-reported cover (e.g. cover.webp)
@@ -83,7 +88,7 @@ export async function fetchCoverBuffer(
       if (url.includes('/cover.')) alts.push(url.replace(/\/cover\.(\w+)/, '/thumb.$1'))
       for (const alt of alts) {
         try {
-          const bytes = await httpFetchBinary(alt, headers, proxy, proxy ? 90_000 : 30_000)
+          const bytes = await httpFetchBinary(alt, headers, proxy, proxy ? 90_000 : 30_000, allowHttpFallback)
           return Buffer.from(bytes)
         } catch { /* next */ }
       }

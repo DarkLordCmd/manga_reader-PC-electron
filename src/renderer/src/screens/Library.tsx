@@ -1,23 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useStore } from '../state/store'
-import type { LibraryItem, LibraryQuery, LibrarySort, ReadingStatus } from '@shared/library'
+import type { LibraryItem, LibrarySort, ReadingStatus } from '@shared/library'
 import { READING_STATUSES } from '@shared/library'
 import LibraryItemModal from '../components/LibraryItemModal'
-
-const STATUS_LABELS: Record<ReadingStatus, string> = {
-  reading: 'Reading', planned: 'Planned', completed: 'Completed',
-  on_hold: 'On hold', dropped: 'Dropped'
-}
+import CoverImg from '../components/CoverImg'
+import ContextMenu, { type MenuItem } from '../components/ContextMenu'
+import { buildLibraryMenuItems, STATUS_LABELS } from '../lib/library-menu'
 
 const TABS: (ReadingStatus | 'all')[] = ['all', ...READING_STATUSES]
 
 const SORTS: [LibrarySort, string][] = [
   ['last_read', 'Последнее чтение'], ['title', 'Название'], ['rating', 'Оценка'], ['added', 'Добавлено']
 ]
-
-function coverSrc(url: string): string {
-  return `manga://cover/${encodeURIComponent(url)}`
-}
 
 export default function Library(): JSX.Element {
   const { setScreen, setOpened, settings } = useStore()
@@ -27,12 +21,15 @@ export default function Library(): JSX.Element {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<LibrarySort>('last_read')
   const [selected, setSelected] = useState<LibraryItem | null>(null)
+  const [category, setCategory] = useState<'main' | 'r34'>('main')
+  const [menu, setMenu] = useState<{ x: number; y: number; item: LibraryItem } | null>(null)
+  const cat = settings.show_r34_history ? category : 'main'
 
   const refresh = useCallback(() => {
-    const q: LibraryQuery = { status, search, sort, includeR34: settings.show_r34_history }
-    void window.api.libraryList(q).then(setItems)
-    void window.api.libraryList({ status: 'all', includeR34: settings.show_r34_history }).then(setAllItems)
-  }, [status, search, sort, settings.show_r34_history])
+    const effCat = settings.show_r34_history ? category : 'main'
+    void window.api.libraryList({ status, search, sort, category: effCat }).then(setItems)
+    void window.api.libraryList({ status: 'all', category: effCat }).then(setAllItems)
+  }, [status, search, sort, category, settings.show_r34_history])
 
   useEffect(refresh, [refresh])
   useEffect(() => window.api.onLibraryChanged(refresh), [refresh])
@@ -56,6 +53,11 @@ export default function Library(): JSX.Element {
   return (
     <div className="screen library">
       <div className="library-toolbar">
+        <button className={cat === 'main' ? 'tab active' : 'tab'} onClick={() => setCategory('main')}>📖 Main</button>
+        {settings.show_r34_history && (
+          <button className={cat === 'r34' ? 'tab active' : 'tab'} onClick={() => setCategory('r34')}>🔞 R34</button>
+        )}
+        <div className="spacer" />
         <input
           className="catalog-search"
           placeholder="Поиск по названию…"
@@ -84,11 +86,11 @@ export default function Library(): JSX.Element {
       {items.length === 0 && <div className="muted">В библиотеке пока пусто</div>}
       <div className="history-grid">
         {items.map((it) => (
-          <div key={it.key} className="history-card" onClick={() => setSelected(it)}>
+          <div key={it.key} className="history-card"
+            onClick={() => setSelected(it)}
+            onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, item: it }) }}>
             <div className="history-cover">
-              {it.coverUrl
-                ? <img src={coverSrc(it.coverUrl)} alt="" loading="lazy" />
-                : <div className="cover-placeholder" />}
+              <CoverImg url={it.coverUrl} />
             </div>
             <div className="history-title" title={it.title}>{it.title || 'Без названия'}</div>
             <div className="history-meta">
@@ -107,6 +109,18 @@ export default function Library(): JSX.Element {
           onClose={() => setSelected(null)}
           onOpen={async () => { await open(selected); setSelected(null) }}
           onChanged={() => { setSelected(null); refresh() }}
+        />
+      )}
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={buildLibraryMenuItems(
+            { url: menu.item.url, title: menu.item.title, coverUrl: menu.item.coverUrl, source: menu.item.source, seriesId: menu.item.seriesId },
+            { key: menu.item.key, favorited: menu.item.favoritedAt !== null, status: menu.item.status }
+          )}
         />
       )}
     </div>

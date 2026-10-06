@@ -19,7 +19,21 @@ function Shell(): JSX.Element {
       <div className="main">
         <TopBar />
         {screen === 'Reader' && <Reader />}
-        {screen === 'Catalog' && <Catalog />}
+        {/* Catalog stays mounted while hidden: in-flight searches keep
+          running in the background and their results survive tab switches.
+          The wrapper must keep the flex chain intact — otherwise the screen
+          grows past the viewport and the window scrollbar scrolls the whole
+          UI (toolbar, filters, everything). */}
+        <div
+          style={{
+            display: screen === 'Catalog' ? 'flex' : 'none',
+            flexDirection: 'column',
+            flex: 1,
+            minHeight: 0
+          }}
+        >
+          <Catalog />
+        </div>
         {screen === 'Library' && <Library />}
         {screen === 'Favorites' && <Favorites />}
         {screen === 'History' && <History />}

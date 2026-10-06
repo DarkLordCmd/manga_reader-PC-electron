@@ -64,6 +64,11 @@ const api: Api = {
     ipcRenderer.on(CH.downloadsChanged, fn)
     return () => ipcRenderer.removeListener(CH.downloadsChanged, fn)
   },
+  onNhentaiCounts: (cb) => {
+    const fn = (_e: unknown, entries: { url: string; pages: number }[]): void => cb(entries)
+    ipcRenderer.on(CH.nhentaiCounts, fn)
+    return () => ipcRenderer.removeListener(CH.nhentaiCounts, fn)
+  },
   libraryList: (query) => ipcRenderer.invoke(CH.libraryList, query),
   libraryGet: (key) => ipcRenderer.invoke(CH.libraryGet, key),
   libraryAdd: (entry) => ipcRenderer.invoke(CH.libraryAdd, entry),

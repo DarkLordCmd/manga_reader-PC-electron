@@ -29,7 +29,10 @@ describe('fetchSimpleGallery', () => {
     server.close()
   })
 
-  it('parses nhentai embedded reader JSON', async () => {
+  it('parses nhentai embedded reader JSON: always official i.nhentai.net CDN', async () => {
+    // The old behavior mirrored the page's media_url (zrocdn etc.) which
+    // serves low-res images — the Rust app fixed this by always rewriting to
+    // i.nhentai.net. The t-codes map: p→png, g→gif, else webp.
     const html = `
       <html><body>
       <script>
@@ -43,9 +46,32 @@ describe('fetchSimpleGallery', () => {
     const { port, server } = await serve(html)
     const g = await fetchSimpleGallery(`http://127.0.0.1:${port}/g/2438351/1/`)
     expect(g.pageUrls).toEqual([
-      'https://zrocdn.xyz/galleries/2438351/1.jpg',
-      'https://zrocdn.xyz/galleries/2438351/2.png',
-      'https://zrocdn.xyz/galleries/2438351/3.webp'
+      'https://i.nhentai.net/galleries/2438351/1.webp',
+      'https://i.nhentai.net/galleries/2438351/2.png',
+      'https://i.nhentai.net/galleries/2438351/3.webp'
+    ])
+    server.close()
+  })
+
+  it('parses the current JSON.parse-wrapped nhentai reader (paths in entries)', async () => {
+    // 2024+ svelte reader: the blob is JSON.parse("…") with escaped quotes
+    // and every page entry carries a full "path".
+    const galleryJson = JSON.stringify({
+      media_id: '4053261',
+      pages: [
+        { number: 1, path: 'galleries/4053261/1.webp', width: 1280 },
+        { number: 2, path: 'galleries/4053261/2.webp', width: 1280 }
+      ]
+    }).replace(/"/g, '\\"')
+    // Simulate: JSON.parse("...") inside the page source
+    const html = `<html><head><title>Test NHentai</title></head><body>
+      <script>JSON.parse("${galleryJson}")</script>
+      <img src="https://t2.nhentai.net/galleries/4053261/thumb.webp"></body></html>`
+    const { port, server } = await serve(html)
+    const g = await fetchSimpleGallery(`http://127.0.0.1:${port}/g/4053261/1/`)
+    expect(g.pageUrls).toEqual([
+      'https://i.nhentai.net/galleries/4053261/1.webp',
+      'https://i.nhentai.net/galleries/4053261/2.webp'
     ])
     server.close()
   })

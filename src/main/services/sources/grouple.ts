@@ -120,13 +120,14 @@ export async function searchGrouple(
   cfg: SimpleSiteConfig,
   query: string,
   page = 0,
-  fetchOverride?: (url: string) => Promise<string>
+  fetchOverride?: (url: string) => Promise<string>,
+  opts: { proxy?: string } = {}
 ): Promise<CatalogItem[]> {
   const target = query.trim()
     ? `${cfg.base}/api/catalog/search?q=${encodeURIComponent(query.trim())}&offset=${page * 50}`
     // Servers ignore `page=` — the listing paginates by 50-item offset.
     : `${cfg.base}${cfg.catalogPath}${page > 0 ? `${cfg.catalogPath.includes('?') ? '&' : '?'}offset=${page * 50}` : ''}`
-  const data = fetchOverride ? await fetchOverride(target) : await fetchHtmlSmart(target)
+  const data = fetchOverride ? await fetchOverride(target) : await fetchHtmlSmart(target, { proxy: opts.proxy })
   const results = query.trim()
     ? parseGroupleSearchJson(data, cfg.base)
     : parseGroupleListing(data, cfg.base, page)
@@ -188,10 +189,11 @@ function sortKey(ref: ChapterRef): number {
 
 export async function fetchGroupleChapters(
   mangaUrl: string,
-  fetchOverride?: (url: string) => Promise<string>
+  fetchOverride?: (url: string) => Promise<string>,
+  opts: { proxy?: string } = {}
 ): Promise<ChapterInfo[]> {
   const base = mangaUrl.trim().replace(/\/+$/, '')
-  const html = fetchOverride ? await fetchOverride(mangaUrl) : await fetchHtmlSmart(mangaUrl, { timeoutMs: 30_000 })
+  const html = fetchOverride ? await fetchOverride(mangaUrl) : await fetchHtmlSmart(mangaUrl, { timeoutMs: 30_000, proxy: opts.proxy })
   assertLayout(CHAPTER_MARKERS, html, 'Grouple chapters')
   const $ = cheerio.load(html)
   const all: { info: ChapterInfo; ref: ChapterRef }[] = []

@@ -1,60 +1,78 @@
-import { describe, it, expect } from 'vitest'
-import { HistoryManager } from '../src/main/services/history'
+import { describe, expect, it } from 'vitest'
+import { galleryKeyForUrl, seriesKeyForUrl, HistoryManager } from '../src/main/services/history'
 
-const u = (over: any = {}) => ({
-  url: 'http://x/ch/1', series_id: 's1', title: 'Manga', cover_url: null,
-  source: 'MangaDex', chapter_label: '1', chapter_index: 0, chapter_total: 10,
-  total_pages: 20, category: 'main', ...over
+describe('galleryKeyForUrl', () => {
+  it('normalizes nhentai clearnet and onion to one key', () => {
+    expect(galleryKeyForUrl('https://nhentai.net/g/681429/'))
+      .toBe(galleryKeyForUrl('http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion/g/681429/'))
+  })
+
+  it('normalizes exhentai.org and the onion gateway to one key', () => {
+    expect(galleryKeyForUrl('https://exhentai.org/g/3018651/813c8d5ae9/'))
+      .toBe(galleryKeyForUrl('http://exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion/g/3018651/813c8d5ae9/'))
+  })
 })
 
-describe('HistoryManager', () => {
-  it('creates one card per series', () => {
-    const h = new HistoryManager()
-    h.addOrUpdate(u())
-    h.addOrUpdate(u({ url: 'http://x/ch/2', chapter_index: 1 }))
-    expect(h.all()).toHaveLength(1)
-    expect(h.all()[0].chapter_index).toBe(1)
+describe('seriesKeyForUrl (MangaNet model: host-stable identity)', () => {
+  it('senkuro.me and senkuro.com share one key', () => {
+    expect(seriesKeyForUrl('https://senkuro.me/manga/foo/chapter/145161713279387187/'))
+      .toBe(seriesKeyForUrl('https://senkuro.com/manga/foo/chapter/9/'))
+      .toBe('sk:foo')
   })
 
-  it('does not overwrite a further-read position with an earlier chapter', () => {
-    const h = new HistoryManager()
-    h.addOrUpdate(u({ chapter_index: 5 }))
-    h.addOrUpdate(u({ url: 'http://x/ch/2', chapter_index: 1 }))
-    expect(h.all()).toHaveLength(1)
-    expect(h.all()[0].chapter_index).toBe(5)
-    expect(h.all()[0].url).toBe('http://x/ch/1')
+  it('com-x reader ids collapse to the DLE news id', () => {
+    expect(seriesKeyForUrl('https://com-x.life/reader/23831/147/')).toBe(seriesKeyForUrl('https://com-x.ru/reader/23831/88/'))
   })
 
-  it('keeps saved page when reopening the same url', () => {
-    const h = new HistoryManager()
-    h.addOrUpdate(u())
-    h.updateProgress('http://x/ch/1', 7, 20)
-    h.addOrUpdate(u())
-    expect(h.all()[0].current_page).toBe(7)
+  it('com-x catalog page and reader chapter of same manga match', () => {
+    expect(seriesKeyForUrl('https://com-x.life/online/23831-some-slug.html/'))
+      .toBe(seriesKeyForUrl('https://com-x.life/reader/23831/9/'))
   })
 
-  it('keeps an existing cover when update has none', () => {
-    const h = new HistoryManager()
-    h.addOrUpdate(u({ cover_url: 'http://c/1.jpg' }))
-    h.addOrUpdate(u({ url: 'http://x/ch/2', chapter_index: 1, cover_url: null }))
-    expect(h.all()[0].cover_url).toBe('http://c/1.jpg')
+  it('manga-shi / remanga / mangalib / grouple slugs are hostless keys', () => {
+    expect(seriesKeyForUrl('https://manga-shi.org/manga/foo/tom-1/glava-1/')).toBe('ms:foo')
+    expect(seriesKeyForUrl('https://api.remanga.org/manga/foo/3/')).toBe('rm:foo')
+    expect(seriesKeyForUrl('https://mangalib.me/manga/foo')).toBe(seriesKeyForUrl('https://libmir.org/manga/foo/v1/c1'))
   })
 
-  it('dedups by series on load and normalizes empty series_id', () => {
-    const h = new HistoryManager()
-    h.load([
-      { ...u(), series_id: '', opened_at: 1 } as any,
-      { ...u(), url: 'http://x/other', series_id: 's2', opened_at: 2 } as any
+  it('mangadex uuid and site url share the key, local folders collapse by path', () => {
+    expect(seriesKeyForUrl('2a637f4b-56b1-4f8f-8c92-b925d97ab020'))
+      .toBe(seriesKeyForUrl('https://api.mangadex.org/manga/2a637f4b-56b1-4f8f-8c92-b925d97ab020/feed'))
+      .toBe('md:2a637f4b-56b1-4f8f-8c92-b925d97ab020')
+    expect(seriesKeyForUrl('FILE://C:\\DIR\\MANGA-1')).toBe('local:file://c:\\dir\\manga-1')
+  })
+
+  it('chapter-based sources stay un-keyed when host unknown', () => {
+    expect(seriesKeyForUrl('https://example.org/manga/foo/')).toBeNull()
+  })
+
+  it('keeps chapter-based sources un-keyed', () => {
+    expect(galleryKeyForUrl('https://senkuro.me/manga/foo/chapter/1/')).toBeNull()
+    expect(galleryKeyForUrl('file:///d:/manga/foo')).toBeNull()
+  })
+})
+
+describe('HistoryManager merge by gallery key', () => {
+  const base = {
+    title: 't', cover_url: null, source: 'NHentai', chapter_label: null,
+    chapter_index: null, chapter_total: null, category: 'r34'
+  }
+
+  it('updateProgress hits the entry opened under another host', () => {
+    const m = new HistoryManager()
+    m.load([{ ...base, url: 'https://nhentai.net/g/42/', series_id: 'https://nhentai.net/g/42/', current_page: 3, total_pages: 10, opened_at: 1 }])
+    m.updateProgress('http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion/g/42/', 7, 10)
+    expect(m.all()).toHaveLength(1)
+    expect(m.all()[0].current_page).toBe(7)
+  })
+
+  it('load collapses clearnet and onion records keeping the largest progress', () => {
+    const m = new HistoryManager()
+    m.load([
+      { ...base, url: 'http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion/g/42/', series_id: 'http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion/g/42/', current_page: 2, total_pages: 10, opened_at: 2 },
+      { ...base, url: 'https://nhentai.net/g/42/', series_id: 'https://nhentai.net/g/42/', current_page: 5, total_pages: 10, opened_at: 1 }
     ])
-    expect(h.all()).toHaveLength(2)
-    expect(h.all()[0].series_id).toBe('s2')
-  })
-
-  it('filters r34 vs main', () => {
-    const h = new HistoryManager()
-    h.addOrUpdate(u({ series_id: 'a', category: 'main' }))
-    h.addOrUpdate(u({ series_id: 'b', category: 'r34', url: 'http://n/1' }))
-    expect(h.mainEntries()).toHaveLength(1)
-    expect(h.r34Entries()).toHaveLength(1)
+    expect(m.all()).toHaveLength(1)
+    expect(m.all()[0].current_page).toBe(5)
   })
 })

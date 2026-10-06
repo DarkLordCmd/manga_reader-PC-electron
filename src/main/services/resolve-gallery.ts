@@ -87,6 +87,19 @@ export async function resolveGallery(
     const r = await fetchMangaMelloChapter(trimmed)
     return { title: r.title, pageUrls: r.pageUrls, coverUrl: null, source: 'MangaMello', referer: 'https://mangamello.com/', mangaId: seriesId, seriesId }
   }
+  if (trimmed.includes('mangalib.') && /\/read\/v/i.test(trimmed)) {
+    const { mangalibChapterPages } = await import('./sources/mangalib')
+    const u = new URL(trimmed)
+    const segs = u.pathname.split('/').filter(Boolean)
+    const idx = segs.indexOf('read')
+    // /<slug>/read/v<V>/c<C>  |  /ru/<slug>/read/v<V>/c<C>
+    const slug = segs[idx - 1]
+    const vol = (segs[idx + 1] ?? '').replace(/^v/i, '')
+    const num = (segs[idx + 2] ?? '').replace(/^c/i, '')
+    if (!slug || !vol || !num) throw new UnsupportedUrlError()
+    const r = await mangalibChapterPages(slug, vol, num, opts.proxy)
+    return { title: r.title, pageUrls: r.pageUrls, coverUrl: null, source: 'Mangalib', referer: 'https://mangalib.me/', mangaId: seriesId, seriesId }
+  }
   if (trimmed.includes('manga-shi.') || trimmed.includes('nhentai') || trimmed.includes('com-x.life') || trimmed.includes('mangalib.') || trimmed.includes('e-hentai.org') || trimmed.includes('exhentai')
     || trimmed.includes('readmanga.') || trimmed.includes('mintmanga.') || trimmed.includes('mangapoisk.')) {
     if (trimmed.includes('third-party')) {

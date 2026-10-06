@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type { CatalogCard } from '@shared/ipc'
 
 interface Props {
@@ -30,47 +31,66 @@ function kindColor(kind: string | undefined): string {
   }
 }
 
-export default function MangaCardGrid({ cards, onSelect, progress, onContextMenu }: Props): JSX.Element {
+interface CardProps {
+  card: CatalogCard
+  progressEntry?: [number, number]
+  onSelect: (card: CatalogCard) => void
+  onContextMenu?: (e: React.MouseEvent, card: CatalogCard) => void
+}
+
+/** Memoized so appending a page (a new `cards` array) does not re-render the
+ * already-rendered cards — only the newly added ones mount. */
+const MangaCard = memo(function MangaCard({ card, progressEntry, onSelect, onContextMenu }: CardProps): JSX.Element {
+  const count = card.chapterCount != null
+    ? `${card.chapterCount} гл.`
+    : card.pages != null ? `${card.pages} стр.` : ''
   return (
-    <div className="catalog-grid">
-      {cards.map((c, i) => {
-        const p = progress?.[c.url]
-        const count = c.chapterCount != null
-          ? `${c.chapterCount} гл.`
-          : c.pages != null ? `${c.pages} стр.` : ''
-        return (
-          <div
-            key={`${c.url}-${i}`}
-            className="manga-card"
-            onClick={() => onSelect(c)}
-            onContextMenu={onContextMenu ? (e) => onContextMenu(e, c) : undefined}
-          >
-            <div className="manga-cover">
-              {c.coverUrl
-                ? <img src={coverSrc(c.coverUrl)} alt={c.title} loading="lazy" />
-                : <div className="cover-placeholder" />}
-              {c.kind && (
-                <span className="manga-badge" style={{ background: kindColor(c.kind) }}>{c.kind}</span>
-              )}
-              {p && (
-                <div className="manga-progress">
-                  <div className="manga-progress-track">
-                    <div
-                      className="manga-progress-fill"
-                      style={{ width: `${p[1] > 0 ? Math.min(100, (p[0] / p[1]) * 100) : 0}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="manga-title" title={c.title}>{c.title}</div>
-            <div className="manga-meta">
-              <span className="manga-count">{count}</span>
-              {c.score != null && <span className="score">★ {c.score.toFixed(1)}</span>}
+    <div
+      className="manga-card"
+      onClick={() => onSelect(card)}
+      onContextMenu={onContextMenu ? (e) => onContextMenu(e, card) : undefined}
+    >
+      <div className="manga-cover">
+        {card.coverUrl
+          ? <img src={coverSrc(card.coverUrl)} alt={card.title} loading="lazy" />
+          : <div className="cover-placeholder" />}
+        {card.kind && (
+          <span className="manga-badge" style={{ background: kindColor(card.kind) }}>{card.kind}</span>
+        )}
+        {progressEntry && (
+          <div className="manga-progress">
+            <div className="manga-progress-track">
+              <div
+                className="manga-progress-fill"
+                style={{ width: `${progressEntry[1] > 0 ? Math.min(100, (progressEntry[0] / progressEntry[1]) * 100) : 0}%` }}
+              />
             </div>
           </div>
-        )
-      })}
+        )}
+      </div>
+      <div className="manga-title" title={card.title}>{card.title}</div>
+      <div className="manga-meta">
+        <span className="manga-count">{count}</span>
+        {card.score != null && <span className="score">★ {card.score.toFixed(1)}</span>}
+      </div>
+    </div>
+  )
+})
+
+function MangaCardGrid({ cards, onSelect, progress, onContextMenu }: Props): JSX.Element {
+  return (
+    <div className="catalog-grid">
+      {cards.map((c) => (
+        <MangaCard
+          key={c.url}
+          card={c}
+          progressEntry={progress?.[c.url]}
+          onSelect={onSelect}
+          onContextMenu={onContextMenu}
+        />
+      ))}
     </div>
   )
 }
+
+export default memo(MangaCardGrid)

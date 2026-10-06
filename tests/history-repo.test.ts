@@ -52,4 +52,16 @@ describe('HistoryManager writes through to the repository', () => {
     expect(repo.get('sk:foo')!.currentPage).toBe(1)
     expect(repo.get('sk:foo')!.totalPages).toBe(50)
   })
+
+  it('excludes library/favorites-only rows (never opened) from history', () => {
+    const repo = new InMemorySeriesRepository()
+    const m = new HistoryManager(repo)
+    // Added to library/favorites from the catalog: totalPages 0, never opened.
+    repo.upsertHistory({ key: 'nh:1', seriesId: 'x', url: 'https://nhentai.net/g/1/', title: 'T', coverUrl: null, source: 'NHentai', category: 'r34', currentPage: 1, totalPages: 0, chapterLabel: null, chapterIndex: null, chapterTotal: null })
+    repo.setStatus('nh:1', 'planned')
+    expect(m.all()).toHaveLength(0)
+    // Opening it records the page count -> it now belongs to reading history.
+    repo.updateProgress('nh:1', 1, 12, Date.now())
+    expect(m.all()).toHaveLength(1)
+  })
 })

@@ -20,10 +20,16 @@ export default function Reader(): JSX.Element {
   const perScreen = Math.max(1, settings.pages_per_screen)
   const pageCount = opened?.pageCount ?? 0
   const rtl = settings.reading_mode === 'Book' && settings.book_direction === 'Rtl'
+  const webtoon = opened?.kind === 'online' && !!opened.webtoon
+  const [hideToolbar, setHideToolbar] = useState(false)
 
   useEffect(() => {
-    setCurrentIndex(opened?.startPage ?? 0)
-    setJumpTo(null)
+    const sp = opened?.startPage ?? 0
+    setCurrentIndex(sp)
+    // Jump the ScrollView to the restored position — otherwise it sits on
+    // the top of the document, the observer fires for page 1 and the saved
+    // progress is silently reset to the first page.
+    setJumpTo(sp > 0 ? sp : null)
   }, [opened])
 
   useEffect(() => {
@@ -32,6 +38,36 @@ export default function Reader(): JSX.Element {
     window.addEventListener('keydown', fn)
     return () => window.removeEventListener('keydown', fn)
   }, [showHelp])
+
+  // Progress is flushed like JHenTai does: a periodic timer + a final write
+  // when the reader (or gallery) closes — not an IPC on every scroll tick.
+  const idxRef = useRef(0)
+  const savedRef = useRef({ url: '', page: -1 })
+  idxRef.current = currentIndex
+  const flushProgress = useCallback((immediate: boolean): void => {
+    const o = opened
+    if (!o || pageCount === 0) return
+    const page = idxRef.current + 1
+    if (!immediate && page === savedRef.current.page && o.url === savedRef.current.url) return
+    savedRef.current = { url: o.url, page }
+    // Also informs the main process so warm-ahead (load pages ~32 forward)
+    // re-centers around the current position.
+    if (o.kind === 'online') window.api.setReadingPosition(o.id, idxRef.current)
+    window.api.recordProgress(o.url, page, pageCount)
+  }, [opened, pageCount])
+
+  useEffect(() => {
+    if (!opened || pageCount === 0) return
+    const flushMs = setTimeout(() => flushProgress(false), 1200)
+    const intervalMs = setInterval(() => flushProgress(false), 5000)
+    return () => {
+      clearTimeout(flushMs)
+      clearInterval(intervalMs)
+      flushProgress(true)
+    }
+    // flush one final time when the gallery or the reader unmounts
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened?.url, pageCount, currentIndex])
 
   const goNext = useCallback(() => {
     const next = Math.min(currentIndex + perScreen, Math.max(0, pageCount - 1))
@@ -49,34 +85,43 @@ export default function Reader(): JSX.Element {
     onNext: goNext,
     onToggleThumbs: () => setSettings({ ...settings, show_thumbnails: !settings.show_thumbnails }),
     onToggleMode: () => setSettings({ ...settings, reading_mode: settings.reading_mode === 'Scroll' ? 'Book' : 'Scroll' }),
-    onToggleHelp: () => setShowHelp((v) => !v)
+    onToggleHelp: () => setShowHelp((v) => !v),
+    onToggleImmersive: () => {
+      setHideToolbar((v) => {
+        const next = !v
+        if (next) void document.documentElement.requestFullscreen().catch(() => {})
+        else if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
+        return next
+      })
+    }
   }, rtl)
 
-  const onVisible = useCallback((i: number) => setCurrentIndex(i), [])
+  const onVisible = useCallback((i: number) => {
+    if (Number.isInteger(i)) setCurrentIndex(i)
+  }, [])
   const onJumpDone = useCallback(() => setJumpTo(null), [])
-
-  useEffect(() => {
-    if (!opened || pageCount === 0) return
-    if (opened.kind === 'online') window.api.setReadingPosition(opened.id, currentIndex)
-    window.api.recordProgress(opened.url, currentIndex + 1, pageCount)
-  }, [opened, currentIndex, pageCount])
 
   // Mark chapter as fully read when reaching the last page.
   useEffect(() => {
     if (!opened || opened.kind !== 'online' || pageCount === 0) return
-    if (currentIndex + 1 >= pageCount) {
+    if (!Number.isInteger(currentIndex) || currentIndex + 1 >= pageCount) {
+      if (!Number.isInteger(currentIndex)) return
       window.api.markChapterRead(opened.url)
     }
   }, [opened, currentIndex, pageCount])
 
   // Auto-advance to the next chapter after ~1s at the end (Scroll mode).
+  // Guards: only fire when the user really is on the LAST page — a NaN or
+  // stale currentIndex (transient observer report / gallery change) must
+  // never legitimately open the next chapter on its own.
   const advancedRef = useRef(false)
   useEffect(() => {
     if (!opened || opened.kind !== 'online' || settings.reading_mode !== 'Scroll') return
     const list = opened.chapterList
     const idx = opened.chapterIndex
     if (!list || idx == null) return
-    if (currentIndex + 1 < pageCount) {
+    if (!Number.isInteger(currentIndex) || !Number.isInteger(pageCount) || pageCount === 0) return
+    if (currentIndex !== pageCount - 1) {
       advancedRef.current = false
       return
     }
@@ -169,7 +214,7 @@ export default function Reader(): JSX.Element {
   }, [opened])
 
   return (
-    <div className="reader">
+    <div className={`reader${hideToolbar ? ' immersive' : ''}`}>
       <div className="reader-toolbar">
         <button onClick={openFolder}>Open</button>
         {opened?.kind === 'local' && <button onClick={() => void refreshFolder()}>Refresh</button>}
@@ -230,28 +275,39 @@ export default function Reader(): JSX.Element {
             />
           )}
           <div className="reader-content">
-            {settings.reading_mode === 'Scroll' && (
-              <ScrollView
-                galleryId={opened.id}
-                pageCount={pageCount}
-                widthScale={settings.width_scale}
-                currentIndex={currentIndex}
-                jumpTo={jumpTo}
-                onVisible={onVisible}
-                onJumpDone={onJumpDone}
-              />
-            )}
-            {settings.reading_mode === 'Book' && (
-              <BookView
-                galleryId={opened.id}
-                pageCount={pageCount}
-                currentIndex={currentIndex}
-                pagesPerScreen={perScreen}
-                direction={settings.book_direction}
-                onPrev={goPrev}
-                onNext={goNext}
-              />
-            )}
+        {settings.reading_mode === 'Scroll' && (
+          <ScrollView
+            galleryId={opened.id}
+            pageCount={pageCount}
+            widthScale={settings.width_scale}
+            currentIndex={currentIndex}
+            jumpTo={jumpTo}
+            webtoon={webtoon}
+            onVisible={onVisible}
+            onJumpDone={onJumpDone}
+          />
+        )}
+        {settings.reading_mode === 'Book' && (
+          <BookView
+            galleryId={opened.id}
+            pageCount={pageCount}
+            currentIndex={currentIndex}
+            pagesPerScreen={perScreen}
+            direction={settings.book_direction}
+            onPrev={goPrev}
+            onNext={goNext}
+          />
+        )}
+        {pageCount > 1 && (
+          <input
+            className="reader-slider"
+            type="range"
+            min={1}
+            max={pageCount}
+            value={Math.min(currentIndex + 1, pageCount)}
+            onChange={(e) => { const v = Number(e.target.value) - 1; setCurrentIndex(v); setJumpTo(v) }}
+          />
+        )}
           </div>
         </div>
       )}

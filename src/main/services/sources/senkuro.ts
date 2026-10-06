@@ -4,11 +4,17 @@ import type { ChapterInfo } from './remanga'
 
 const SENKURO_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 
+// senkuro.me domain overrides the shared website config: its own API host
+// (api.senkuro.me) and client id (4026531840100). The Hub config
+// (api.senkuro.org / 1006632962658) returns an EMPTY catalog for browse —
+// guessing the wrong host was why searches came back empty.
+const SENKURO_GRAPHQL = 'https://api.senkuro.me/graphql'
+
 export function senkuroHeaders(cookieHeader: string): Record<string, string> {
   const h: Record<string, string> = {
     'Content-Type': 'application/json',
-    'App-Id': '1006632962658',
-    'App-Version': '240626',
+    'App-Id': '4026531840100',
+    'App-Version': '050926',
     Origin: 'https://senkuro.me',
     Accept: 'application/json'
   }
@@ -23,21 +29,41 @@ export function senkuroHeaders(cookieHeader: string): Record<string, string> {
   return h
 }
 
-export async function searchSenkuro(query: string, cookieHeader = '', after?: string): Promise<CatalogItem[]> {
+export async function searchSenkuro(
+  query: string,
+  cookieHeader = '',
+  after?: string,
+  filters?: { senkuroOrdering?: string; senkuroStatuses?: string[]; senkuroTypes?: string[]; senkuroFormats?: string[]; senkuroRating?: string }
+): Promise<CatalogItem[]> {
   const searchPart = query.trim() ? `search: "${query.trim()}"` : ''
   const afterPart = after ? `after: "${after}"` : ''
-  const gql = JSON.stringify({ query: `query { mangas(first: 30 ${afterPart} ${searchPart} orderBy: { field: VIEWS direction: DESC }) { edges { node { id slug titles { lang content } type score cover { original { url } } } cursor } pageInfo { endCursor } } }` })
+  // Any scalar filter args arrive from the site frontend as comma-joined
+  // (or single) lowercase strings; `!value` excludes.
+  const join = (list?: string[]): string | null => {
+    const set = (list ?? []).filter((v) => v.trim())
+    if (set.length === 0) return null
+    return `"${set.join(',').toLowerCase()}"`
+  }
+  const arg = (name: string, v: string | null): string => (v ? `${name}: "${v}"` : '')
+  const statusPart = arg('status', join(filters?.senkuroStatuses))
+  const typePart = arg('type', join(filters?.senkuroTypes))
+  const formatPart = arg('format', join(filters?.senkuroFormats))
+  const ratingPart = filters?.senkuroRating?.trim() ? `rating: "${filters.senkuroRating.toLowerCase()}"` : ''
+  const parts = [searchPart, statusPart, typePart, formatPart, ratingPart, afterPart].filter(Boolean)
+  // orderBy: site MangaSort fields — views/rating/id; UI puts a '-' prefix
+  // for DESC direction.
+  const ordRaw = filters?.senkuroOrdering?.trim() ?? ''
+  const ordField = (ordRaw.replace(/^-/, '') || 'views').toUpperCase()
+  const ordDir = ordRaw.startsWith('-') ? 'DESC' : 'DESC'
+  const orderPart = `orderBy: { field: ${ordField} direction: ${ordDir} }`
+  const gql = JSON.stringify({
+    query: `query { mangas(first: 30 ${parts.join(' ')} ${orderPart}) { edges { node { id slug titles { lang content } type score cover { original { url } } } cursor } pageInfo { endCursor } } }`
+  })
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json', 'App-Id': '1006632962658', 'App-Version': '240626',
-    Origin: 'https://senkuro.me', Accept: 'application/json',
+    ...senkuroHeaders(cookieHeader),
     Referer: 'https://senkuro.me/browse/manga'
   }
-  if (cookieHeader) {
-    headers.Cookie = cookieHeader
-    const token = cookieHeader.split(';').map((c) => c.trim()).find((c) => c.startsWith('access_token='))?.slice('access_token='.length)
-    if (token) headers.Authorization = `Bearer ${token}`
-  }
-  const json = await httpPostJson('https://api.senkuro.org/graphql', gql, headers) as any
+  const json = await httpPostJson(SENKURO_GRAPHQL, gql, headers) as any
   const edges: any[] = json?.data?.mangas?.edges ?? []
   const items = edges.map((e) => {
     const n = e?.node ?? {}
@@ -61,10 +87,11 @@ export async function searchSenkuro(query: string, cookieHeader = '', after?: st
     }
   })
   if (items.length === 0) {
-    // С пустым запросом API часто отдаёт пустой каталог; без авторизационных
-    // кукиОтветов бывает «Not yet»-заглушка.
-    if (query.trim()) throw new Error('Senkuro: ничего не найдено. Если не проходит — проверь куки/авторизацию в настройках Senkuro.')
-    throw new Error('Senkuro: каталог без поискового запроса недоступен (API отдаёт пусто). Укажи запрос в поиске.')
+    // Anonymous requests always get an EMPTY catalog; authorized ones fill it.
+    if (!cookieHeader.trim()) {
+      throw new Error('Senkuro: сайт отдаёт каталог только авторизованным. Открой Настройки → «Войти в Senkuro» — куки соберутся автоматически.')
+    }
+    throw new Error('Senkuro: каталог пуст — куки устарели или не те. Повтори вход в Настройках («Войти в Senkuro»).')
   }
   return items
 }
@@ -74,7 +101,7 @@ export async function fetchSenkuroChapters(mangaSlug: string, cookieHeader = '')
     query: `query { manga(slug: "${mangaSlug}") { id branches { id } titles { lang content } } }`
   })
   const mangaJson = await httpPostJson(
-    'https://api.senkuro.org/graphql', mangaGql,
+    SENKURO_GRAPHQL, mangaGql,
     { ...senkuroHeaders(cookieHeader), Referer: `https://senkuro.me/manga/${mangaSlug}/chapters` }
   ) as any
   const branchId: string = String(mangaJson?.data?.manga?.branches?.[0]?.id ?? '')
@@ -89,7 +116,7 @@ export async function fetchSenkuroChapters(mangaSlug: string, cookieHeader = '')
       query: `query { mangaChapters(first: 100, branchId: "${branchId}", after: ${after}, orderBy: { field: NUMBER, direction: ASC }) { edges { node { id slug name number volume } } pageInfo { endCursor hasNextPage } } }`
     })
     const json = await httpPostJson(
-      'https://api.senkuro.org/graphql', gql,
+      SENKURO_GRAPHQL, gql,
       { ...senkuroHeaders(cookieHeader), Referer: 'https://senkuro.me/' },
       undefined, 30_000
     ) as any
@@ -122,7 +149,7 @@ export async function fetchSenkuroChapter(chapterUrl: string): Promise<{ title: 
     query: `query { mangaChapter(slug: "${slug}") { id name number pages { number image { original { url } compress: resize(width: 1200, quality: 80, format: WEBP) { url } } } } }`
   })
   const json = await httpPostJson(
-    'https://api.senkuro.org/graphql', gql,
+    SENKURO_GRAPHQL, gql,
     { ...senkuroHeaders(''), Referer: `${base}/`, Origin: base }
   ) as any
   const chapter = json?.data?.mangaChapter

@@ -81,7 +81,12 @@ export class HistoryManager {
   }
 
   all(): HistoryEntry[] {
-    return this.repo.all().map(toHistoryEntry).sort((a, b) => b.opened_at - a.opened_at)
+    // Reading history only: a row created by adding a work to the library /
+    // favorites (without opening it) has totalPages === 0 and must not appear.
+    return this.repo.all()
+      .filter((i) => i.totalPages > 0)
+      .map(toHistoryEntry)
+      .sort((a, b) => b.opened_at - a.opened_at)
   }
   mainEntries(): HistoryEntry[] { return this.all().filter((e) => e.category === 'main') }
   r34Entries(): HistoryEntry[] { return this.all().filter((e) => e.category === 'r34') }

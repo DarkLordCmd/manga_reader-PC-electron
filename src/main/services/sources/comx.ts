@@ -36,13 +36,23 @@ export async function searchComx(
   _cfg: SimpleSiteConfig,
   query: string,
   page = 0,
-  opts: { proxy?: string } = {}
+  opts: { proxy?: string; category?: string; genre?: string } = {}
 ): Promise<CatalogItem[]> {
-  const target = query.trim()
-    ? `${COMX_BASE}/search/${encodeURIComponent(query.trim())}/`
-    : page > 0
-      ? `${COMX_BASE}/comix-read/page/${page + 1}/`
-      : `${COMX_BASE}/comix-read/`
+  const cat = (opts.category ?? '').trim()
+  const genre = (opts.genre ?? '').trim()
+  let target: string
+  if (query.trim()) {
+    target = `${COMX_BASE}/search/${encodeURIComponent(query.trim())}/`
+  } else if (cat && genre && cat === 'manga-2025-read') {
+    // жанровые страницы сайта подтверждены только в разделе «Манга»
+    const p = page > 0 ? `page/${page + 1}/` : ''
+    target = `${COMX_BASE}/manga-2025-read/genre/${genre}/${p}`
+  } else if (cat) {
+    const p = page > 0 ? `page/${page + 1}/` : ''
+    target = `${COMX_BASE}/comix-read/${cat}/${p}`
+  } else {
+    target = page > 0 ? `${COMX_BASE}/comix-read/page/${page + 1}/` : `${COMX_BASE}/comix-read/`
+  }
   const html = await comxFetchText(target, { proxy: opts.proxy, timeoutMs: 30_000 })
   const results = parseComxListing(html, COMX_BASE)
   return results

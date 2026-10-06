@@ -48,7 +48,16 @@ function migrate(db: Database.Database): void {
   if (needsFavoritedAtColumn(version, cols)) {
     db.exec('ALTER TABLE series ADD COLUMN favorited_at INTEGER')
   }
-  db.pragma('user_version = 3')
+  if (version < 4) {
+    // Backfill: rows added to the library/favorites from the catalog used to
+    // default to category 'main' even for R34 sources (E-Hentai family /
+    // nhentai). Reclassify them so they show under the R34 tab.
+    db.exec(
+      "UPDATE series SET category = 'r34' WHERE category = 'main' " +
+      "AND (url LIKE '%exhentai%' OR url LIKE '%e-hentai.org%' OR url LIKE '%nhentai%')"
+    )
+  }
+  db.pragma('user_version = 4')
 }
 
 function openAt(path: string): Database.Database {

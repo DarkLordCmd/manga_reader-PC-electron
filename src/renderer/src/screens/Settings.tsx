@@ -205,15 +205,24 @@ export default function Settings(): JSX.Element {
           )}
         </Section>
 
+        <Section title="Каталог">
+          <div className="row">
+            <Toggle checked={settings.infinite_scroll} onChange={(v) => upd({ infinite_scroll: v })}>
+              Бесконечная прокрутка каталога
+            </Toggle>
+          </div>
+          <div className="row">
+            <Toggle checked={settings.nhentai_show_page_counts} onChange={(v) => upd({ nhentai_show_page_counts: v })}>
+              Показывать количество страниц в каталоге NHentai
+            </Toggle>
+          </div>
+        </Section>
+
         <Section title="Display">
           <div className="row">
-            <label>
-              <input
-                type="checkbox"
-                checked={settings.show_thumbnails}
-                onChange={(e) => upd({ show_thumbnails: e.target.checked })}
-              /> Show thumbnails
-            </label>
+            <Toggle checked={settings.show_thumbnails} onChange={(v) => upd({ show_thumbnails: v })}>
+              Show thumbnails
+            </Toggle>
           </div>
           <div className="row">
             <label>Thumbnail size: {settings.thumb_size}</label>
@@ -290,7 +299,7 @@ export default function Settings(): JSX.Element {
             <input
               style={{ flex: 1, minWidth: 220 }}
               value={settings.custom_dns ?? ''}
-              placeholder="через пробел или запятую, IPv4"
+              placeholder="IPv4 или DoH-URL (https://…), через пробел/запятую"
               onChange={(e) => { upd({ custom_dns: e.target.value || null }); setDnsResults(null) }}
             />
           </div>
@@ -299,6 +308,10 @@ export default function Settings(): JSX.Element {
               upd({ custom_dns: KNOWN_DNS_SERVERS.map((k) => k.server).join(', ') })
               setDnsResults(null)
             }}>Вставить популярные</button>
+            <button onClick={() => {
+              upd({ custom_dns: 'https://dns.comss.ru/dns-query, https://cloudflare-dns.com/dns-query, https://dns.google/resolve' })
+              setDnsResults(null)
+            }}>DoH (зашифрованный)</button>
             <button
               disabled={!(settings.custom_dns ?? '').trim()}
               onClick={async () => {
@@ -317,27 +330,6 @@ export default function Settings(): JSX.Element {
             </div>
           )}
           {dnsMsg && <div className="row muted">{dnsMsg}</div>}
-        </Section>
-
-        <Section title="Каталог">
-          <div className="row">
-            <label>
-              <input
-                type="checkbox"
-                checked={settings.infinite_scroll}
-                onChange={(e) => upd({ infinite_scroll: e.target.checked })}
-              /> Бесконечная прокрутка каталога
-            </label>
-          </div>
-          <div className="row">
-            <label>
-              <input
-                type="checkbox"
-                checked={settings.nhentai_show_page_counts}
-                onChange={(e) => upd({ nhentai_show_page_counts: e.target.checked })}
-              /> Показывать количество страниц в каталоге NHentai
-            </label>
-          </div>
         </Section>
 
         <Section title="Библиотека">
@@ -411,13 +403,14 @@ export default function Settings(): JSX.Element {
 
         <Section title="Network & Accounts">
           <div className="row">
-            <label>
-              <input
-                type="checkbox"
-                checked={settings.enable_domain_fronting}
-                onChange={(e) => upd({ enable_domain_fronting: e.target.checked })}
-              /> Domain Fronting для ExHentai (доступ без VPN, когда DNS заблокирован)
-            </label>
+            <Toggle checked={settings.enable_domain_fronting} onChange={(v) => upd({ enable_domain_fronting: v })}>
+              Domain Fronting для ExHentai (доступ без VPN, когда DNS заблокирован)
+            </Toggle>
+          </div>
+          <div className="row">
+            <label>Встроенный Tor (little-t):</label>
+            <Toggle checked={settings.builtin_tor} onChange={(v) => upd({ builtin_tor: v })} />
+            <span className="muted">свой демон внутри приложения — адрес Tor Browser не требуется; SOCKS: 127.0.0.1:9153</span>
           </div>
           <div className="row">
             <label>Tor SOCKS-адрес:</label>
@@ -448,13 +441,14 @@ export default function Settings(): JSX.Element {
           </div>
           <div className="tor-toggles">
             {TOR_SITES.map((s) => (
-              <label key={s.key} className="tor-toggle">
-                <input
-                  type="checkbox"
-                  checked={settings.tor_proxied_sites.includes(s.key)}
-                  onChange={(e) => toggleTorSite(s.key, e.target.checked)}
-                /> {s.label}
-              </label>
+              <Toggle
+                key={s.key}
+                className="tor-toggle"
+                checked={settings.tor_proxied_sites.includes(s.key)}
+                onChange={(v) => toggleTorSite(s.key, v)}
+              >
+                {s.label}
+              </Toggle>
             ))}
           </div>
           <div className="row">
@@ -525,6 +519,21 @@ export default function Settings(): JSX.Element {
             </button>
           </div>
           <div className="row">
+            <label>NHentai куки (clearnet):</label>
+            <textarea
+              className="cookie-input"
+              rows={4}
+              value={settings.nhentai_cookies_raw}
+              placeholder={'name=value по одной на строку'}
+              onChange={(e) => upd({ nhentai_cookies_raw: e.target.value })}
+            />
+          </div>
+          <div className="row">
+            <button onClick={() => void doLogin('https://nhentai.net', 'NHentai')}>
+              Войти в NHentai
+            </button>
+          </div>
+          <div className="row">
             <label>NHentai onion base:</label>
             <input
               className="text-input"
@@ -533,6 +542,33 @@ export default function Settings(): JSX.Element {
               onChange={(e) => upd({ nhentai_onion_base: e.target.value })}
             />
             <button title="Очистить (вернуть встроенный дефолт)" onClick={() => upd({ nhentai_onion_base: '' })}>↺</button>
+          </div>
+          <div className="row">
+            {/* Senkuro's login is an OAuth SSO flow (sso.senkuro.net) whose
+              authorize URL is minted per session — so open the homepage and
+              let the user click «Войти» there. */}
+            <button onClick={() => void doLogin('https://senkuro.me/', 'Senkuro')}>
+              Войти в Senkuro
+            </button>
+          </div>
+          <div className="row">
+            <label>Senkuro куки:</label>
+            <textarea
+              className="cookie-input"
+              rows={4}
+              value={settings.senkuro_cookies_raw}
+              placeholder={'name=value по одной на строку'}
+              onChange={(e) => upd({ senkuro_cookies_raw: e.target.value })}
+            />
+          </div>
+          <div className="row">
+            <label>Mangalib прокси (SOCKS|host:port, напр. 127.0.0.1:7890):</label>
+            <input
+              className="text-input"
+              value={settings.mangalib_proxy_addr}
+              placeholder="пусто = напрямую (нужен VPN/Беларусь)"
+              onChange={(e) => upd({ mangalib_proxy_addr: e.target.value })}
+            />
           </div>
           <div className="row">
             <label>ExHentai прокси (обычный):</label>
@@ -578,9 +614,9 @@ export default function Settings(): JSX.Element {
                 }
               } catch { /* clipboard blocked */ }
             }}>📋 Из буфера</button>
-            <label className="filter-check">
-              <input type="checkbox" checked={ckVerify} onChange={(e) => setCkVerify(e.target.checked)} /> Проверять вход
-            </label>
+            <Toggle className="filter-check" checked={ckVerify} onChange={setCkVerify}>
+              Проверять вход
+            </Toggle>
           </div>
           <div className="row">
             <label>ipb_member_id</label>
@@ -718,13 +754,9 @@ export default function Settings(): JSX.Element {
 
         <Section title="🔒 Приватность">
           <div className="row">
-            <label>
-              <input
-                type="checkbox"
-                checked={settings.show_r34_history}
-                onChange={(e) => upd({ show_r34_history: e.target.checked })}
-              /> Показывать вкладку R34 в истории
-            </label>
+            <Toggle checked={settings.show_r34_history} onChange={(v) => upd({ show_r34_history: v })}>
+              Показывать вкладку R34 в истории
+            </Toggle>
           </div>
         </Section>
 

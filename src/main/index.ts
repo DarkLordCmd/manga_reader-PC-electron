@@ -15,10 +15,13 @@ import {
   fetchRemangaChapters, fetchSenkuroChapters
 } from './services/sources'
 import { fetchMangaShiChapters } from './services/catalog-search'
+import { startEmbeddedTor, stopEmbeddedTor, embeddedTorSocks, whenEmbeddedTorReady } from './services/tor-embedded'
 import { fetchMangaMelloChapters } from './services/catalog-search'
 import { searchGrouple, GROUPLE_SITES, fetchGroupleChapters } from './services/catalog-search'
 import type { SimpleSiteConfig } from './services/sources/catalog-types'
 import { searchExHentai, searchMangaShi, searchMangaMello, searchNhentai, searchRemanga, searchSenkuro, searchSimpleSite, extractGidToken } from './services/catalog-search'
+import type { CatalogItem } from './services/sources/catalog-types'
+import { enrichNhentaiPageCounts } from './services/sources/nhentai'
 import { fetchArchiveCost, buyArchive } from './services/eh-archive'
 import { runLoginWindow } from './services/login'
 import { probeSocks5Handshake, probeBridgeLine, probeSite, allSiteKeys } from './services/tor-check'
@@ -47,6 +50,30 @@ import { isPortableSettingsChanged } from './services/sync'
 import { CH } from '@shared/ipc'
 
 const galleries = new Map<string, Gallery>()
+
+// Grouple (readmanga etc.) catalog cache: warmed at boot so switching to the
+// source renders instantly (the site itself needs Tor and builds slowly).
+const groupleCache = new Map<string, { base: string; items: CatalogItem[]; ts: number }>()
+let groupleWarming = false
+async function refreshGroupleCache(source: string): Promise<void> {
+  const idx = ({ readmanga: 0, mintmanga: 1, mangapoisk: 2 } as const)[source as keyof typeof groupleIdxMap] ?? undefined
+  if (idx === undefined) return
+  const cfg = GROUPLE_SITES[idx] as SimpleSiteConfig
+  try {
+    const s = settings.get()
+    const torSocks = effectiveTorSocks()
+    const items = await searchGrouple(cfg, '', 0, undefined, { proxy: torSocks })
+    groupleCache.set(source, { base: (cfg as any).base || '', items, ts: Date.now() })
+  } catch { /* tor not ready — cached merely stays old */ }
+}
+
+const groupleIdxMap = { readmanga: 0, mintmanga: 1, mangapoisk: 2 } as const
+
+// Chromium network-stack hardening for the direct (net.fetch) path:
+// ECH encrypts the SNI extension for sites that publish ECH configs (typical
+// for Cloudflare-fronted hosts like nhentai), hiding it from SNI-based DPI.
+// QUIC/HTTP-3 is already on by default in the network service.
+app.commandLine.appendSwitch('enable-features', 'EncryptedClientHello')
 const onlineHeaders = new Map<string, Record<string, string>>()
 const coverCache = new Map<string, Buffer>()
 const coverInFlight = new Map<string, Promise<Buffer>>()
@@ -62,6 +89,57 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'manga', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
 ])
 
+// TEMP diagnostic (env-gated): auto-open the login window after boot so the
+// real app's initialization state is fully replicated with no UI clicks.
+if (process.env.MR_AUTO_LOGIN) {
+  void app.whenReady().then(() => {
+    const url = process.env.MR_AUTO_LOGIN!
+    import('./services/login').then((m) => m.runLoginWindow(url, '127.0.0.1:9150')).then((r) => {
+      console.log('[auto-login] cookies:', r?.cookies?.slice(0, 40), '...')
+      if (!r) return
+      // Persist through the app's own module-level `settings` service — a
+      // second instance would race with it and get the freshly saved cookie
+      // overwritten by the main service's in-memory snapshot.
+      const next = { ...settings.get() }
+      if (url.includes('exhentai')) next.onion_cookies_raw = r.cookies
+      else if (url.includes('nhentai')) {
+        if (url.includes('.onion')) next.nhentai_onion_cookies_raw = r.cookies
+        else next.nhentai_cookies_raw = r.cookies
+      } else if (url.includes('senkuro')) {
+        next.senkuro_cookies_raw = r.cookies
+      }
+      settings.save(next)
+      console.log('[auto-login] cookies persisted to settings')
+    }).catch((e) => console.log('[auto-login] error:', e?.message))
+  })
+}
+
+// TEMP diagnostic (env-gated): run the exact clearnet nhentai search path
+// through the Tor proxy inside the real app and print the result.
+if (process.env.MR_HTTP_DEBUG) {
+  void app.whenReady().then(async () => {
+    const { searchNhentai } = await import('./services/sources/nhentai')
+    const { resolveGallery } = await import('./services/resolve-gallery')
+    const t0 = Date.now()
+    try {
+      const { SettingsService } = await import('./services/settings')
+      const st = new SettingsService(app.getPath('userData'))
+      const s = st.get()
+      const cards = await searchNhentai('https://nhentai.net', '', 0, { proxy: '127.0.0.1:9150', cookieHeader: s.nhentai_cookies_raw, showPageCounts: true })
+      console.log('[http-debug] cards:', cards.length, 'with pages:', cards.filter((c) => c.pages).length, 'TOTAL', Date.now() - t0, 'ms')
+      const card = cards[0]
+      if (card) {
+        const t1 = Date.now()
+        const res = await resolveGallery(card.url, { proxy: '127.0.0.1:9150', cookieHeader: s.nhentai_cookies_raw })
+        console.log('[http-debug] open gallery:', res.pageUrls.length, 'pages, first:', res.pageUrls[0], 'took', Date.now() - t1, 'ms')
+      }
+    } catch (e: any) {
+      console.log('[http-debug] ERR', e?.message, 'TOTAL', Date.now() - t0, 'ms')
+    }
+    app.quit()
+  })
+}
+
 let settings: SettingsService
 let history: HistoryManager
 let library: LibraryService
@@ -72,10 +150,17 @@ let sync: SyncService
 
 function downloadFetchOpts(sourceUrl: string): { proxy?: string; cookieHeader?: string } {
   const s = settings.get()
-  const torSocks = s.tor_socks_addr || '127.0.0.1:9150'
+  const torSocks = effectiveTorSocks()
   const isEx = sourceUrl.includes('exhentai') || sourceUrl.includes('e-hentai.org')
-  const useTor = sourceUrl.includes('.onion') || (isEx && (s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai')))
-  const proxy = useTor ? torSocks : (isEx && s.exhentai_proxy_addr.trim() ? s.exhentai_proxy_addr.trim() : undefined)
+  const isMl = sourceUrl.includes('mangalib')
+  const useTor = sourceUrl.includes('.onion') || (isEx && (s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai'))) || (isMl && s.tor_proxied_sites.includes('mangalib'))
+  const proxy = useTor
+    ? torSocks
+    : isEx && s.exhentai_proxy_addr.trim()
+      ? s.exhentai_proxy_addr.trim()
+      : isMl && s.mangalib_proxy_addr.trim()
+        ? s.mangalib_proxy_addr.trim()
+        : undefined
   const cookieHeader = sourceUrl.includes('.onion') ? s.onion_cookies_raw : isEx ? exAccounts.currentCookieHeader() : undefined
   return { proxy, cookieHeader }
 }
@@ -98,13 +183,31 @@ function getCover(url: string): Promise<Buffer> {
   return p
 }
 
+/** Effective Tor SOCKS address: the bundled daemon (when enabled and up)
+ * overrides the configured/user-provided address. */
+function effectiveTorSocks(): string {
+  const embedded = embeddedTorSocks()
+  if (embedded) return embedded
+  return settings?.get().tor_socks_addr || '127.0.0.1:9150'
+}
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1200, height: 800, minWidth: 480, minHeight: 360,
     backgroundColor: '#000000', autoHideMenuBar: true,
     webPreferences: { preload: join(__dirname, '../preload/index.js') }
   })
+  // Hidden helper windows (the browser-fetch engine and the login window) stay
+  // open, so `window-all-closed` never fires and closing the main window left
+  // the app (and its child processes) running. Quit explicitly on main close.
+  win.on('closed', () => { if (process.platform !== 'darwin') app.quit() })
   if (process.env['ELECTRON_RENDERER_URL']) {
+    win.webContents.on('did-fail-load', (_e, code, desc, url, isMain) => {
+      console.log('[main-window] load fail', code, desc, url, 'main:', isMain)
+    })
+    win.webContents.on('console-message', (_e, _lvl, msg, line, src) => {
+      console.log(`[main-window-console] (${src ?? '?'}:${line ?? '?'}): ${String(msg).slice(0, 300)}`)
+    })
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
     win.loadFile(join(__dirname, '../renderer/index.html'))
@@ -114,10 +217,33 @@ function createWindow(): void {
 app.whenReady().then(() => {
   settings = new SettingsService(app.getPath('userData'))
   setFrontingEnabled(settings.get().enable_domain_fronting)
-  setTorFallbackAddr(settings.get().tor_socks_addr || '127.0.0.1:9150')
+  setTorFallbackAddr(effectiveTorSocks())
   setLibMirror(settings.get().lib_image_server ?? null)
   setCustomDnsServers(parseDnsServerList(settings.get().custom_dns ?? ''))
   initCookieStore(app.getPath('userData'))
+  // Bundled Tor daemon: start it as early as possible so by the time the
+  // user hits an onion source the bootstrap is (usually) done.
+  if (settings.get().builtin_tor) {
+    void startEmbeddedTor(settings.get().tor_bridges, app.getPath('userData')).then((r) => {
+      if (r) setTorFallbackAddr(effectiveTorSocks())
+    })
+  }
+  app.on('before-quit', () => stopEmbeddedTor())
+  // Warm the grouple catalogs in the background a few seconds after boot
+  // (give Tor time to settle) — opening the sources then becomes instant.
+  setTimeout(() => {
+    void (async () => {
+      if (groupleWarming) return
+      groupleWarming = true
+      try {
+        await refreshGroupleCache('readmanga')
+        await refreshGroupleCache('mintmanga')
+        await refreshGroupleCache('mangapoisk')
+      } finally {
+        groupleWarming = false
+      }
+    })()
+  }, 5000)
   pin = new PinService(app.getPath('userData'))
   ipcMain.handle(CH.pinHasPin, () => pin.hasPin())
   ipcMain.handle(CH.pinSetPin, (_e, p: string) => pin.setPin(String(p)))
@@ -211,17 +337,41 @@ app.whenReady().then(() => {
     } else if (mangaId.includes('senkuro')) {
       const slug = mangaId.trim().replace(/\/+$/, '').split('/').filter(Boolean).pop() ?? mangaId
       chapters = await fetchSenkuroChapters(slug, settings.get().onion_cookies_raw)
+    } else if (mangaId.includes('mangalib')) {
+      const { mangalibChapters, mangalibChapterUrl, mangalibChapterSortKey } = await import('./services/sources/mangalib')
+      const s = settings.get()
+      const mlProxy = s.tor_proxied_sites.includes('mangalib')
+        ? effectiveTorSocks()
+        : (s.mangalib_proxy_addr.trim() || undefined)
+      const slug = mangaId.trim().replace(/\/+$/, '').split('/').filter(Boolean).pop() ?? mangaId
+      const list = await mangalibChapters(slug, mlProxy)
+      chapters = list
+        .sort((a, b) => mangalibChapterSortKey(a) - mangalibChapterSortKey(b))
+        .map((c) => ({
+          chapter_id: mangalibChapterUrl(slug, c),
+          chapter_num: `Том ${c.volume} Глава ${c.number}${c.numberSecondary ? `.${c.numberSecondary}` : ''}${c.name ? ` — ${c.name}` : ''}`,
+          title: null,
+          lang: 'mangalib'
+        }))
     } else if (mangaId.includes('manga-shi')) {
       const s = settings.get()
-      const proxy = s.tor_proxied_sites.includes('mangashi') ? (s.tor_socks_addr || '127.0.0.1:9150') : undefined
+      const proxy = s.tor_proxied_sites.includes('mangashi') ? (effectiveTorSocks()) : undefined
       chapters = await fetchMangaShiChapters(mangaId, proxy)
     } else if (mangaId.includes('mangamello')) {
       chapters = await fetchMangaMelloChapters(mangaId)
+    } else if (/nhentai/.test(mangaId)) {
+      // nhentai galleries have no chapter list: the whole gallery opens as a
+      // single "chapter" (chapter_id = gallery URL, resolved by openUrl).
+      return [{ chapter_id: mangaId, chapter_num: '1', title: null }]
     } else if (mangaId.includes('readmanga.') || mangaId.includes('mintmanga.') || mangaId.includes('mangapoisk.')) {
-      chapters = await fetchGroupleChapters(mangaId)
+      chapters = await fetchGroupleChapters(mangaId, undefined, { proxy: effectiveTorSocks() })
     } else if (mangaId.includes('com-x.life')) {
       const { fetchComxChapters } = await import('./services/sources/comx')
       chapters = await fetchComxChapters(mangaId)
+    } else if (mangaId.includes('exhentai') || mangaId.includes('e-hentai.org')) {
+      // E-Hentai family galleries have no chapter list: the whole gallery
+      // opens as a single "chapter" (chapter_id = gallery URL, resolved by openUrl).
+      return [{ chapter_id: mangaId, chapter_num: '1', title: null }]
     } else {
       chapters = await fetchChapterList(mangaId)
     }
@@ -383,6 +533,13 @@ app.whenReady().then(() => {
       if (!encoded) return new Response('Not found', { status: 404 })
       const target = decodeURIComponent(encoded)
       try {
+        const s = settings.get()
+        // Cold start: an .onion cover requested before the bundled Tor finished
+        // bootstrapping would 404 and the <img> would never retry. Wait for the
+        // daemon (bounded) so the very first cover load succeeds.
+        if (target.includes('.onion') && s.builtin_tor && !embeddedTorSocks()) {
+          try { await whenEmbeddedTorReady(60_000) } catch { /* fall through to the configured SOCKS */ }
+        }
         const buf = await getCover(target)
         return new Response(Uint8Array.from(buf), { headers: { 'Content-Type': 'image/jpeg' } })
       } catch {
@@ -436,9 +593,26 @@ app.whenReady().then(() => {
   ipcMain.handle(CH.getSettings, () => settings.get())
   ipcMain.handle(CH.setSettings, (_e, s) => {
     setFrontingEnabled(!!s?.enable_domain_fronting)
-    setTorFallbackAddr(s?.tor_socks_addr || '127.0.0.1:9150')
+    setTorFallbackAddr(effectiveTorSocks())
     setLibMirror(s?.lib_image_server ?? null)
     setCustomDnsServers(parseDnsServerList(s?.custom_dns ?? ''))
+    // Bundled Tor daemon lifecycle follows the toggle at runtime.
+    if (!!s?.builtin_tor && !embeddedTorSocks()) {
+      void startEmbeddedTor(s?.tor_bridges ?? '', app.getPath('userData')).then((r) => {
+        if (r) setTorFallbackAddr(effectiveTorSocks())
+      })
+    } else if (!s?.builtin_tor && embeddedTorSocks()) {
+      stopEmbeddedTor()
+      setTorFallbackAddr(effectiveTorSocks())
+    }
+    // The renderer sends its full settings snapshot, which can be stale: a
+    // login window may have persisted cookies into settings.json after the
+    // renderer loaded its copy. Do not let the renderer's empty cookie
+    // strings wipe freshly grabbed sessions.
+    const prev = settings.get()
+    for (const k of ['onion_cookies_raw', 'nhentai_cookies_raw', 'nhentai_onion_cookies_raw', 'senkuro_cookies_raw'] as const) {
+      if (String(s?.[k] ?? '') === '' && String(prev[k] ?? '') !== '') s[k] = prev[k]
+    }
     const prevSettings = settings.get()
     const before = downloadsDirBase(prevSettings.downloads_dir)
     settings.save(s)
@@ -478,7 +652,11 @@ app.whenReady().then(() => {
 
   ipcMain.handle(CH.recordProgress, (_e, url: string, page: number, total: number) => {
     history.updateProgress(url, page, total)
-    settings.save({ ...settings.get(), viewing_history: history.toVec() })
+    const s = settings.get()
+    // Mirror into read_progress too — startPageFor() reads it when the user
+    // re-open through the chapters list / URL bar, not through history.
+    const rp = { ...s.read_progress, [url]: [page, total] as [number, number] }
+    settings.save({ ...s, viewing_history: history.toVec(), read_progress: rp })
     sync?.scheduleSync()
   })
   ipcMain.handle(CH.clearHistory, () => {
@@ -500,7 +678,7 @@ app.whenReady().then(() => {
   ipcMain.handle(CH.openUrl, async (_e, url: string, startPage?: number, mangaId?: string | null, coverUrl?: string | null) => {
     const trimmed = url.trim()
     const s = settings.get()
-    const torSocks = s.tor_socks_addr || '127.0.0.1:9150'
+    const torSocks = effectiveTorSocks()
     const useTor = url.includes('.onion')
       || (url.includes('nhentai') && s.tor_proxied_sites.includes('nhentai'))
       || (url.includes('e-hentai.org') && s.tor_proxied_sites.includes('ehentai'))
@@ -510,9 +688,11 @@ app.whenReady().then(() => {
       || (url.includes('manga-shi') && s.tor_proxied_sites.includes('mangashi'))
       || (url.includes('remanga') && s.tor_proxied_sites.includes('remanga'))
       || (url.includes('mangalib') && s.tor_proxied_sites.includes('mangalib'))
-    let proxy = useTor ? torSocks : undefined
-    // Clearnet ExHentai/E-Hentai uses the active account pool cookies and,
-    // if configured, the dedicated exhentai_proxy_addr proxy.
+  let proxy = useTor ? torSocks : undefined
+  // Mangalib: dedicated proxy (e.g. a Belarus-exit SOCKS/HTTP) when configured.
+  if (!useTor && url.includes('mangalib') && s.mangalib_proxy_addr.trim()) proxy = s.mangalib_proxy_addr.trim()
+  // Clearnet ExHentai/E-Hentai uses the active account pool cookies and,
+  // if configured, the dedicated exhentai_proxy_addr proxy.
     const isClearnetEx = url.includes('exhentai') || url.includes('e-hentai.org')
     const cookieHeader = url.includes('.onion')
       ? s.onion_cookies_raw
@@ -545,16 +725,28 @@ app.whenReady().then(() => {
     settings.save({ ...settings.get(), viewing_history: history.toVec() })
     library.autoAddIfNeeded(trimmed, seriesId)
     if (startPage && startPage > 0 && startPage < result.pageUrls.length) setReadingPosition(gid, startPage)
-    return { id: gid, title: result.title, pageCount: result.pageUrls.length, source: result.source, url: trimmed, mangaId: seriesId }
+    if (process.env.MR_DEBUG === '1') {
+      console.log('[debug] openUrl', trimmed, 'startPage=', startPage, 'pages=', result.pageUrls.length, 'source=', result.source, 'seriesId=', seriesId)
+    }
+    // Long-strip formats (RU aggregators + local folders of stitched strips):
+    // the reader renders them as a continuous vertical strip without margins.
+    const webtoon = /senkuro|remanga|manga-shi|mangalib|libmir|mangamello|mangadex\.org\/(manga|chapter)/i.test(trimmed)
+    return { id: gid, title: result.title, pageCount: result.pageUrls.length, source: result.source, url: trimmed, mangaId: seriesId, webtoon }
   })
   ipcMain.handle(CH.fetchChapterList, async (_e, mangaId: string) => {
     return await fetchChapterListFor(mangaId)
   })
   ipcMain.handle(CH.searchCatalog, async (_e, source: string, query: string, page: number, sort: string, filters: any = {}, cursor: any = null) => {
     const s = settings.get()
-    const torSocks = s.tor_socks_addr || '127.0.0.1:9150'
+    // Onion/proxied sources must wait for the bundled daemon to finish
+    // bootstrapping instead of racing straight into the (often shut down)
+    // user Tor SOCKS on 9150.
+    if (s.builtin_tor && !embeddedTorSocks() && (s.tor_proxied_sites.includes(source) || source.endsWith('_onion') || source === 'nhentai_onion')) {
+      try { await whenEmbeddedTorReady(120_000) } catch { /* fall through to direct */ }
+    }
+    const torSocks = effectiveTorSocks()
     const siteKey = source === 'nhentai_onion' ? 'nhentai' : source
-    const proxy = s.tor_proxied_sites.includes(siteKey) || source.endsWith('_onion') ? torSocks : undefined
+    const proxy = (s.tor_proxied_sites.includes(siteKey) || source.endsWith('_onion')) ? torSocks : undefined
 
     if (source === 'mangadex') {
       const cards = await searchMangaDex(query, sort as any, page, filters.mangadexTags ?? [], filters.mangadexLangs ?? [])
@@ -580,13 +772,42 @@ app.whenReady().then(() => {
       }))
     }
     if (source === 'remanga') return await searchRemanga(query, page, filters)
-    if (source === 'senkuro') return await searchSenkuro(query, s.onion_cookies_raw, cursor?.dir === 'next' ? cursor.cursor : undefined)
+    if (source === 'senkuro') {
+      // api.senkuro.me serves the browse catalog anonymously too; cookies
+      // (when present) still carry the Authorization bearer token.
+      return await searchSenkuro(query, s.senkuro_cookies_raw, cursor?.dir === 'next' ? cursor.cursor : undefined, {
+        senkuroOrdering: filters.senkuroOrdering,
+        senkuroStatuses: filters.senkuroStatuses,
+        senkuroTypes: filters.senkuroTypes,
+        senkuroFormats: filters.senkuroFormats,
+        senkuroRating: filters.senkuroRating
+      })
+    }
     if (source === 'mangashi') return await searchMangaShi(query, proxy, filters, page)
     if (source === 'mangamello') return await searchMangaMello(query, page)
-    if (source === 'nhentai') return await searchNhentai('https://nhentai.net', query, page, { proxy, cookieHeader: s.onion_cookies_raw, showPageCounts: s.nhentai_show_page_counts, tags: filters.nhentaiTags })
-    if (source === 'nhentai_onion') {
-      const base = s.nhentai_onion_base || 'http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion'
-      return await searchNhentai(base, query, page, { proxy: torSocks, cookieHeader: s.nhentai_onion_cookies_raw, showPageCounts: s.nhentai_show_page_counts, tags: filters.nhentaiTags })
+    if (source === 'nhentai' || source === 'nhentai_onion') {
+      const isOnion = source === 'nhentai_onion'
+      const base = isOnion
+        ? (s.nhentai_onion_base || 'http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion')
+        : 'https://nhentai.net'
+      const items = await searchNhentai(base, query, page, {
+        proxy: isOnion ? torSocks : proxy,
+        cookieHeader: isOnion ? s.nhentai_onion_cookies_raw : s.nhentai_cookies_raw,
+        tags: filters.nhentaiTags
+      })
+      // Background page-count enrichment so the catalog renders immediately.
+      if (!s.nhentai_show_page_counts) return items
+      void (async () => {
+        await enrichNhentaiPageCounts(items, base, {
+          proxy: isOnion ? torSocks : proxy,
+          cookieHeader: isOnion ? s.nhentai_onion_cookies_raw : s.nhentai_cookies_raw
+        }, (url, pages) => {
+          for (const w of BrowserWindow.getAllWindows()) {
+            try { w.webContents.send(CH.nhentaiCounts, [{ url, pages }]) } catch { /* ignore */ }
+          }
+        })
+      })().catch(() => {})
+      return items
     }
     if (source === 'ehentai' || source === 'exhentai' || source === 'exhentai_onion') {
       const useOnion = source === 'exhentai_onion'
@@ -611,30 +832,50 @@ app.whenReady().then(() => {
     if (source === 'comx') {
       const { searchComx } = await import('./services/sources/comx')
       const { COMX_BASE } = await import('./services/sources/comx')
-      return await searchComx({ name: 'Com-X', base: COMX_BASE, catalogPath: '/comix-read/', searchPath: '/search/', linkMarker: '.html' }, query, page, { proxy })
+      return await searchComx({ name: 'Com-X', base: COMX_BASE, catalogPath: '/comix-read/', searchPath: '/search/', linkMarker: '.html' }, query, page, { proxy, category: filters.comxCategory, genre: filters.comxGenre })
     }
     if (source === 'mangalib') {
-      const cfg = {
-        mangalib: { name: 'Mangalib', base: 'https://mangalib.me', catalogPath: '/manga-list', searchPath: '/search?q=', linkMarker: '/manga/' }
-      }[source]!
-      const extra = page > 0 ? `page=${page + 1}` : ''
-      return await searchSimpleSite(cfg, query, extra, { proxy })
+      const { searchMangalib } = await import('./services/sources/mangalib')
+      const mlProxy = s.tor_proxied_sites.includes('mangalib') ? torSocks : (s.mangalib_proxy_addr.trim() || undefined)
+      return await searchMangalib(query, page, mlProxy)
     }
     const groupleIdx = { readmanga: 0, mintmanga: 1, mangapoisk: 2 } as const
     if (source in groupleIdx) {
       const cfg = GROUPLE_SITES[groupleIdx[source as keyof typeof groupleIdx]] as SimpleSiteConfig
-      return await searchGrouple(cfg, query, page)
+      // Fresh anonymous listing served from cache makes opening the source
+      // instant (a Tor fetch takes ~2-5 s; the cache refreshes in bg).
+      const cached = groupleCache.get(source)
+      if (!query.trim() && cached && cached.base === cfg.base && Date.now() - cached.ts < 10 * 60_000) {
+        // Refresh in the background so the next visit is still fresh.
+        void refreshGroupleCache(source)
+        return cached.items
+      }
+      // Grouple hosts are TCP/SNI-blocked on most RU networks — always go
+      // through Tor (direct attempts just burn 10-30 s of timeouts).
+      const items = await searchGrouple(cfg, query, page, undefined, { proxy: torSocks })
+      if (!query.trim() && page === 0) groupleCache.set(source, { base: cfg.base || '', items, ts: Date.now() })
+      return items
     }
     return []
   })
   ipcMain.handle(CH.loginSite, async (_e, url: string) => {
     const s = settings.get()
-    const result = await runLoginWindow(url, s.tor_socks_addr || '127.0.0.1:9150')
+    // Tor only for the sites that actually need it (.onion, E-Hentai family,
+    // nhentai) — routing other logins through a Tor exit gets them banned
+    // (senkuro.me bans datacenter/Tor ranges).
+    const lower = url.toLowerCase()
+    const needsTor = url.includes('.onion') || lower.includes('exhentai') || lower.includes('e-hentai') || lower.includes('nhentai')
+    const result = await runLoginWindow(url, needsTor ? (effectiveTorSocks()) : '')
     if (!result) return null
     // Persist cookies into settings depending on target
     const next = { ...settings.get() }
     if (url.includes('exhentai')) next.onion_cookies_raw = result.cookies
-    else if (url.includes('nhentai')) next.nhentai_onion_cookies_raw = result.cookies
+    else if (url.includes('nhentai')) {
+      if (url.includes('.onion')) next.nhentai_onion_cookies_raw = result.cookies
+      else next.nhentai_cookies_raw = result.cookies
+    } else if (url.includes('senkuro')) {
+      next.senkuro_cookies_raw = result.cookies
+    }
     settings.save(next)
     return result.cookies
   })
@@ -659,24 +900,24 @@ app.whenReady().then(() => {
   ipcMain.handle(CH.parseCookieText, (_e, text: string) => parseCookieLogin(String(text ?? '')))
   ipcMain.handle(CH.ehTagSuggest, async (_e, text: string) => {
     const s = settings.get()
-    const proxy = s.tor_proxied_sites.includes('ehentai') ? (s.tor_socks_addr || '127.0.0.1:9150') : (s.exhentai_proxy_addr.trim() || undefined)
+    const proxy = s.tor_proxied_sites.includes('ehentai') ? (effectiveTorSocks()) : (s.exhentai_proxy_addr.trim() || undefined)
     return await fetchEhTagSuggest(text, { proxy, cookieHeader: exAccounts.currentCookieHeader() || s.onion_cookies_raw })
   })
   ipcMain.handle(CH.nhentaiTagSuggest, async (_e, text: string) => {
     const s = settings.get()
-    const proxy = s.tor_proxied_sites.includes('nhentai') ? (s.tor_socks_addr || '127.0.0.1:9150') : undefined
+    const proxy = s.tor_proxied_sites.includes('nhentai') ? (effectiveTorSocks()) : undefined
     return await fetchNhentaiTagSuggestions(text, { proxy })
   })
   ipcMain.handle(CH.checkTor, async () => {
     const s = settings.get()
-    return await probeSocks5Handshake(s.tor_socks_addr || '127.0.0.1:9150')
+    return await probeSocks5Handshake(effectiveTorSocks())
   })
   ipcMain.handle(CH.checkBridges, async (_e, lines: string[]) => {
     return await Promise.all(lines.map((line) => probeBridgeLine(line)))
   })
   ipcMain.handle(CH.checkSites, async () => {
     const s = settings.get()
-    const torAddr = s.tor_socks_addr || '127.0.0.1:9150'
+    const torAddr = effectiveTorSocks()
     return await Promise.all(allSiteKeys().map((key) => probeSite(key, torAddr, s.tor_proxied_sites)))
   })
   ipcMain.handle(CH.libMirrorsCheck, async () => {

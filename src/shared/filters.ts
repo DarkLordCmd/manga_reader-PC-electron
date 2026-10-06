@@ -145,3 +145,41 @@ export const NH_POPULAR_TAGS: string[] = [
   'harem', 'big breasts', 'stockings', 'glasses', 'ahegao', 'yuri', 'yaoi',
   'milf', 'incest', 'schoolgirl uniform', 'virginity', 'pregnant', 'uncensored', 'netorare'
 ]
+
+// Senkuro (senkuro.me) enum values from the site frontend (manga-status/type/format/rating modules).
+export const SENKURO_STATUS: [string, string][] = [['ANNOUNCE', 'Анонс'], ['ONGOING', 'Выходит'], ['FINISHED', 'Завершён'], ['HIATUS', 'Заморожен'], ['CANCELLED', 'Отменён']]
+export const SENKURO_TYPE: [string, string][] = [['MANGA', 'Манга'], ['MANHWA', 'Манхва'], ['MANHUA', 'Маньхуа'], ['COMICS', 'Комикс'], ['OEL_MANGA', 'OEL Манга'], ['RU_MANGA', 'Русская манга']]
+export const SENKURO_FORMAT: [string, string][] = [['SINGLE', 'Одиночка'], ['WEB', 'Веб'], ['WEBTOON', 'Вебтун'], ['YONKOMA', 'Ёнкома'], ['DIGEST', 'Дайджест'], ['DOUJINSHI', 'Додзинси'], ['IN_COLOR', 'В цвете'], ['SHORT', 'Short']]
+export const SENKURO_RATING: [string, string][] = [['', 'Все'], ['GENERAL', 'Без 18+'], ['SENSITIVE', 'Чувствительное'], ['QUESTIONABLE', 'Спорное'], ['EXPLICIT', 'Только 18+']]
+
+export const SENKURO_ORDERING: [string, string][] = [['', 'По умолчанию'], ['-views', 'По просмотрам'], ['-rating', 'По рейтингу'], ['rating', 'По рейтингу ▲'], ['-id', 'По добавлению ▼'], ['id', 'По добавлению ▲']]
+
+// Com-X (com-x.life): разделы каталога comix-read (from the site's own nav).
+export const COMX_CATEGORY: [string, string][] = [
+  ['', 'Все'],
+  ['marvel-read', 'Marvel'], ['dc-comics-read', 'DC Comics'], ['dark-horse-read', 'Dark Horse'],
+  ['idw-publishing-read', 'IDW Publishing'], ['boom-studios-read', 'Boom! Studios'],
+  ['image-read', 'Image'], ['vertigo-read', 'Vertigo'], ['dynamite-entertainment-read', 'Dynamite'],
+  ['avatar-press-read', 'Avatar Press'], ['wildstorm-read', 'Wildstorm'], ['top-cow-read', 'Top Cow'],
+  ['oni-press-read', 'Oni Press'], ['valiant-read', 'Valiant'], ['icon-comics-read', 'Icon Comics'],
+  ['aftershock-read', 'AfterShock'], ['zenescope-read', 'Zenescope'],
+  ['manga-2025-read', 'Манга'], ['manhua-read', 'Маньхуа'], ['manhwa-read', 'Манхва'],
+  ['other-read', 'Другое']
+]
+// Жанровые страницы подтверждены только в разделе «Манга»
+// (/manga-2025-read/genre/<slug>/) — вероятно, как в DLE-каталоге.
+export const COMX_GENRE: [string, string][] = [
+  ['%D1%80%D0%BE%D0%BC%D0%B0%D0%BD%D1%82%D0%B8%D0%BA%D0%B0', 'Романтика'],
+  ['%D1%81%D1%91%D0%B4%D0%B7%D1%91', 'Сёдзё'],
+  ['%D1%88%D0%BA%D0%BE%D0%BB%D0%B0', 'Школа'],
+  ['%D0%B4%D1%80%D0%B0%D0%BC%D0%B0', 'Драма'],
+  ['%D0%BA%D0%BE%D0%BC%D0%B5%D0%B4%D0%B8%D1%8F', 'Комедия'],
+  ['%D0%BF%D0%BE%D0%B2%D1%81%D0%B5%D0%B4%D0%BD%D0%B5%D0%B2%D0%BD%D0%BE%D1%81%D1%82%D1%8C', 'Повседневность'],
+  ['%D0%B3%D0%B0%D1%80%D0%B5%D0%BC', 'Гарем'],
+  ['%D0%B7%D0%B2%D0%B5%D1%80%D0%BE%D0%BB%D1%8E%D0%B4%D0%B8', 'Зверелюди'],
+  ['%D0%BF%D1%80%D0%B8%D0%B7%D1%80%D0%B0%D0%BA%D0%B8', 'Призраки'],
+  ['%D0%B1%D0%BE%D0%B5%D0%B2%D0%B8%D0%BA', 'Боевик'],
+  ['%D1%81%D1%8D%D0%B9%D0%BD%D1%8D%D0%BD', 'Сэйнэн'],
+  ['%D0%BF%D1%80%D0%B8%D0%BA%D0%BB%D1%8E%D1%87%D0%B5%D0%BD%D0%B8%D1%8F', 'Приключения'],
+  ['%D1%84%D1%8D%D0%BD%D1%82%D0%B5%D0%B7%D0%B8', 'Фэнтези']
+]

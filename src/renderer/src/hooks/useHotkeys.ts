@@ -6,6 +6,7 @@ export interface HotkeyHandlers {
   onToggleThumbs: () => void
   onToggleMode: () => void
   onToggleHelp: () => void
+  onToggleImmersive?: () => void
 }
 
 export function useHotkeys(h: HotkeyHandlers, rtl = false): void {
@@ -20,6 +21,8 @@ export function useHotkeys(h: HotkeyHandlers, rtl = false): void {
         case 'ArrowDown': case 's': case 'S': h.onNext(); break
         case 't': case 'T': h.onToggleThumbs(); break
         case 'm': case 'M': h.onToggleMode(); break
+        case 'h': case 'H': h.onToggleImmersive?.(); break
+        case 'f': case 'F': h.onToggleImmersive?.(); break
         case '?': h.onToggleHelp(); break
       }
     }

@@ -52,5 +52,6 @@ export interface LibraryQuery {
   search?: string
   sort?: LibrarySort
   includeR34?: boolean
+  category?: string
   scope?: 'library' | 'favorites'
 }

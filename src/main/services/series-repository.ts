@@ -48,6 +48,7 @@ export abstract class BaseSeriesRepository implements SeriesRepository {
     items = query.scope === 'favorites'
       ? items.filter((i) => i.favoritedAt !== null)
       : items.filter((i) => i.status !== null)
+    if (query.category) items = items.filter((i) => i.category === query.category)
     if (query.includeR34 === false) items = items.filter((i) => i.category !== 'r34')
     if (query.status && query.status !== 'all') items = items.filter((i) => i.status === query.status)
     const q = query.search?.trim().toLowerCase()

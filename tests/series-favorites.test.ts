@@ -38,6 +38,16 @@ describe('favorites', () => {
     expect(r.get('nh:1')!.favoritedAt).toBe(5)
   })
 
+  it('category filter selects main vs r34', () => {
+    const r = new InMemorySeriesRepository()
+    r.upsertHistory(up({ key: 'a:1', url: 'https://a/1', category: 'main' }))
+    r.upsertHistory(up({ key: 'nh:2', url: 'https://nhentai.net/g/2/', category: 'r34' }))
+    r.setStatus('a:1', 'reading')
+    r.setStatus('nh:2', 'reading')
+    expect(r.list({ category: 'main' }).map((i) => i.key)).toEqual(['a:1'])
+    expect(r.list({ category: 'r34' }).map((i) => i.key)).toEqual(['nh:2'])
+  })
+
   it('upsertHistory does not let a caller-supplied favoritedAt clobber the stored value', () => {
     const r = new InMemorySeriesRepository()
     r.upsertHistory(up())

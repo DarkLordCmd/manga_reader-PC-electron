@@ -1,16 +1,14 @@
 import type { HistoryEntry } from '@shared/types'
+import CoverImg from './CoverImg'
 
 interface Props {
   entries: HistoryEntry[]
   onContinue: (e: HistoryEntry) => void
   onAddToLibrary?: (e: HistoryEntry) => void
+  onContextMenu?: (e: React.MouseEvent, entry: HistoryEntry) => void
 }
 
-function coverSrc(url: string): string {
-  return `manga://cover/${encodeURIComponent(url)}`
-}
-
-export default function HistoryCardGrid({ entries, onContinue, onAddToLibrary }: Props): JSX.Element {
+export default function HistoryCardGrid({ entries, onContinue, onAddToLibrary, onContextMenu }: Props): JSX.Element {
   return (
     <div className="history-grid">
       {entries.map((e) => {
@@ -23,11 +21,11 @@ export default function HistoryCardGrid({ entries, onContinue, onAddToLibrary }:
         const meta = [e.source, e.chapter_label != null ? `гл. ${e.chapter_label}` : null]
           .filter(Boolean).join(' · ')
         return (
-          <div key={e.series_id} className="history-card" onClick={() => onContinue(e)}>
+          <div key={e.series_id} className="history-card"
+            onClick={() => onContinue(e)}
+            onContextMenu={onContextMenu ? (ev) => onContextMenu(ev, e) : undefined}>
             <div className="history-cover">
-              {e.cover_url
-                ? <img src={coverSrc(e.cover_url)} alt="" loading="lazy" />
-                : <div className="cover-placeholder" />}
+              <CoverImg url={e.cover_url} />
             </div>
             <div className="history-title" title={e.title}>{e.title || 'Без названия'}</div>
             <div className="history-meta">

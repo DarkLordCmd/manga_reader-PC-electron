@@ -1,6 +1,6 @@
 import type { LibraryItem, SeriesUpsert, ReadingStatus, LibraryQuery } from '@shared/library'
 import type { SeriesRepository } from './series-repository'
-import { seriesKeyForUrl } from './series-key'
+import { seriesKeyForUrl, categoryForUrl } from './series-key'
 
 export interface CatalogAddEntry {
   url: string
@@ -36,7 +36,7 @@ export class LibraryService {
     const key = seriesKeyForUrl(entry.url) ?? entry.seriesId ?? entry.url
     const upsert: SeriesUpsert = {
       key, seriesId: entry.seriesId, url: entry.url, title: entry.title,
-      coverUrl: entry.coverUrl, source: entry.source, category: entry.category ?? 'main',
+      coverUrl: entry.coverUrl, source: entry.source, category: entry.category ?? categoryForUrl(entry.url),
       currentPage: 1, totalPages: 0, chapterLabel: null, chapterIndex: null, chapterTotal: null
     }
     return this.repo.upsertHistory(upsert)

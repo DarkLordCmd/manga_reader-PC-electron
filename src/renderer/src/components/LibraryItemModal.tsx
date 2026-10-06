@@ -3,8 +3,8 @@ import type { LibraryItem, ReadingStatus } from '@shared/library'
 import { READING_STATUSES } from '@shared/library'
 
 const STATUS_LABELS: Record<ReadingStatus, string> = {
-  reading: 'Reading', planned: 'Planned', completed: 'Completed',
-  on_hold: 'On hold', dropped: 'Dropped'
+  reading: 'Читаю', planned: 'В планах', completed: 'Прочитано',
+  on_hold: 'Отложено', dropped: 'Брошено'
 }
 
 interface Props {

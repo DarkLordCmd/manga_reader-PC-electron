@@ -1,4 +1,4 @@
-import { Agent } from 'undici'
+import { Agent, buildConnector } from 'undici'
 import { connect as netConnect } from 'net'
 
 // Hardcoded IP pools for E-Hentai hosts, so EX stays reachable even when
@@ -62,10 +62,26 @@ export function frontingIpFor(host: string): string {
 }
 
 export function buildFrontingDispatcher(host: string, ip: string): Agent {
+  const tlsConnector = buildConnector({ timeout: 15_000 })
   return new Agent({
-    connect: (origin: any) => {
-      const port = Number(origin?.port || (origin?.protocol === 'https:' ? 443 : 80))
-      return netConnect({ host: ip, port }) as any
+    connect: async (opts: any, callback) => {
+      try {
+        const port = Number(opts?.port || (opts?.protocol === 'https:' ? 443 : 80))
+        const socket = netConnect({ host: ip, port })
+        await new Promise<void>((res, rej) => {
+          socket.once('connect', () => res())
+          socket.once('error', rej)
+        })
+        // TLS upgrade over the fixed-IP TCP socket: TLS still negotiates with
+        // the real hostname as SNI — classic domain fronting.
+        if (opts?.protocol === 'https:') {
+          tlsConnector({ ...opts, httpSocket: socket }, callback)
+        } else {
+          callback(null, socket)
+        }
+      } catch (err) {
+        callback(err as Error, null)
+      }
     }
   })
 }

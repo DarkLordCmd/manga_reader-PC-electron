@@ -26,6 +26,13 @@ describe('parseDnsServerList', () => {
     expect(parseDnsServerList('abc 83.220.169.155 999.1.1.1 83.220.169.155')).toEqual(['83.220.169.155'])
     expect(parseDnsServerList('')).toEqual([])
   })
+  it('accepts DoH https URLs alongside IPv4 and rejects bad URLs', () => {
+    expect(parseDnsServerList(
+      'https://dns.comss.ru/dns-query, 83.220.169.155, https://dns.google/resolve'
+    )).toEqual(['https://dns.comss.ru/dns-query', '83.220.169.155', 'https://dns.google/resolve'])
+    expect(parseDnsServerList('http://insecure.example/dns')).toEqual([])
+    expect(parseDnsServerList('https://')).toEqual([])
+  })
 })
 
 describe('custom-dns state', () => {

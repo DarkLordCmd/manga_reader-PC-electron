@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useStore } from '../state/store'
 import type { HistoryEntry } from '@shared/types'
+import type { ReadingStatus } from '@shared/library'
 import HistoryCardGrid from '../components/HistoryCardGrid'
+import ContextMenu from '../components/ContextMenu'
+import { buildLibraryMenuItems } from '../lib/library-menu'
 
 export default function History(): JSX.Element {
   const { settings, setOpened, setScreen } = useStore()
   const [entries, setEntries] = useState<HistoryEntry[]>([])
   const [activeTab, setActiveTab] = useState(0)
+  const [menu, setMenu] = useState<{ x: number; y: number; entry: HistoryEntry; lookup: { key: string; favorited: boolean; status: ReadingStatus | null } | null } | null>(null)
 
   const refresh = useCallback(() => {
     window.api.getHistory().then(setEntries)
@@ -50,6 +54,12 @@ export default function History(): JSX.Element {
     }
   }
 
+  const openMenu = useCallback(async (e: React.MouseEvent, entry: HistoryEntry) => {
+    e.preventDefault()
+    const lookup = await window.api.libraryLookup(entry.url, entry.series_id)
+    setMenu({ x: e.clientX, y: e.clientY, entry, lookup })
+  }, [])
+
   return (
     <div className="screen">
       <div className="history-toolbar">
@@ -65,10 +75,30 @@ export default function History(): JSX.Element {
         : <HistoryCardGrid
             entries={visible}
             onContinue={(e) => void onContinue(e)}
+            onContextMenu={(e, entry) => void openMenu(e, entry)}
             onAddToLibrary={(e) => void window.api.libraryAdd({
               url: e.url, title: e.title, coverUrl: e.cover_url, source: e.source, seriesId: e.series_id
             })}
           />}
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={buildLibraryMenuItems(
+            { url: menu.entry.url, title: menu.entry.title, coverUrl: menu.entry.cover_url, source: menu.entry.source, seriesId: menu.entry.series_id },
+            { key: menu.lookup?.key ?? null, favorited: !!menu.lookup?.favorited, status: menu.lookup?.status ?? null },
+            [{
+              label: 'Удалить из истории', danger: true, onClick: async () => {
+                const l = menu.lookup?.key ? menu.lookup : await window.api.libraryLookup(menu.entry.url, menu.entry.series_id)
+                if (l) await window.api.libraryDelete(l.key)
+                refresh()
+              }
+            }]
+          )}
+        />
+      )}
     </div>
   )
 }

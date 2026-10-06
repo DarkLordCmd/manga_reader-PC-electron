@@ -15,6 +15,12 @@ export function sourceLabelForUrl(url: string): string {
   return ''
 }
 
+/** R34 sources (E-Hentai family + nhentai) — same rule the reading history
+ * uses, so library/favorites rows land in the same tab as the history entry. */
+export function categoryForUrl(url: string): string {
+  return /nhentai|exhentai|e-hentai\.org/i.test(url) ? 'r34' : 'main'
+}
+
 export function galleryKeyForUrl(url: string): string | null {
   const lower = url.toLowerCase()
   const gid = lower.match(/\/g\/(\d+)(\/[0-9a-f]+)?\/?/)?.[1]

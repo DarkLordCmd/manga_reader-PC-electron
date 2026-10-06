@@ -20,6 +20,8 @@ export interface OpenResult {
   source: string
   url: string
   mangaId: string | null
+  /** Long-strip sources render as a continuous vertical strip. */
+  webtoon?: boolean
 }
 
 export interface ChapterListItem {
@@ -65,6 +67,13 @@ export interface CatalogFilters {
   remangaTypes?: string
   remangaGenres?: string[]
   remangaCategories?: string[]
+  senkuroOrdering?: string
+  senkuroStatuses?: string[]
+  senkuroTypes?: string[]
+  senkuroFormats?: string[]
+  senkuroRating?: string
+  comxCategory?: string
+  comxGenre?: string
 }
 
 export interface ExAccount {
@@ -191,6 +200,8 @@ export interface Api {
   pinFailedAttempt(): Promise<PinAttemptResult>
   onEhLimitsChanged(cb: (state: EhLimitState) => void): () => void
   onDownloadsChanged(cb: (tasks: DownloadTask[]) => void): () => void
+  /** Background enrichment: page counts for nhentai catalog cards arrive one by one. */
+  onNhentaiCounts(cb: (entries: { url: string; pages: number }[]) => void): () => void
   libraryList(query: LibraryQuery): Promise<LibraryItem[]>
   libraryGet(key: string): Promise<LibraryItem | null>
   libraryAdd(entry: { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; category?: string }): Promise<LibraryItem>
@@ -276,6 +287,7 @@ export const CH = {
   syncNow: 'sync:now',
   syncGetState: 'sync:state',
   syncChanged: 'sync:changed',
+  nhentaiCounts: 'catalog:nhentaiCounts',
   libraryList: 'library:list',
   libraryGet: 'library:get',
   libraryAdd: 'library:add',

@@ -7,3 +7,15 @@ dist/
 
 sample/
 vendor/
+
+# scratch / debug artifacts (not part of the app)
+autoverify.ts
+lix.ts
+cx*.ts
+ml-browser*.ts
+probe*.mjs
+probe*.ts
+nh-channel-debug.html
+.tordata-test*/
+.repowise/
+.superpowers/
