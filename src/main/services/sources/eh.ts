@@ -185,6 +185,23 @@ export async function fetchGData(
   return out
 }
 
+export function buildEhSearchParams(opts: {
+  query: string
+  excludedCats?: number
+  minRating?: number
+  inlineSet?: boolean
+  cursor?: { dir: 'next' | 'prev'; gid: string }
+}): string[] {
+  const params: string[] = []
+  if (opts.query.trim()) params.push(`f_search=${encodeURIComponent(opts.query)}`)
+  const cats = opts.excludedCats ?? 0
+  if (cats > 0) params.push(`f_cats=${cats}`)
+  if (opts.minRating && opts.minRating > 0) params.push(`f_srdd=${opts.minRating}`)
+  if (opts.inlineSet) params.push('inline_set=dm_t')
+  if (opts.cursor) params.push(`${opts.cursor.dir}=${opts.cursor.gid}`)
+  return params
+}
+
 export async function searchExHentai(
   query: string,
   opts: {
@@ -195,6 +212,7 @@ export async function searchExHentai(
     page?: number
     forceTor?: boolean
     excludedCats?: number
+    minRating?: number
     domainOverride?: string
     cursor?: { dir: 'next' | 'prev'; gid: string }
   },
@@ -209,76 +227,76 @@ export async function searchExHentai(
       ? 'http://exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion'
       : 'https://exhentai.org'
 
-  const params: string[] = []
-  if (query.trim()) params.push(`f_search=${encodeURIComponent(query)}`)
-  const cats = opts.excludedCats ?? 0
-  if (cats > 0) params.push(`f_cats=${cats}`)
-  // E-Hentai is fetched without a login cookie, so the site defaults to a
-  // plain text listing the parser can't read — force thumbnail display mode.
-  if (opts.domainOverride) params.push('inline_set=dm_t')
-  if (opts.cursor) params.push(`${opts.cursor.dir}=${opts.cursor.gid}`)
+  const params = buildEhSearchParams({
+    query, excludedCats: opts.excludedCats ?? 0, minRating: opts.minRating,
+    inlineSet: !!opts.domainOverride, cursor: opts.cursor
+  })
   const url = params.length ? `${base}/?${params.join('&')}` : `${base}/`
 
+  return await ehFetchListing(url, base, {
+    cookieHeader: opts.cookieHeader, proxy, ua,
+    gdataApiBase: opts.domainOverride ? 'https://api.e-hentai.org/api.php' : 'https://exhentai.org/api.php'
+  })
+}
+
+async function ehFetchListing(
+  url: string, base: string,
+  o: { cookieHeader: string; proxy?: string; ua: string; gdataApiBase: string }
+): Promise<ExSearchResult[]> {
   const r = await httpFetch({
     url,
     headers: {
-      'User-Agent': ua,
-      Referer: `${base}/`,
-      Accept: 'text/html,application/xhtml+xml',
-      ...(opts.cookieHeader ? { Cookie: opts.cookieHeader } : {})
+      'User-Agent': o.ua, Referer: `${base}/`, Accept: 'text/html,application/xhtml+xml',
+      ...(o.cookieHeader ? { Cookie: o.cookieHeader } : {})
     },
-    // Tor (especially via bridges) is slow — give proxied requests plenty of time.
-    timeoutMs: proxy ? 120_000 : 30_000,
-    // An empty body (sad panda / IP rate-limit on the direct path) retries
-    // once through domain fronting, which uses a different egress IP.
+    timeoutMs: o.proxy ? 120_000 : 30_000,
     frontOnEmpty: true
-  }, proxy)
+  }, o.proxy)
 
-  if (looksRateLimited(r.status, r.text)) {
-    throw new Error('Сайт временно заблокировал IP за слишком частые запросы (excessive request rate). Подожди минуту-другую и попробуй снова.')
-  }
+  if (looksRateLimited(r.status, r.text)) throw new Error('Сайт временно заблокировал IP за слишком частые запросы (excessive request rate). Подожди минуту-другую и попробуй снова.')
   const ehErr = ehErrorFromResponse(r.status, r.text)
   if (ehErr) throw new Error(`ExHentai: ${ehErr}`)
   if (r.status >= 400) throw new Error(`ExHentai: HTTP ${r.status}`)
 
   const results = parseExHentaiListing(r.text, base)
-
   if (results.length === 0) {
-    // Sad panda / banned account pages are short and contain no galleries.
     const lower = r.text.toLowerCase()
     if (lower.includes('sad panda') || lower.includes('sorry, your ip') || lower.includes('ip has been banned')) {
       throw new Error('ExHentai: sad panda — аккаунт/IP без доступа к ExHentai или вход не выполнен')
     }
-    if (!r.text.includes('table') && r.text.length < 4000) {
-      throw new Error('ExHentai: страница пуста или требует входа (sad panda / логин)')
-    }
+    if (!r.text.includes('table') && r.text.length < 4000) throw new Error('ExHentai: страница пуста или требует входа (sad panda / логин)')
     throw new Error('ExHentai: ничего не найдено (или куки не действительны / сайт изменил вёрстку)')
   }
-
-  // Enrich with the official gdata metadata API (same as JHenTai) for
-  // accurate rating / category / page count. Best-effort.
   try {
     const meta = await fetchGData(
-      results.map((r) => extractGidToken(r.url)).filter((x): x is { gid: string; token: string } => !!x),
-      {
-        apiBase: opts.domainOverride ? 'https://api.e-hentai.org/api.php' : 'https://exhentai.org/api.php',
-        cookieHeader: opts.cookieHeader,
-        proxy,
-        timeoutMs: proxy ? 120_000 : 20_000
-      }
+      results.map((x) => extractGidToken(x.url)).filter((x): x is { gid: string; token: string } => !!x),
+      { apiBase: o.gdataApiBase, cookieHeader: o.cookieHeader, proxy: o.proxy, timeoutMs: o.proxy ? 120_000 : 20_000 }
     )
     const byGid = new Map(meta.map((m) => [m.gid, m]))
-    for (const r of results) {
-      const gid = extractGid(r.url)
-      const m = gid ? byGid.get(gid) : undefined
+    for (const x of results) {
+      const gid = extractGid(x.url); const m = gid ? byGid.get(gid) : undefined
       if (!m) continue
-      if (m.category) r.category = m.category
-      const rc = Number(m.rating)
-      if (!isNaN(rc) && rc > 0) r.rating = rc
-      const fc = Number(m.filecount)
-      if (!isNaN(fc) && fc > 0) r.pages = fc
+      if (m.category) x.category = m.category
+      const rc = Number(m.rating); if (!isNaN(rc) && rc > 0) x.rating = rc
+      const fc = Number(m.filecount); if (!isNaN(fc) && fc > 0) x.pages = fc
     }
   } catch { /* best-effort */ }
-
   return results
+}
+
+export async function fetchEhPopular(
+  source: 'ehentai' | 'exhentai' | 'exhentai_onion',
+  opts: { cookieHeader: string; torSocksAddr: string; exProxyAddr?: string; torProxied: boolean }
+): Promise<ExSearchResult[]> {
+  const useOnion = source === 'exhentai_onion'
+  const base = useOnion
+    ? 'http://exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion'
+    : source === 'ehentai' ? 'https://e-hentai.org' : 'https://exhentai.org'
+  const useProxy = useOnion || opts.torProxied
+  const proxy = useProxy ? opts.torSocksAddr : (opts.exProxyAddr?.trim() || undefined)
+  const ua = useProxy ? TOR_UA : UA
+  return await ehFetchListing(`${base}/popular`, base, {
+    cookieHeader: opts.cookieHeader, proxy, ua,
+    gdataApiBase: source === 'ehentai' ? 'https://api.e-hentai.org/api.php' : 'https://exhentai.org/api.php'
+  })
 }

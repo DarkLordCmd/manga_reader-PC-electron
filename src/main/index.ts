@@ -824,6 +824,7 @@ app.whenReady().then(() => {
         page,
         forceTor: torForEx,
         excludedCats: filters.ehExcludedCats,
+        minRating: filters.ehMinRating,
         domainOverride: source === 'ehentai' ? 'https://e-hentai.org' : undefined,
         cursor: cursor ? { dir: cursor.dir, gid: cursor.cursor } : undefined
       }, exProxy)

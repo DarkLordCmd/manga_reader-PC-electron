@@ -51,6 +51,7 @@ export interface CustomDnsStatus { server: string; ok: boolean; ip: string | nul
 
 export interface CatalogFilters {
   ehExcludedCats?: number
+  ehMinRating?: number
   mangadexTags?: string[]
   mangadexLangs?: string[]
   nhentaiTags?: string[]
