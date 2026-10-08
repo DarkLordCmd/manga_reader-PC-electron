@@ -41,6 +41,7 @@ import { registerDownloads } from './ipc/downloads';
 import { registerCatalog } from './ipc/catalog';
 import { registerGallery } from './ipc/gallery';
 import { registerAccounts } from './ipc/accounts';
+import { registerSync, broadcastSyncChanged } from './ipc/sync';
 import type { Settings } from '@shared/settings';
 import {
   galleries,
@@ -228,20 +229,9 @@ app.whenReady().then(() => {
     onImported: () => broadcastLibrary(),
     drive: googleDrive,
     authStatus: () => googleAuth.status(),
-    onChanged: (st) => {
-      for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.syncChanged, st);
-    },
+    onChanged: broadcastSyncChanged,
   });
-  ipcMain.handle(CH.googleAuthStatus, () => googleAuth.status());
-  ipcMain.handle(CH.googleLogin, async () => {
-    const r = await googleAuth.login();
-    return googleAuth.status();
-  });
-  ipcMain.handle(CH.googleLogout, async () => {
-    await googleAuth.logout();
-  });
-  ipcMain.handle(CH.syncNow, () => sync!.syncNow());
-  ipcMain.handle(CH.syncGetState, () => sync!.getState());
+  registerSync({ googleAuth, sync });
   if (googleAuth.status().authed) {
     setTimeout(() => {
       sync?.scheduleSync();
