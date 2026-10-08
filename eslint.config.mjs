@@ -6,18 +6,7 @@ import prettier from 'eslint-config-prettier';
 
 export default tseslint.config(
   {
-    ignores: [
-      'out',
-      'dist',
-      'node_modules',
-      'docs',
-      '.superpowers',
-      '.repowise',
-      'vendor',
-      'sample',
-      'probe*.mjs',
-      'probe*.ts',
-    ],
+    ignores: ['out', 'dist', 'node_modules', 'docs', '.superpowers', '.repowise', 'vendor', 'sample', 'probe*.mjs', 'probe*.ts'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

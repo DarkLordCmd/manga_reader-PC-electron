@@ -33,9 +33,7 @@ export default function SyncSection({ settings, upd, google, setGoogle, syncStat
               Войти через Google
             </button>
           </div>
-          {google.configured === false && (
-            <div className="row muted">Google-вход отключён: GOOGLE_CLIENT_SECRET не задан при сборке.</div>
-          )}
+          {google.configured === false && <div className="row muted">Google-вход отключён: GOOGLE_CLIENT_SECRET не задан при сборке.</div>}
           <div className="row muted">Синхронизирует библиотеку и прогресс через вашу папку Google Drive.</div>
         </>
       ) : (

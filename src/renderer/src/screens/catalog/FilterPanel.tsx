@@ -121,11 +121,7 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
             })}
           </div>
           <div className="filter-title">Мин. рейтинг</div>
-          <select
-            className="filter-select"
-            value={String(s.ehMinRating)}
-            onChange={(e) => s.setEhMinRating(Number(e.target.value))}
-          >
+          <select className="filter-select" value={String(s.ehMinRating)} onChange={(e) => s.setEhMinRating(Number(e.target.value))}>
             <option value="0">Любой</option>
             <option value="2">2+</option>
             <option value="3">3+</option>
@@ -146,22 +142,20 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
           />
           <div className="filter-title">Популярные</div>
           <div className="tag-checklist">
-            {MD_POPULAR_TAGS.filter((t) => !s.mdTagQuery || t.toLowerCase().includes(s.mdTagQuery.toLowerCase())).map(
-              (tag) => {
-                const active = s.mdActiveTags.includes(tag);
-                return (
-                  <button
-                    key={tag}
-                    className={`tag-check${active ? ' active' : ''}`}
-                    onClick={() => {
-                      s.setMdActiveTags((prev) => (prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag]));
-                    }}
-                  >
-                    {tag}
-                  </button>
-                );
-              },
-            )}
+            {MD_POPULAR_TAGS.filter((t) => !s.mdTagQuery || t.toLowerCase().includes(s.mdTagQuery.toLowerCase())).map((tag) => {
+              const active = s.mdActiveTags.includes(tag);
+              return (
+                <button
+                  key={tag}
+                  className={`tag-check${active ? ' active' : ''}`}
+                  onClick={() => {
+                    s.setMdActiveTags((prev) => (prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag]));
+                  }}
+                >
+                  {tag}
+                </button>
+              );
+            })}
           </div>
           <div className="filter-title">Язык перевода</div>
           <div className="filter-cats">
@@ -236,12 +230,7 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
             />
           </FilterRow>
           <FilterRow label="Год выпуска">
-            <input
-              className="filter-input"
-              value={s.msYear}
-              placeholder="Напр. 2024"
-              onChange={(e) => s.setMsYear(e.target.value)}
-            />
+            <input className="filter-input" value={s.msYear} placeholder="Напр. 2024" onChange={(e) => s.setMsYear(e.target.value)} />
           </FilterRow>
           <FilterRow label="Возрастной рейтинг">
             <SelectFilter

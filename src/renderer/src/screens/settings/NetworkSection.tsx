@@ -217,11 +217,7 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
       </div>
       <div className="row">
         <label>ExHentai прокси (обычный):</label>
-        <input
-          className="text-input"
-          value={settings.exhentai_proxy_addr}
-          onChange={(e) => upd({ exhentai_proxy_addr: e.target.value })}
-        />
+        <input className="text-input" value={settings.exhentai_proxy_addr} onChange={(e) => upd({ exhentai_proxy_addr: e.target.value })} />
       </div>
       {loginMsg && <div className="login-msg muted">{loginMsg}</div>}
     </Section>
