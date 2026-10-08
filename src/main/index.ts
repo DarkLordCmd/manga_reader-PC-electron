@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import { app, BrowserWindow, session } from 'electron';
 import { installAppCsp, installDefaultPermissions } from './security';
 import { join } from 'path';
 import { readFileSync, writeFileSync } from 'fs';
@@ -42,6 +42,7 @@ import { registerCatalog } from './ipc/catalog';
 import { registerGallery } from './ipc/gallery';
 import { registerAccounts } from './ipc/accounts';
 import { registerSync, broadcastSyncChanged } from './ipc/sync';
+import { registerEhLimits } from './ipc/eh-limits';
 import type { Settings } from '@shared/settings';
 import {
   galleries,
@@ -190,7 +191,7 @@ app.whenReady().then(() => {
     },
   });
   ehWatcher.onChange(broadcastEhLimitState);
-  ipcMain.handle(CH.ehLimitsState, () => ehWatcher.state());
+  registerEhLimits({ ehWatcher });
   setEhSetCookieHandler((_host, setCookies) => exAccounts.mergeSetCookies(setCookies));
   const { db, repo } = openDatabase(app.getPath('userData'));
   history = new HistoryManager(repo);
