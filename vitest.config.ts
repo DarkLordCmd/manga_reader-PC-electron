@@ -3,5 +3,6 @@ import { resolve } from 'path'
 
 export default defineConfig({
   resolve: { alias: { '@shared': resolve('src/shared') } },
+  define: { __GOOGLE_CLIENT_SECRET__: "''" },
   test: { environment: 'node', include: ['tests/**/*.test.ts'] }
 })

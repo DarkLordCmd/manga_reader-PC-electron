@@ -1,6 +1,7 @@
 import { BrowserWindow, session, app } from 'electron'
 import { join } from 'path'
 import { buildSocksDispatcher } from './http'
+import { denyAllPermissions } from '../security'
 
 export interface LoginResult {
   cookies: string
@@ -26,11 +27,13 @@ export function runLoginWindow(loginUrl: string, torSocksAddr: string): Promise<
       autoHideMenuBar: true,
       webPreferences: {
         session: ses,
-        preload: join(__dirname, '../preload/index.js'),
         nodeIntegration: false,
-        contextIsolation: true
+        contextIsolation: true,
+        sandbox: true
       }
     })
+
+    denyAllPermissions(ses)
 
     let done = false
     let loadAttempt = 0
@@ -97,7 +100,15 @@ export function runLoginWindow(loginUrl: string, torSocksAddr: string): Promise<
     // «✅ Готово» button regardless of which window loaded last.
     win.webContents.setWindowOpenHandler((details) => {
       dlog(`window-open -> ${details.url}`)
+      let ok = false
+      try { ok = /^https?:$/.test(new URL(details.url).protocol) } catch { ok = false }
+      if (!ok) return { action: 'deny' }
       return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, width: 900, height: 700 } }
+    })
+    win.webContents.on('will-navigate', (event, url) => {
+      let ok = false
+      try { ok = /^https?:$/.test(new URL(url).protocol) } catch { ok = false }
+      if (!ok) event.preventDefault()
     })
     win.webContents.on('did-create-window', (child) => {
       dlog('child window created')

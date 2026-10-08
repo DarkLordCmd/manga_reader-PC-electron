@@ -1,8 +1,9 @@
-import { BrowserWindow, safeStorage } from 'electron'
+import { BrowserWindow, session, safeStorage } from 'electron'
 import { createServer } from 'http'
 import { randomBytes, createHash } from 'crypto'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
+import { denyAllPermissions } from '../security'
 import {
   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_SCOPE, GOOGLE_AUTH_ENDPOINT, GOOGLE_TOKEN_ENDPOINT,
   GOOGLE_REVOKE_ENDPOINT, GOOGLE_USERINFO_ENDPOINT
@@ -73,8 +74,8 @@ export class GoogleAuth {
     writeFileSync(this.path, safeStorage.encryptString(text))
   }
 
-  status(): { authed: boolean; email: string | null } {
-    return { authed: !!this.tokens?.refresh_token, email: this.tokens?.email ?? null }
+  status(): { authed: boolean; email: string | null; configured: boolean } {
+    return { authed: !!this.tokens?.refresh_token, email: this.tokens?.email ?? null, configured: !!GOOGLE_CLIENT_SECRET }
   }
 
   private captureCode(challenge: string): Promise<{ code: string; redirectUri: string }> {
@@ -97,7 +98,25 @@ export class GoogleAuth {
         const addr = server.address()
         if (!addr || typeof addr === 'string') { done(() => reject(new Error('Не удалось запустить loopback-сервер'))); return }
         redirectUri = `http://127.0.0.1:${addr.port}`
-        win = new BrowserWindow({ width: 520, height: 720, title: 'Вход через Google', autoHideMenuBar: true, webPreferences: { partition: 'persist:google-oauth' } })
+        denyAllPermissions(session.fromPartition('persist:google-oauth'))
+        win = new BrowserWindow({
+          width: 520, height: 720, title: 'Вход через Google', autoHideMenuBar: true,
+          webPreferences: {
+            partition: 'persist:google-oauth',
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true
+          }
+        })
+        win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+        win.webContents.on('will-navigate', (event, url) => {
+          let ok = false
+          try {
+            const u = new URL(url)
+            ok = u.hostname === 'accounts.google.com' || u.hostname === '127.0.0.1' || u.hostname === 'localhost'
+          } catch { ok = false }
+          if (!ok) event.preventDefault()
+        })
         win.on('closed', () => { try { server.close() } catch { /* ignore */ }; done(() => reject(new Error('Окно входа закрыто'))) })
         void win.loadURL(buildAuthUrl(GOOGLE_CLIENT_ID, redirectUri, challenge))
       })
@@ -105,6 +124,7 @@ export class GoogleAuth {
   }
 
   async login(): Promise<{ email: string }> {
+    if (!GOOGLE_CLIENT_SECRET) throw new Error('GOOGLE_CLIENT_SECRET не задан при сборке — вход через Google недоступен')
     if (!safeStorage.isEncryptionAvailable()) throw new Error('Шифрование ОС недоступно — вход через Google невозможен')
     const verifier = buildCodeVerifier()
     const challenge = codeChallenge(verifier)
@@ -131,6 +151,7 @@ export class GoogleAuth {
   }
 
   async getAccessToken(force = false): Promise<string> {
+    if (!GOOGLE_CLIENT_SECRET) throw new Error('GOOGLE_CLIENT_SECRET не задан при сборке — обновление токена Google недоступно')
     const t = this.tokens
     if (!t) throw new Error('Не выполнен вход в Google')
     if (!force && t.access_token && Date.now() < t.expires_at - 60_000) return t.access_token

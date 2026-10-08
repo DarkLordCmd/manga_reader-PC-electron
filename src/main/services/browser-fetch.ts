@@ -5,6 +5,7 @@ import { app, BrowserWindow, session } from 'electron'
 import { writeFileSync } from 'fs'
 import { join } from 'path'
 import { detectsAntiBot } from './anti-bot'
+import { denyAllPermissions } from '../security'
 
 export { detectsAntiBot }
 
@@ -43,6 +44,7 @@ let workspaceChain: Promise<unknown> = Promise.resolve()
 function prepareSession(): Electron.Session {
   if (ses) return ses
   const s = session.fromPartition(PARTITION, { cache: false })
+  denyAllPermissions(s)
   s.webRequest.onBeforeRequest((details, callback) => {
     const allow = ALLOWED_RESOURCE_TYPES.includes(details.resourceType)
     callback({ cancel: !allow })
@@ -82,9 +84,17 @@ async function ensureBrowser(proxy?: string): Promise<BrowserWindow> {
     webPreferences: {
       session: s,
       javascript: true, images: false, webSecurity: true,
+      nodeIntegration: false,
       contextIsolation: false,
+      sandbox: true,
       preload: preloadPath
     }
+  })
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.webContents.on('will-navigate', (event, url) => {
+    let ok = false
+    try { ok = /^https?:$/.test(new URL(url).protocol) } catch { ok = false }
+    if (!ok) event.preventDefault()
   })
   return win
 }

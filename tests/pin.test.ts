@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtempSync, rmSync } from 'fs'
+import { createHash } from 'crypto'
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { makePinRecord, verifyPin, PinService } from '../src/main/services/pin'
@@ -63,5 +64,21 @@ describe('pin', () => {
       expect(s.failedAttempt().locked).toBe(false)
     }
     expect(s.verify('1234')).toBe(true)
+  })
+
+  it('verifyPin accepts legacy sha256 records', () => {
+    const rec = { salt: 's', hash: createHash('sha256').update('s' + '4321').digest('hex') }
+    expect(verifyPin(rec, '4321')).toBe(true)
+    expect(verifyPin(rec, '0000')).toBe(false)
+  })
+
+  it('PinService upgrades legacy hash to scrypt on successful verify', () => {
+    const rec = { salt: 's', hash: createHash('sha256').update('s' + '4321').digest('hex') }
+    writeFileSync(join(dir, 'pin.json'), JSON.stringify(rec))
+    const s = new PinService(dir)
+    expect(s.verify('4321')).toBe(true)
+    const reloaded = JSON.parse(readFileSync(join(dir, 'pin.json'), 'utf8')) as { algo?: string }
+    expect(reloaded.algo).toBe('scrypt')
+    expect(new PinService(dir).verify('4321')).toBe(true)
   })
 })

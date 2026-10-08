@@ -70,7 +70,7 @@ export default function Settings(): JSX.Element {
   const [pinMsg, setPinMsg] = useState<string | null>(null)
   const [includeSecrets, setIncludeSecrets] = useState(false)
   const [backupMsg, setBackupMsg] = useState<string | null>(null)
-  const [google, setGoogle] = useState<{ authed: boolean; email: string | null }>({ authed: false, email: null })
+  const [google, setGoogle] = useState<{ authed: boolean; email: string | null; configured?: boolean }>({ authed: false, email: null })
   const [syncState, setSyncState] = useState<import('@shared/sync').SyncState>({ state: 'idle', lastSyncAt: null, email: null, lastError: null })
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const [cacheInfo, setCacheInfo] = useState<{ files: number; bytes: number; maxBytes: number } | null>(null)
@@ -359,12 +359,13 @@ export default function Settings(): JSX.Element {
           {!google.authed ? (
             <>
               <div className="row">
-                <button onClick={async () => {
+                <button disabled={google.configured === false} onClick={async () => {
                   setSyncMsg('Открываю окно входа Google…')
                   try { const r = await window.api.googleLogin(); setGoogle(r); setSyncMsg('Вход выполнен') }
                   catch (e: any) { setSyncMsg(`Ошибка: ${e?.message ?? e}`) }
                 }}>Войти через Google</button>
               </div>
+              {google.configured === false && <div className="row muted">Google-вход отключён: GOOGLE_CLIENT_SECRET не задан при сборке.</div>}
               <div className="row muted">Синхронизирует библиотеку и прогресс через вашу папку Google Drive.</div>
             </>
           ) : (
