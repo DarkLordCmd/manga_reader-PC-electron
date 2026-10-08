@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, net } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, protocol, net, session } from 'electron'
+import { installAppCsp, installDefaultPermissions } from './security'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { readFileSync, writeFileSync, copyFileSync } from 'fs'
@@ -50,6 +51,8 @@ import { GoogleDrive } from './services/google-drive'
 import { SyncService } from './services/sync'
 import { isPortableSettingsChanged } from './services/sync'
 import { CH } from '@shared/ipc'
+import { z } from 'zod'
+import { handleSafe, existingDirOrArchive, httpUrl, dlTypeToken } from './ipc/validate'
 
 const galleries = new Map<string, Gallery>()
 
@@ -212,8 +215,27 @@ function createWindow(): void {
   const win = new BrowserWindow({
     width: 1200, height: 800, minWidth: 480, minHeight: 360,
     backgroundColor: '#000000', autoHideMenuBar: true,
-    webPreferences: { preload: join(__dirname, '../preload/index.js') }
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false
+    }
   })
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.webContents.on('will-navigate', (event, url) => {
+    let allowed = false
+    try {
+      const devUrl = process.env['ELECTRON_RENDERER_URL']
+      const u = new URL(url)
+      if (devUrl) allowed = u.origin === new URL(devUrl).origin
+      else allowed = u.href.startsWith(pathToFileURL(join(__dirname, '../renderer')).href)
+    } catch { allowed = false }
+    if (!allowed) event.preventDefault()
+  })
+  win.webContents.on('will-attach-webview', (event) => { event.preventDefault() })
   // Hidden helper windows (the browser-fetch engine and the login window) stay
   // open, so `window-all-closed` never fires and closing the main window left
   // the app (and its child processes) running. Quit explicitly on main close.
@@ -232,6 +254,8 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  installAppCsp(process.env['ELECTRON_RENDERER_URL'])
+  installDefaultPermissions(session.defaultSession)
   settings = new SettingsService(app.getPath('userData'))
   setFrontingEnabled(settings.get().enable_domain_fronting)
   setTorFallbackAddr(effectiveTorSocks())
@@ -326,7 +350,7 @@ app.whenReady().then(() => {
   )
 
   ipcMain.handle(CH.downloadsList, () => downloads.list())
-  ipcMain.handle(CH.downloadsAdd, async (_e, sourceUrl: string) => {
+  handleSafe(CH.downloadsAdd, z.tuple([httpUrl]), async (_e, sourceUrl) => {
     const { proxy, cookieHeader } = downloadFetchOpts(sourceUrl)
     const holder: { res: GalleryResolution | null } = { res: null }
     const task = await downloads.add(sourceUrl, async () => {
@@ -446,7 +470,7 @@ app.whenReady().then(() => {
     const base = new URL(galleryUrl)
     return `${base.origin}/archiver.php?gid=${gt.gid}&token=${gt.token}`
   }
-  ipcMain.handle(CH.ehArchiveCost, async (_e, url: string) => {
+  handleSafe(CH.ehArchiveCost, z.tuple([httpUrl]), async (_e, url) => {
     const archiver = archiverUrlFor(url)
     if (!archiver) return null
     const { proxy, cookieHeader } = downloadFetchOpts(url)
@@ -454,7 +478,7 @@ app.whenReady().then(() => {
       return await fetchArchiveCost(archiver, { cookieHeader, proxy })
     } catch { return null }
   })
-  ipcMain.handle(CH.ehArchiveBuy, async (_e, url: string, dltype: string) => {
+  handleSafe(CH.ehArchiveBuy, z.tuple([httpUrl, dlTypeToken]), async (_e, url, dltype) => {
     const archiver = archiverUrlFor(url)
     if (!archiver) return null
     const { proxy, cookieHeader } = downloadFetchOpts(url)
@@ -462,7 +486,7 @@ app.whenReady().then(() => {
       return await buyArchive(archiver, { cookieHeader, proxy, dltype })
     } catch { return null }
   })
-  ipcMain.handle(CH.downloadsAddArchive, (_e, sourceUrl: string, title: string, downloadUrl: string) => {
+  handleSafe(CH.downloadsAddArchive, z.tuple([httpUrl, z.string().min(1).max(512), httpUrl]), (_e, sourceUrl, title, downloadUrl) => {
     const { proxy, cookieHeader } = downloadFetchOpts(sourceUrl)
     return downloads.addArchive(sourceUrl, title, downloadUrl, {
       Referer: new URL(sourceUrl).origin + '/',
@@ -695,8 +719,14 @@ app.whenReady().then(() => {
     if (r.canceled || r.filePaths.length === 0) return null
     return openFolder(r.filePaths[0])
   })
-  ipcMain.handle(CH.openFolder, (_e, path: string) => openFolder(path))
-  ipcMain.handle(CH.openUrl, async (_e, url: string, startPage?: number, mangaId?: string | null, coverUrl?: string | null, kind?: string | null) => {
+  handleSafe(CH.openFolder, z.tuple([existingDirOrArchive]), (_e, path) => openFolder(path))
+  handleSafe(CH.openUrl, z.tuple([
+    httpUrl,
+    z.number().int().min(0).optional(),
+    z.union([z.string(), z.null()]).optional(),
+    z.union([z.string(), z.null()]).optional(),
+    z.union([z.string(), z.null()]).optional()
+  ]), async (_e, url, startPage, mangaId, coverUrl, kind) => {
     const trimmed = url.trim()
     const s = settings.get()
     const torSocks = effectiveTorSocks()
@@ -985,7 +1015,7 @@ app.whenReady().then(() => {
   ipcMain.handle(CH.setReadingPosition, (_e, gid: string, index: number) => {
     setReadingPosition(gid, index)
   })
-  ipcMain.handle(CH.rescanFolder, (_e, path: string) => {
+  handleSafe(CH.rescanFolder, z.tuple([existingDirOrArchive]), (_e, path) => {
     const g = galleryFromFolder(path)
     if (!g) return null
     galleries.set(g.id, g)

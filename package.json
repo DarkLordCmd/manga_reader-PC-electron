@@ -36,7 +36,8 @@
     "react-dom": "^18.3.1",
     "socks-proxy-agent": "^8.0.5",
     "undici": "^6.28.1",
-    "yauzl": "^3.4.0"
+    "yauzl": "^3.4.0",
+    "zod": "^3.25.76"
   },
   "allowScripts": {
     "electron@33.4.11": true,

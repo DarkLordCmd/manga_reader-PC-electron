@@ -147,7 +147,7 @@ export interface BackupSummary {
   downloadsMerged: number
 }
 
-export interface GoogleAuthStatus { authed: boolean; email: string | null }
+export interface GoogleAuthStatus { authed: boolean; email: string | null; configured?: boolean }
 
 export interface Api {
   getSettings(): Promise<Settings>

@@ -3,6 +3,7 @@ import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { parseAccountsFromJson, accountCookieHeader, parseCookieLogin, type ExAccount } from './accounts-parse'
 import { httpFetch } from './http'
+import { isEncrypted, encryptSecret, decryptSecret } from './secret-box'
 
 export type { ExAccount } from './accounts-parse'
 export { parseCookieLogin } from './accounts-parse'
@@ -26,7 +27,9 @@ export function loadManualAccounts(userDataDir: string): ExAccount[] {
   const p = manualAccountsPath(userDataDir)
   if (!existsSync(p)) return []
   try {
-    const stored = JSON.parse(readFileSync(p, 'utf-8')) as StoredAccount[]
+    const text = readFileSync(p, 'utf-8')
+    const json = isEncrypted(text) ? decryptSecret(text) : text
+    const stored = JSON.parse(json) as StoredAccount[]
     return stored.map((s, i) => ({ id: i + 1, name: s.name, cookies: s.cookies }))
   } catch {
     return []
@@ -36,7 +39,9 @@ export function loadManualAccounts(userDataDir: string): ExAccount[] {
 export function saveManualAccounts(userDataDir: string, accounts: ExAccount[]): void {
   const stored: StoredAccount[] = accounts.map((a) => ({ name: a.name, cookies: a.cookies }))
   try {
-    writeFileSync(manualAccountsPath(userDataDir), JSON.stringify(stored, null, 2))
+    const plain = JSON.stringify(stored, null, 2)
+    const enc = encryptSecret(plain)
+    writeFileSync(manualAccountsPath(userDataDir), enc !== null ? enc : plain)
   } catch { /* ignore */ }
 }
 
