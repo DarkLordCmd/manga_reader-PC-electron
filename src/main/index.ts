@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
+import { app, BrowserWindow, ipcMain, session } from 'electron';
 import { installAppCsp, installDefaultPermissions } from './security';
 import { join } from 'path';
 import { readFileSync, writeFileSync } from 'fs';
@@ -13,12 +13,12 @@ import { resolveGallery } from './services/resolve-gallery';
 import { startEmbeddedTor, stopEmbeddedTor, embeddedTorSocks, whenEmbeddedTorReady } from './services/tor-embedded';
 import { searchGrouple, GROUPLE_SITES } from './services/catalog-search';
 import type { SimpleSiteConfig } from './services/sources/catalog-types';
-import { runLoginWindow } from './services/login';
 import { fetchCoverBuffer } from './services/covers';
+import { runLoginWindow } from './services/login';
 import { setFrontingEnabled } from './services/domain-fronting';
 import { setTorFallbackAddr } from './services/http';
 import { shutdownBrowserFetch } from './services/browser-fetch';
-import { ExAccountsService, parseCookieLogin } from './services/accounts';
+import { ExAccountsService } from './services/accounts';
 import { setEhSetCookieHandler } from './services/eh-session';
 import { PinService } from './services/pin';
 import { ehWatcher, broadcastEhLimitState } from './services/eh-limits-instance';
@@ -40,6 +40,8 @@ import { registerLibrary } from './ipc/library';
 import { registerDownloads } from './ipc/downloads';
 import { registerCatalog } from './ipc/catalog';
 import { registerGallery } from './ipc/gallery';
+import { registerAccounts } from './ipc/accounts';
+import type { Settings } from '@shared/settings';
 import {
   galleries,
   onlineHeaders,
@@ -272,6 +274,10 @@ app.whenReady().then(() => {
     fetchChapterListSafe,
   });
 
+  const broadcastSettingsChanged = (s: Settings): void => {
+    for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s);
+  };
+
   registerSettings({
     settings,
     sync,
@@ -281,9 +287,7 @@ app.whenReady().then(() => {
     db,
     coverCache,
     getCoverDisk: () => getCoverDisk(coverMaxBytes),
-    broadcastSettingsChanged: (s) => {
-      for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s);
-    },
+    broadcastSettingsChanged,
     broadcastLibraryChanged: () => {
       for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.libraryChanged);
     },
@@ -322,74 +326,12 @@ app.whenReady().then(() => {
     isZipPath,
   });
 
-  ipcMain.handle(CH.loginSite, async (_e, url: string) => {
-    const s = settings.get();
-    // Tor only for the sites that actually need it (.onion, E-Hentai family,
-    // nhentai) — routing other logins through a Tor exit gets them banned
-    // (senkuro.me bans datacenter/Tor ranges).
-    const lower = url.toLowerCase();
-    const needsTor = url.includes('.onion') || lower.includes('exhentai') || lower.includes('e-hentai') || lower.includes('nhentai');
-    const result = await runLoginWindow(url, needsTor ? effectiveTorSocks() : '');
-    if (!result) return null;
-    // Persist cookies into settings depending on target
-    const next = { ...settings.get() };
-    if (url.includes('exhentai')) next.onion_cookies_raw = result.cookies;
-    else if (url.includes('nhentai')) {
-      if (url.includes('.onion')) next.nhentai_onion_cookies_raw = result.cookies;
-      else next.nhentai_cookies_raw = result.cookies;
-    } else if (url.includes('senkuro')) {
-      next.senkuro_cookies_raw = result.cookies;
-    }
-    settings.save(next);
-    return result.cookies;
-  });
-  ipcMain.handle(CH.loginPassword, async (_e, user: string, pass: string) => {
-    const r = await exAccounts.passwordLogin(user, pass);
-    if (r.ok) {
-      const s = settings.get();
-      // Keep the account pool in sync with the cookie header used for clearnet ExHentai.
-      for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s);
-    }
-    return r;
-  });
-  ipcMain.handle(CH.cookieLogin, async (_e, input: any) => {
-    return await exAccounts.cookieLogin({
-      ipbMemberId: String(input?.ipbMemberId ?? ''),
-      ipbPassHash: String(input?.ipbPassHash ?? ''),
-      igneous: input?.igneous ?? null,
-      verify: input?.verify !== false,
-    });
-  });
-  ipcMain.handle(CH.refreshIgneous, async () => await exAccounts.refreshIgneous());
-  ipcMain.handle(CH.parseCookieText, (_e, text: string) => parseCookieLogin(String(text ?? '')));
-  ipcMain.handle(CH.getExAccounts, () => ({ accounts: exAccounts.accounts, currentId: exAccounts.currentId }));
-  ipcMain.handle(CH.setExAccount, (_e, id: number) => {
-    exAccounts.setCurrent(id);
-    return { accounts: exAccounts.accounts, currentId: exAccounts.currentId };
-  });
-  ipcMain.handle(CH.addExAccount, (_e, name: string, memberId: string, passHash: string, igneous: string) => {
-    exAccounts.addManual(name, memberId, passHash, igneous);
-    return { accounts: exAccounts.accounts, currentId: exAccounts.currentId };
-  });
-  ipcMain.handle(CH.removeExAccount, (_e, id: number) => {
-    exAccounts.remove(id);
-    return { accounts: exAccounts.accounts, currentId: exAccounts.currentId };
-  });
-  ipcMain.handle(CH.importExAccounts, async () => {
-    const r = await dialog.showOpenDialog({
-      title: 'Выбери JSON, который сохранил юзерскрипт AutoLogin',
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-      properties: ['openFile'],
-    });
-    if (r.canceled || r.filePaths.length === 0) return null;
-    let content: string;
-    try {
-      content = readFileSync(r.filePaths[0], 'utf-8');
-    } catch (e: any) {
-      return { count: 0, accounts: { accounts: exAccounts.accounts, currentId: exAccounts.currentId } };
-    }
-    const count = exAccounts.importFromContent(content);
-    return { count, accounts: { accounts: exAccounts.accounts, currentId: exAccounts.currentId } };
+  registerAccounts({
+    settings,
+    exAccounts,
+    effectiveTorSocks,
+    runLoginWindow,
+    broadcastSettingsChanged,
   });
 
   createWindow();
