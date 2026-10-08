@@ -1,152 +1,162 @@
-import { app } from 'electron'
-import { join } from 'path'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
-import { parseAccountsFromJson, accountCookieHeader, parseCookieLogin, type ExAccount } from './accounts-parse'
-import { httpFetch } from './http'
-import { isEncrypted, encryptSecret, decryptSecret } from './secret-box'
+import { app } from 'electron';
+import { join } from 'path';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { parseAccountsFromJson, accountCookieHeader, parseCookieLogin, type ExAccount } from './accounts-parse';
+import { httpFetch } from './http';
+import { isEncrypted, encryptSecret, decryptSecret } from './secret-box';
 
-export type { ExAccount } from './accounts-parse'
-export { parseCookieLogin } from './accounts-parse'
+export type { ExAccount } from './accounts-parse';
+export { parseCookieLogin } from './accounts-parse';
 
 function parseSetCookieValue(setCookie: string): [string, string] | null {
-  const eq = setCookie.indexOf('=')
-  if (eq <= 0) return null
-  const name = setCookie.slice(0, eq).trim()
-  const value = setCookie.slice(eq + 1).split(';')[0].trim()
-  if (!name || value === '') return null
-  return [name, value]
+  const eq = setCookie.indexOf('=');
+  if (eq <= 0) return null;
+  const name = setCookie.slice(0, eq).trim();
+  const value = setCookie
+    .slice(eq + 1)
+    .split(';')[0]
+    .trim();
+  if (!name || value === '') return null;
+  return [name, value];
 }
 
-interface StoredAccount { name: string; cookies: [string, string][] }
+interface StoredAccount {
+  name: string;
+  cookies: [string, string][];
+}
 
 function manualAccountsPath(userDataDir: string): string {
-  return join(userDataDir, 'eh_accounts.json')
+  return join(userDataDir, 'eh_accounts.json');
 }
 
 export function loadManualAccounts(userDataDir: string): ExAccount[] {
-  const p = manualAccountsPath(userDataDir)
-  if (!existsSync(p)) return []
+  const p = manualAccountsPath(userDataDir);
+  if (!existsSync(p)) return [];
   try {
-    const text = readFileSync(p, 'utf-8')
-    const json = isEncrypted(text) ? decryptSecret(text) : text
-    const stored = JSON.parse(json) as StoredAccount[]
-    return stored.map((s, i) => ({ id: i + 1, name: s.name, cookies: s.cookies }))
+    const text = readFileSync(p, 'utf-8');
+    const json = isEncrypted(text) ? decryptSecret(text) : text;
+    const stored = JSON.parse(json) as StoredAccount[];
+    return stored.map((s, i) => ({ id: i + 1, name: s.name, cookies: s.cookies }));
   } catch {
-    return []
+    return [];
   }
 }
 
 export function saveManualAccounts(userDataDir: string, accounts: ExAccount[]): void {
-  const stored: StoredAccount[] = accounts.map((a) => ({ name: a.name, cookies: a.cookies }))
+  const stored: StoredAccount[] = accounts.map((a) => ({ name: a.name, cookies: a.cookies }));
   try {
-    const plain = JSON.stringify(stored, null, 2)
-    const enc = encryptSecret(plain)
-    writeFileSync(manualAccountsPath(userDataDir), enc !== null ? enc : plain)
-  } catch { /* ignore */ }
+    const plain = JSON.stringify(stored, null, 2);
+    const enc = encryptSecret(plain);
+    writeFileSync(manualAccountsPath(userDataDir), enc !== null ? enc : plain);
+  } catch {
+    /* ignore */
+  }
 }
 
-const AUTOLOGIN_FILENAME = '[E-Ex-Hentai] AutoLogin.storage.json'
+const AUTOLOGIN_FILENAME = '[E-Ex-Hentai] AutoLogin.storage.json';
 
 function findAutologinStorageFile(userDataDir: string): string | null {
   const candidates = [
     join(app.getPath('exe'), '..', AUTOLOGIN_FILENAME),
     join(process.cwd(), AUTOLOGIN_FILENAME),
-    join(userDataDir, AUTOLOGIN_FILENAME)
-  ]
+    join(userDataDir, AUTOLOGIN_FILENAME),
+  ];
   for (const c of candidates) {
-    if (existsSync(c)) return c
+    if (existsSync(c)) return c;
   }
-  return null
+  return null;
 }
 
 export class ExAccountsService {
-  accounts: ExAccount[] = []
-  manualAccounts: ExAccount[] = []
-  currentId = 0
-  private userDataDir: string
+  accounts: ExAccount[] = [];
+  manualAccounts: ExAccount[] = [];
+  currentId = 0;
+  private userDataDir: string;
 
   constructor(userDataDir: string) {
-    this.userDataDir = userDataDir
+    this.userDataDir = userDataDir;
   }
 
   init(): void {
-    const path = findAutologinStorageFile(this.userDataDir)
-    let accounts: ExAccount[] = []
+    const path = findAutologinStorageFile(this.userDataDir);
+    let accounts: ExAccount[] = [];
     if (path) {
       try {
-        accounts = parseAccountsFromJson(readFileSync(path, 'utf-8'))
-      } catch { accounts = [] }
+        accounts = parseAccountsFromJson(readFileSync(path, 'utf-8'));
+      } catch {
+        accounts = [];
+      }
     }
-    this.manualAccounts = loadManualAccounts(this.userDataDir)
-    const nextId = accounts.reduce((m, a) => Math.max(m, a.id), 0) + 1
-    this.manualAccounts = this.manualAccounts.map((a, i) => ({ ...a, id: nextId + i }))
-    this.accounts = [...accounts, ...this.manualAccounts]
-    this.currentId = this.accounts[0]?.id ?? 0
+    this.manualAccounts = loadManualAccounts(this.userDataDir);
+    const nextId = accounts.reduce((m, a) => Math.max(m, a.id), 0) + 1;
+    this.manualAccounts = this.manualAccounts.map((a, i) => ({ ...a, id: nextId + i }));
+    this.accounts = [...accounts, ...this.manualAccounts];
+    this.currentId = this.accounts[0]?.id ?? 0;
   }
 
   current(): ExAccount | null {
-    return this.accounts.find((a) => a.id === this.currentId) ?? null
+    return this.accounts.find((a) => a.id === this.currentId) ?? null;
   }
 
   currentCookieHeader(): string {
-    return accountCookieHeader(this.current())
+    return accountCookieHeader(this.current());
   }
 
   setCurrent(id: number): ExAccount | null {
-    const acc = this.accounts.find((a) => a.id === id)
-    if (acc) this.currentId = id
-    return acc ?? null
+    const acc = this.accounts.find((a) => a.id === id);
+    if (acc) this.currentId = id;
+    return acc ?? null;
   }
 
   addManual(name: string, memberId: string, passHash: string, igneous: string): ExAccount {
-    const cookies: [string, string][] = []
-    if (memberId.trim()) cookies.push(['ipb_member_id', memberId.trim()])
-    if (passHash.trim()) cookies.push(['ipb_pass_hash', passHash.trim()])
-    if (igneous.trim()) cookies.push(['igneous', igneous.trim()])
-    const id = this.accounts.reduce((m, a) => Math.max(m, a.id), 0) + 1
-    const acc: ExAccount = { id, name: name.trim() || `Аккаунт ${id}`, cookies }
-    this.accounts.push(acc)
-    this.manualAccounts.push(acc)
-    this.currentId = id
-    saveManualAccounts(this.userDataDir, this.manualAccounts)
-    return acc
+    const cookies: [string, string][] = [];
+    if (memberId.trim()) cookies.push(['ipb_member_id', memberId.trim()]);
+    if (passHash.trim()) cookies.push(['ipb_pass_hash', passHash.trim()]);
+    if (igneous.trim()) cookies.push(['igneous', igneous.trim()]);
+    const id = this.accounts.reduce((m, a) => Math.max(m, a.id), 0) + 1;
+    const acc: ExAccount = { id, name: name.trim() || `Аккаунт ${id}`, cookies };
+    this.accounts.push(acc);
+    this.manualAccounts.push(acc);
+    this.currentId = id;
+    saveManualAccounts(this.userDataDir, this.manualAccounts);
+    return acc;
   }
 
   remove(id: number): void {
-    this.manualAccounts = this.manualAccounts.filter((a) => a.id !== id)
-    saveManualAccounts(this.userDataDir, this.manualAccounts)
-    this.accounts = this.accounts.filter((a) => a.id !== id)
-    if (this.currentId === id) this.currentId = this.accounts[0]?.id ?? 0
+    this.manualAccounts = this.manualAccounts.filter((a) => a.id !== id);
+    saveManualAccounts(this.userDataDir, this.manualAccounts);
+    this.accounts = this.accounts.filter((a) => a.id !== id);
+    if (this.currentId === id) this.currentId = this.accounts[0]?.id ?? 0;
   }
 
   importFromContent(content: string): number {
-    const imported = parseAccountsFromJson(content)
-    if (imported.length === 0) return 0
-    const nextId = this.accounts.reduce((m, a) => Math.max(m, a.id), 0) + 1
-    const renumbered = imported.map((a, i) => ({ ...a, id: nextId + i }))
-    this.manualAccounts.push(...renumbered)
-    saveManualAccounts(this.userDataDir, this.manualAccounts)
-    this.accounts.push(...renumbered)
-    const first = renumbered[0]
-    this.currentId = first.id
-    return renumbered.length
+    const imported = parseAccountsFromJson(content);
+    if (imported.length === 0) return 0;
+    const nextId = this.accounts.reduce((m, a) => Math.max(m, a.id), 0) + 1;
+    const renumbered = imported.map((a, i) => ({ ...a, id: nextId + i }));
+    this.manualAccounts.push(...renumbered);
+    saveManualAccounts(this.userDataDir, this.manualAccounts);
+    this.accounts.push(...renumbered);
+    const first = renumbered[0];
+    this.currentId = first.id;
+    return renumbered.length;
   }
 
   importAccounts(accounts: ExAccount[]): number {
-    const have = new Set(this.accounts.flatMap((a) => a.cookies.filter(([n]) => n === 'ipb_member_id').map(([, v]) => v)))
-    let added = 0
+    const have = new Set(this.accounts.flatMap((a) => a.cookies.filter(([n]) => n === 'ipb_member_id').map(([, v]) => v)));
+    let added = 0;
     for (const a of accounts) {
-      const mid = a.cookies.find(([n]) => n === 'ipb_member_id')?.[1]
-      if (mid && have.has(mid)) continue
-      const id = this.accounts.reduce((m, x) => Math.max(m, x.id), 0) + 1
-      const acc: ExAccount = { ...a, id }
-      this.accounts.push(acc)
-      this.manualAccounts.push(acc)
-      if (mid) have.add(mid)
-      added++
+      const mid = a.cookies.find(([n]) => n === 'ipb_member_id')?.[1];
+      if (mid && have.has(mid)) continue;
+      const id = this.accounts.reduce((m, x) => Math.max(m, x.id), 0) + 1;
+      const acc: ExAccount = { ...a, id };
+      this.accounts.push(acc);
+      this.manualAccounts.push(acc);
+      if (mid) have.add(mid);
+      added++;
     }
-    if (added > 0) saveManualAccounts(this.userDataDir, this.manualAccounts)
-    return added
+    if (added > 0) saveManualAccounts(this.userDataDir, this.manualAccounts);
+    return added;
   }
 
   /**
@@ -156,14 +166,14 @@ export class ExAccountsService {
    * then store them as the current clearnet account.
    */
   async passwordLogin(user: string, pass: string): Promise<{ ok: boolean; message: string }> {
-    if (!user.trim() || !pass) return { ok: false, message: 'Введи логин и пароль' }
+    if (!user.trim() || !pass) return { ok: false, message: 'Введи логин и пароль' };
     const r = await httpFetch({
       url: 'https://forums.e-hentai.org/index.php?act=Login&CODE=01',
       method: 'POST',
       redirect: 'manual',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        Referer: 'https://forums.e-hentai.org/index.php?'
+        Referer: 'https://forums.e-hentai.org/index.php?',
       },
       body: new URLSearchParams({
         referer: 'https://forums.e-hentai.org/index.php?',
@@ -171,96 +181,99 @@ export class ExAccountsService {
         bt: '',
         UserName: user,
         PassWord: pass,
-        CookieDate: '365'
+        CookieDate: '365',
       }).toString(),
-      timeoutMs: 30_000
-    })
+      timeoutMs: 30_000,
+    });
 
-    const cookies: [string, string][] = []
+    const cookies: [string, string][] = [];
     for (const sc of r.setCookies) {
-      const eq = sc.indexOf('=')
-      if (eq <= 0) continue
-      const name = sc.slice(0, eq).trim()
-      const value = sc.slice(eq + 1).split(';')[0].trim()
-      if (name && value) cookies.push([name, value])
+      const eq = sc.indexOf('=');
+      if (eq <= 0) continue;
+      const name = sc.slice(0, eq).trim();
+      const value = sc
+        .slice(eq + 1)
+        .split(';')[0]
+        .trim();
+      if (name && value) cookies.push([name, value]);
     }
 
     if (r.status >= 400 || r.status === 0) {
-      return { ok: false, message: `Ошибка входа (HTTP ${r.status})` }
+      return { ok: false, message: `Ошибка входа (HTTP ${r.status})` };
     }
 
-    const loggedIn = cookies.some(([n]) => n === 'ipb_member_id')
+    const loggedIn = cookies.some(([n]) => n === 'ipb_member_id');
     if (!loggedIn) {
-      return { ok: false, message: 'Не удалось войти — проверь логин и пароль' }
+      return { ok: false, message: 'Не удалось войти — проверь логин и пароль' };
     }
 
-    const id = this.accounts.reduce((m, a) => Math.max(m, a.id), 0) + 1
-    const acc: ExAccount = { id, name: user.trim(), cookies }
-    this.accounts.push(acc)
-    this.manualAccounts.push(acc)
-    this.currentId = id
-    saveManualAccounts(this.userDataDir, this.manualAccounts)
-    return { ok: true, message: `Вход выполнен: ${user.trim()}` }
+    const id = this.accounts.reduce((m, a) => Math.max(m, a.id), 0) + 1;
+    const acc: ExAccount = { id, name: user.trim(), cookies };
+    this.accounts.push(acc);
+    this.manualAccounts.push(acc);
+    this.currentId = id;
+    saveManualAccounts(this.userDataDir, this.manualAccounts);
+    return { ok: true, message: `Вход выполнен: ${user.trim()}` };
   }
 
   private persist(): void {
-    saveManualAccounts(this.userDataDir, this.manualAccounts)
+    saveManualAccounts(this.userDataDir, this.manualAccounts);
   }
 
   /** Merges cookies into the current account (creating one if needed). */
   mergeCookies(cookies: [string, string][], name = 'Cookie-вход'): ExAccount {
-    let acc = this.current()
+    let acc = this.current();
     if (!acc) {
-      const id = this.accounts.reduce((m, a) => Math.max(m, a.id), 0) + 1
-      acc = { id, name, cookies: [] }
-      this.accounts.push(acc)
-      this.manualAccounts.push(acc)
-      this.currentId = id
+      const id = this.accounts.reduce((m, a) => Math.max(m, a.id), 0) + 1;
+      acc = { id, name, cookies: [] };
+      this.accounts.push(acc);
+      this.manualAccounts.push(acc);
+      this.currentId = id;
     } else if (acc.name === 'Cookie-вход' && name !== 'Cookie-вход') {
-      acc.name = name
+      acc.name = name;
     }
     for (const [n, v] of cookies) {
-      const existing = acc.cookies.find(([cn]) => cn === n)
-      if (existing) existing[1] = v
-      else acc.cookies.push([n, v])
+      const existing = acc.cookies.find(([cn]) => cn === n);
+      if (existing) existing[1] = v;
+      else acc.cookies.push([n, v]);
     }
-    const manual = this.manualAccounts.find((a) => a.id === acc!.id)
-    if (!manual) this.manualAccounts.push(acc)
-    this.persist()
-    return acc
+    const manual = this.manualAccounts.find((a) => a.id === acc!.id);
+    if (!manual) this.manualAccounts.push(acc);
+    this.persist();
+    return acc;
   }
 
   removeCookies(names: string[]): void {
-    const acc = this.current()
-    if (!acc) return
-    acc.cookies = acc.cookies.filter(([n]) => !names.includes(n))
-    this.persist()
+    const acc = this.current();
+    if (!acc) return;
+    acc.cookies = acc.cookies.filter(([n]) => !names.includes(n));
+    this.persist();
   }
 
   /** Parses raw Set-Cookie headers (from any EH response) and merges the session cookies. */
   mergeSetCookies(setCookies: string[]): void {
-    const cookies: [string, string][] = []
+    const cookies: [string, string][] = [];
     for (const sc of setCookies) {
-      const pair = parseSetCookieValue(sc)
-      if (!pair) continue
-      const [name, value] = pair
-      if (name === '__utmp') continue
-      if (name === 'igneous' && value === 'mystery') continue
-      cookies.push(pair)
+      const pair = parseSetCookieValue(sc);
+      if (!pair) continue;
+      const [name, value] = pair;
+      if (name === '__utmp') continue;
+      if (name === 'igneous' && value === 'mystery') continue;
+      cookies.push(pair);
     }
-    if (cookies.length > 0) this.mergeCookies(cookies)
+    if (cookies.length > 0) this.mergeCookies(cookies);
   }
 
   private headerFor(acc: ExAccount): Record<string, string> {
-    return { Cookie: accountCookieHeader(acc) }
+    return { Cookie: accountCookieHeader(acc) };
   }
 
   private static parseProfileUsername(html: string): string | null {
-    const profilename = html.match(/id="profilename"[^>]*>([^<]+)</)
-    if (profilename && profilename[1].trim()) return profilename[1].trim()
-    const home = html.match(/<div class="home">\s*<b>\s*<a[^>]*>([^<]+)</)
-    if (home && home[1].trim()) return home[1].trim()
-    return null
+    const profilename = html.match(/id="profilename"[^>]*>([^<]+)</);
+    if (profilename && profilename[1].trim()) return profilename[1].trim();
+    const home = html.match(/<div class="home">\s*<b>\s*<a[^>]*>([^<]+)</);
+    if (home && home[1].trim()) return home[1].trim();
+    return null;
   }
 
   /**
@@ -271,56 +284,70 @@ export class ExAccountsService {
    * the check is inconclusive (Cloudflare 403, "Just a moment…", network
    * failure) the cookies are kept and a warning is returned instead.
    */
-  async cookieLogin(opts: { ipbMemberId: string; ipbPassHash: string; igneous?: string | null; verify?: boolean }): Promise<{ ok: boolean; message: string }> {
-    const ipbMemberId = opts.ipbMemberId?.trim()
-    const ipbPassHash = opts.ipbPassHash?.trim()
+  async cookieLogin(opts: {
+    ipbMemberId: string;
+    ipbPassHash: string;
+    igneous?: string | null;
+    verify?: boolean;
+  }): Promise<{ ok: boolean; message: string }> {
+    const ipbMemberId = opts.ipbMemberId?.trim();
+    const ipbPassHash = opts.ipbPassHash?.trim();
     if (!ipbMemberId || !ipbPassHash) {
-      return { ok: false, message: 'Нужны ipb_member_id и ipb_pass_hash' }
+      return { ok: false, message: 'Нужны ipb_member_id и ipb_pass_hash' };
     }
-    const initial: [string, string][] = [['ipb_member_id', ipbMemberId], ['ipb_pass_hash', ipbPassHash]]
-    const ign = opts.igneous?.trim()
-    const hasIgn = !!ign && ign !== 'mystery' && ign !== 'deleted' && ign !== 'null'
-    if (hasIgn) initial.push(['igneous', ign!])
-    const acc = this.mergeCookies(initial, 'Cookie-вход')
+    const initial: [string, string][] = [
+      ['ipb_member_id', ipbMemberId],
+      ['ipb_pass_hash', ipbPassHash],
+    ];
+    const ign = opts.igneous?.trim();
+    const hasIgn = !!ign && ign !== 'mystery' && ign !== 'deleted' && ign !== 'null';
+    if (hasIgn) initial.push(['igneous', ign!]);
+    const acc = this.mergeCookies(initial, 'Cookie-вход');
 
     if (opts.verify === false) {
-      return { ok: true, message: 'Куки сохранены (без проверки)' }
+      return { ok: true, message: 'Куки сохранены (без проверки)' };
     }
 
     try {
-      const home = await httpFetch({ url: 'https://e-hentai.org/home.php', headers: this.headerFor(acc), timeoutMs: 20_000 })
-      this.mergeSetCookies(home.setCookies)
-    } catch { /* sk is best-effort */ }
+      const home = await httpFetch({ url: 'https://e-hentai.org/home.php', headers: this.headerFor(acc), timeoutMs: 20_000 });
+      this.mergeSetCookies(home.setCookies);
+    } catch {
+      /* sk is best-effort */
+    }
 
-    let forums: Awaited<ReturnType<typeof httpFetch>> | null = null
+    let forums: Awaited<ReturnType<typeof httpFetch>> | null = null;
     try {
       forums = await httpFetch({
         url: `https://forums.e-hentai.org/index.php?showuser=${ipbMemberId}`,
         headers: this.headerFor(this.current() ?? acc),
-        timeoutMs: 20_000
-      })
+        timeoutMs: 20_000,
+      });
     } catch (e: any) {
       // Network unreachable (DNS/TLS block, no VPN/fronting) — inconclusive.
-      return { ok: true, message: `Куки сохранены. Проверка недоступна (${e?.message ?? e}). Проверь вход в каталоге.` }
+      return { ok: true, message: `Куки сохранены. Проверка недоступна (${e?.message ?? e}). Проверь вход в каталоге.` };
     }
 
-    this.mergeSetCookies(forums.setCookies)
+    this.mergeSetCookies(forums.setCookies);
 
     // Cloudflare JS challenge / bot-wall — inconclusive, keep the cookies.
     if (forums.status === 403 || forums.status === 429 || forums.text.includes('Just a moment')) {
-      return { ok: true, message: 'Куки сохранены. Проверка недоступна (Cloudflare блокирует запрос) — включи Domain Fronting или VPN и проверь вход в каталоге.' }
+      return {
+        ok: true,
+        message:
+          'Куки сохранены. Проверка недоступна (Cloudflare блокирует запрос) — включи Domain Fronting или VPN и проверь вход в каталоге.',
+      };
     }
 
     // A real forums page: `.pcen` means "not logged in", a username in the
     // profile header means the login is valid.
-    const isGuest = /class="[^"]*\bpcen\b/.test(forums.text)
-    const username = ExAccountsService.parseProfileUsername(forums.text)
+    const isGuest = /class="[^"]*\bpcen\b/.test(forums.text);
+    const username = ExAccountsService.parseProfileUsername(forums.text);
     if (isGuest || (!username && forums.status < 400)) {
-      this.removeCookies(['ipb_member_id', 'ipb_pass_hash', 'igneous', 'sk'])
-      return { ok: false, message: 'Куки недействительны — вход не выполнен' }
+      this.removeCookies(['ipb_member_id', 'ipb_pass_hash', 'igneous', 'sk']);
+      return { ok: false, message: 'Куки недействительны — вход не выполнен' };
     }
-    if (username) this.mergeCookies([['__userName', username]])
-    return { ok: true, message: `Вход выполнен: ${username ?? ipbMemberId}` }
+    if (username) this.mergeCookies([['__userName', username]]);
+    return { ok: true, message: `Вход выполнен: ${username ?? ipbMemberId}` };
   }
 
   /**
@@ -329,28 +356,31 @@ export class ExAccountsService {
    * "refresh igneous"). 'mystery' means the account has no EX access (sad panda).
    */
   async refreshIgneous(): Promise<{ ok: boolean; message: string }> {
-    const acc = this.current()
-    if (!acc) return { ok: false, message: 'Сначала войди по кукам/паролю' }
-    const member = acc.cookies.find(([n]) => n === 'ipb_member_id')
-    const hash = acc.cookies.find(([n]) => n === 'ipb_pass_hash')
-    if (!member || !hash) return { ok: false, message: 'Нет ipb_member_id / ipb_pass_hash' }
-    let r
+    const acc = this.current();
+    if (!acc) return { ok: false, message: 'Сначала войди по кукам/паролю' };
+    const member = acc.cookies.find(([n]) => n === 'ipb_member_id');
+    const hash = acc.cookies.find(([n]) => n === 'ipb_pass_hash');
+    if (!member || !hash) return { ok: false, message: 'Нет ipb_member_id / ipb_pass_hash' };
+    let r;
     try {
       r = await httpFetch({
         url: 'https://exhentai.org/',
         headers: { Cookie: `${member[0]}=${member[1]}; ${hash[0]}=${hash[1]}` },
-        timeoutMs: 30_000
-      })
+        timeoutMs: 30_000,
+      });
     } catch (e: any) {
-      return { ok: false, message: `Ошибка запроса: ${e?.message ?? e}` }
+      return { ok: false, message: `Ошибка запроса: ${e?.message ?? e}` };
     }
-    const sc = r.setCookies.find((c) => c.slice(0, c.indexOf('=')).trim() === 'igneous')
-    if (!sc) return { ok: false, message: 'Sad panda — igneous не выдан (проверь доступ к ExHentai)' }
-    const value = sc.slice(sc.indexOf('=') + 1).split(';')[0].trim()
+    const sc = r.setCookies.find((c) => c.slice(0, c.indexOf('=')).trim() === 'igneous');
+    if (!sc) return { ok: false, message: 'Sad panda — igneous не выдан (проверь доступ к ExHentai)' };
+    const value = sc
+      .slice(sc.indexOf('=') + 1)
+      .split(';')[0]
+      .trim();
     if (value === 'mystery' || value === '') {
-      return { ok: false, message: 'Sad panda — у аккаунта нет доступа к ExHentai' }
+      return { ok: false, message: 'Sad panda — у аккаунта нет доступа к ExHentai' };
     }
-    this.mergeCookies([['igneous', value]])
-    return { ok: true, message: `igneous получен (${value.slice(0, 8)}…)` }
+    this.mergeCookies([['igneous', value]]);
+    return { ok: true, message: `igneous получен (${value.slice(0, 8)}…)` };
   }
 }

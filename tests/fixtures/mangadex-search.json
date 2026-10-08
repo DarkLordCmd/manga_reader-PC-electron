@@ -6,14 +6,12 @@
       "type": "manga",
       "attributes": {
         "title": { "en": "My Hero", "ru": "Герой" },
-        "altTitles": [ { "ru": "АльтГерой" } ],
+        "altTitles": [{ "ru": "АльтГерой" }],
         "originalLanguage": "ja",
         "rating": { "bayesian": 9.12 },
-        "tags": [ { "attributes": { "name": { "en": "Action", "ru": "Экшен" } } } ]
+        "tags": [{ "attributes": { "name": { "en": "Action", "ru": "Экшен" } } }]
       },
-      "relationships": [
-        { "type": "cover_art", "attributes": { "fileName": "abc.jpg" } }
-      ]
+      "relationships": [{ "type": "cover_art", "attributes": { "fileName": "abc.jpg" } }]
     },
     {
       "id": "x9y8",

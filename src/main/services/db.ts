@@ -1,8 +1,8 @@
-import Database from 'better-sqlite3'
-import { join } from 'path'
-import { existsSync, renameSync } from 'fs'
-import { SqliteSeriesRepository } from './sqlite-series-repository'
-import { needsDeletedAtColumn, needsFavoritedAtColumn, needsKindColumn } from './db-migrate'
+import Database from 'better-sqlite3';
+import { join } from 'path';
+import { existsSync, renameSync } from 'fs';
+import { SqliteSeriesRepository } from './sqlite-series-repository';
+import { needsDeletedAtColumn, needsFavoritedAtColumn, needsKindColumn } from './db-migrate';
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS series (
@@ -33,24 +33,24 @@ CREATE INDEX IF NOT EXISTS idx_series_status ON series(status);
 CREATE INDEX IF NOT EXISTS idx_series_opened ON series(opened_at);
 CREATE INDEX IF NOT EXISTS idx_series_title ON series(title);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
-`
+`;
 
 export interface DbHandle {
-  db: Database.Database
-  repo: SqliteSeriesRepository
+  db: Database.Database;
+  repo: SqliteSeriesRepository;
 }
 
 function migrate(db: Database.Database): void {
-  const version = db.pragma('user_version', { simple: true }) as number
-  const cols = (db.pragma('table_info(series)') as { name: string }[]).map((c) => c.name)
+  const version = db.pragma('user_version', { simple: true }) as number;
+  const cols = (db.pragma('table_info(series)') as { name: string }[]).map((c) => c.name);
   if (needsDeletedAtColumn(version, cols)) {
-    db.exec('ALTER TABLE series ADD COLUMN deleted_at INTEGER')
+    db.exec('ALTER TABLE series ADD COLUMN deleted_at INTEGER');
   }
   if (needsFavoritedAtColumn(version, cols)) {
-    db.exec('ALTER TABLE series ADD COLUMN favorited_at INTEGER')
+    db.exec('ALTER TABLE series ADD COLUMN favorited_at INTEGER');
   }
   if (needsKindColumn(version, cols)) {
-    db.exec('ALTER TABLE series ADD COLUMN kind TEXT')
+    db.exec('ALTER TABLE series ADD COLUMN kind TEXT');
   }
   if (version < 4) {
     // Backfill: rows added to the library/favorites from the catalog used to
@@ -58,38 +58,46 @@ function migrate(db: Database.Database): void {
     // nhentai). Reclassify them so they show under the R34 tab.
     db.exec(
       "UPDATE series SET category = 'r34' WHERE category = 'main' " +
-      "AND (url LIKE '%exhentai%' OR url LIKE '%e-hentai.org%' OR url LIKE '%nhentai%')"
-    )
+        "AND (url LIKE '%exhentai%' OR url LIKE '%e-hentai.org%' OR url LIKE '%nhentai%')",
+    );
   }
-  db.pragma('user_version = 5')
+  db.pragma('user_version = 5');
 }
 
 function openAt(path: string): Database.Database {
-  const db = new Database(path)
+  const db = new Database(path);
   try {
-    db.pragma('journal_mode = WAL')
-    db.exec(SCHEMA)
-    migrate(db)
-    return db
+    db.pragma('journal_mode = WAL');
+    db.exec(SCHEMA);
+    migrate(db);
+    return db;
   } catch (e) {
-    try { db.close() } catch { /* ignore */ }
-    throw e
+    try {
+      db.close();
+    } catch {
+      /* ignore */
+    }
+    throw e;
   }
 }
 
 export function openDatabase(userDataDir: string): DbHandle {
-  const path = join(userDataDir, 'library.db')
-  let db: Database.Database
+  const path = join(userDataDir, 'library.db');
+  let db: Database.Database;
   try {
-    db = openAt(path)
+    db = openAt(path);
   } catch {
-    const ts = Date.now()
+    const ts = Date.now();
     for (const f of [path, `${path}-wal`, `${path}-shm`]) {
       if (existsSync(f)) {
-        try { renameSync(f, `${f}.corrupt-${ts}`) } catch { /* ignore */ }
+        try {
+          renameSync(f, `${f}.corrupt-${ts}`);
+        } catch {
+          /* ignore */
+        }
       }
     }
-    db = openAt(path)
+    db = openAt(path);
   }
-  return { db, repo: new SqliteSeriesRepository(db) }
+  return { db, repo: new SqliteSeriesRepository(db) };
 }

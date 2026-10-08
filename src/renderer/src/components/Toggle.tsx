@@ -1,11 +1,11 @@
-import type { ChangeEvent, ReactNode } from 'react'
+import type { ChangeEvent, ReactNode } from 'react';
 
 interface ToggleProps {
-  checked: boolean
-  onChange: (checked: boolean) => void
-  children?: ReactNode
-  className?: string
-  title?: string
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  children?: ReactNode;
+  className?: string;
+  title?: string;
 }
 
 export default function Toggle({ checked, onChange, children, className, title }: ToggleProps): JSX.Element {
@@ -20,5 +20,5 @@ export default function Toggle({ checked, onChange, children, className, title }
       <span className={`toggle${checked ? ' on' : ''}`} aria-hidden="true" />
       {children}
     </label>
-  )
+  );
 }

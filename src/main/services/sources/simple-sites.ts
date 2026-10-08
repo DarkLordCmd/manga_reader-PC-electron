@@ -1,72 +1,76 @@
-import * as cheerio from 'cheerio'
-import { fetchHtmlSmart } from '../fetch-html'
-import { type CatalogItem, type SimpleSiteConfig, resolve } from './catalog-types'
-import { assertLayout } from '../layout-watcher'
-import { comxFetchText } from '../comx-gate'
+import * as cheerio from 'cheerio';
+import { fetchHtmlSmart } from '../fetch-html';
+import { type CatalogItem, type SimpleSiteConfig, resolve } from './catalog-types';
+import { assertLayout } from '../layout-watcher';
+import { comxFetchText } from '../comx-gate';
 
 export function extractCoverFromSubtree($: cheerio.CheerioAPI, el: any): string | null {
   for (const attr of ['data-src', 'data-original', 'src']) {
-    const v = $(el).find(`img[${attr}]`).first().attr(attr)
-    if (v && !v.startsWith('data:')) return v
+    const v = $(el).find(`img[${attr}]`).first().attr(attr);
+    if (v && !v.startsWith('data:')) return v;
   }
-  const bg = $(el).find('*').map((_i, e) => {
-    const style = $(e).attr('style') ?? ''
-    const m = style.match(/url\(['"]?([^)'"]+)['"]?\)/)
-    return m ? m[1] : null
-  }).get().find((x): x is string => !!x)
-  return bg ?? null
+  const bg = $(el)
+    .find('*')
+    .map((_i, e) => {
+      const style = $(e).attr('style') ?? '';
+      const m = style.match(/url\(['"]?([^)'"]+)['"]?\)/);
+      return m ? m[1] : null;
+    })
+    .get()
+    .find((x): x is string => !!x);
+  return bg ?? null;
 }
 
 export async function searchSimpleSite(
   config: SimpleSiteConfig,
   query: string,
   extraQuery = '',
-  opts: { proxy?: string; overridePath?: string } = {}
+  opts: { proxy?: string; overridePath?: string } = {},
 ): Promise<CatalogItem[]> {
   let target = opts.overridePath
     ? `${config.base}${opts.overridePath}`
     : query
       ? `${config.base}${config.searchPath}${encodeURIComponent(query)}`
-      : `${config.base}${config.catalogPath}`
-  if (extraQuery) target += (target.includes('?') ? '&' : '?') + extraQuery
+      : `${config.base}${config.catalogPath}`;
+  if (extraQuery) target += (target.includes('?') ? '&' : '?') + extraQuery;
 
-  let html
+  let html;
   if (config.linkMarker === '/manga/' && (config.base.includes('com-x') ?? false)) {
     // com-x.life: páginas отдаются с PoW-челленджем (HTTP 404) — отдельный путь.
-    html = await comxFetchText(target, { proxy: opts.proxy })
+    html = await comxFetchText(target, { proxy: opts.proxy });
   } else {
-    html = await fetchHtmlSmart(target, { proxy: opts.proxy })
+    html = await fetchHtmlSmart(target, { proxy: opts.proxy });
   }
 
-  assertLayout([config.linkMarker, '<a '], html, config.name)
+  assertLayout([config.linkMarker, '<a '], html, config.name);
 
-  const $ = cheerio.load(html)
-  const results: CatalogItem[] = []
-  const seen = new Set<string>()
+  const $ = cheerio.load(html);
+  const results: CatalogItem[] = [];
+  const seen = new Set<string>();
   $('a').each((_i, el) => {
-    const href = $(el).attr('href') ?? ''
-    if (!href.includes(config.linkMarker)) return
-    const full = resolve(target, href)
-    if (!full || seen.has(full)) return
-    seen.add(full)
+    const href = $(el).attr('href') ?? '';
+    if (!href.includes(config.linkMarker)) return;
+    const full = resolve(target, href);
+    if (!full || seen.has(full)) return;
+    seen.add(full);
 
-    let title = $(el).text().trim()
-    if (!title) title = $(el).find('img').first().attr('alt') || $(el).find('img').first().attr('title') || ''
-    if (!title) title = $(el).attr('title') ?? ''
-    if (title.length < 2) return
+    let title = $(el).text().trim();
+    if (!title) title = $(el).find('img').first().attr('alt') || $(el).find('img').first().attr('title') || '';
+    if (!title) title = $(el).attr('title') ?? '';
+    if (title.length < 2) return;
 
-    let cover = extractCoverFromSubtree($, el)
-    const parent = $(el).parent()
-    if (!cover) cover = extractCoverFromSubtree($, parent.get(0) as any)
-    const coverUrl = cover ? resolve(target, cover) : null
+    let cover = extractCoverFromSubtree($, el);
+    const parent = $(el).parent();
+    if (!cover) cover = extractCoverFromSubtree($, parent.get(0) as any);
+    const coverUrl = cover ? resolve(target, cover) : null;
 
-    const allText = `${title} ${parent.text()}`
-    const m = allText.match(/(\d+)\s+(?:page|pages|стр|стр\.)/i)
-    results.push({ url: full, title, coverUrl, pages: m ? Number(m[1]) : null })
-  })
+    const allText = `${title} ${parent.text()}`;
+    const m = allText.match(/(\d+)\s+(?:page|pages|стр|стр\.)/i);
+    results.push({ url: full, title, coverUrl, pages: m ? Number(m[1]) : null });
+  });
 
   if (results.length === 0) {
-    throw new Error(`${config.name}: ничего не найдено (или сайт изменил вёрстку и парсер не смог найти ссылки)`)
+    throw new Error(`${config.name}: ничего не найдено (или сайт изменил вёрстку и парсер не смог найти ссылки)`);
   }
-  return results
+  return results;
 }

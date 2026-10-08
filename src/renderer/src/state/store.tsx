@@ -1,54 +1,77 @@
-import { createContext, useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
-import type { Settings } from '@shared/settings'
-import { defaultSettings } from '@shared/settings'
-import type { ChapterListItem } from '@shared/ipc'
+import { createContext, useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import type { Settings } from '@shared/settings';
+import { defaultSettings } from '@shared/settings';
+import type { ChapterListItem } from '@shared/ipc';
 
-export type Screen = 'Reader' | 'Catalog' | 'Popular' | 'Library' | 'Favorites' | 'History' | 'Downloads' | 'Settings'
+export type Screen = 'Reader' | 'Catalog' | 'Popular' | 'Library' | 'Favorites' | 'History' | 'Downloads' | 'Settings';
 
 export type OpenedGallery =
   | { kind: 'local'; id: string; title: string; pageCount: number; pages: string[]; url: string; startPage: number }
-  | { kind: 'online'; id: string; title: string; pageCount: number; source: string; url: string; startPage: number; mangaId: string | null; coverUrl?: string | null; chapterList?: ChapterListItem[] | null; chapterIndex?: number | null; webtoon?: boolean }
+  | {
+      kind: 'online';
+      id: string;
+      title: string;
+      pageCount: number;
+      source: string;
+      url: string;
+      startPage: number;
+      mangaId: string | null;
+      coverUrl?: string | null;
+      chapterList?: ChapterListItem[] | null;
+      chapterIndex?: number | null;
+      webtoon?: boolean;
+    };
 
 interface Store {
-  screen: Screen
-  setScreen: (s: Screen) => void
-  settings: Settings
-  setSettings: (s: Settings) => void
-  opened: OpenedGallery | null
-  setOpened: Dispatch<SetStateAction<OpenedGallery | null>>
-  pendingChapterList: { mangaId: string; title: string } | null
-  setPendingChapterList: (v: { mangaId: string; title: string } | null) => void
+  screen: Screen;
+  setScreen: (s: Screen) => void;
+  settings: Settings;
+  setSettings: (s: Settings) => void;
+  opened: OpenedGallery | null;
+  setOpened: Dispatch<SetStateAction<OpenedGallery | null>>;
+  pendingChapterList: { mangaId: string; title: string } | null;
+  setPendingChapterList: (v: { mangaId: string; title: string } | null) => void;
 }
 
-const Ctx = createContext<Store | null>(null)
+const Ctx = createContext<Store | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }): JSX.Element {
-  const [screen, setScreen] = useState<Screen>('Reader')
-  const [settings, setSettingsState] = useState<Settings>(defaultSettings())
-  const [opened, setOpened] = useState<OpenedGallery | null>(null)
-  const [pendingChapterList, setPendingChapterList] = useState<{ mangaId: string; title: string } | null>(null)
+  const [screen, setScreen] = useState<Screen>('Reader');
+  const [settings, setSettingsState] = useState<Settings>(defaultSettings());
+  const [opened, setOpened] = useState<OpenedGallery | null>(null);
+  const [pendingChapterList, setPendingChapterList] = useState<{ mangaId: string; title: string } | null>(null);
 
   useEffect(() => {
-    window.api.getSettings().then(setSettingsState)
-  }, [])
+    window.api.getSettings().then(setSettingsState);
+  }, []);
 
-  useEffect(() => window.api.onSettingsChanged(setSettingsState), [])
+  useEffect(() => window.api.onSettingsChanged(setSettingsState), []);
 
   const setSettings = (s: Settings): void => {
-    setSettingsState(s)
-    window.api.setSettings(s)
-  }
+    setSettingsState(s);
+    window.api.setSettings(s);
+  };
 
   return (
-    <Ctx.Provider value={{
-      screen, setScreen, settings, setSettings, opened, setOpened,
-      pendingChapterList, setPendingChapterList
-    }}>{children}</Ctx.Provider>
-  )
+    <Ctx.Provider
+      value={{
+        screen,
+        setScreen,
+        settings,
+        setSettings,
+        opened,
+        setOpened,
+        pendingChapterList,
+        setPendingChapterList,
+      }}
+    >
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export function useStore(): Store {
-  const v = useContext(Ctx)
-  if (!v) throw new Error('useStore outside provider')
-  return v
+  const v = useContext(Ctx);
+  if (!v) throw new Error('useStore outside provider');
+  return v;
 }

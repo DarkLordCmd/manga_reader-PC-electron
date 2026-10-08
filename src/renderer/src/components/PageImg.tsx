@@ -1,20 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react';
 
 interface Props {
-  galleryId: string
-  index: number
-  className?: string
-  style?: React.CSSProperties
-  alt?: string
+  galleryId: string;
+  index: number;
+  className?: string;
+  style?: React.CSSProperties;
+  alt?: string;
 }
 
 /** manga://page image with automatic retry: the protocol handler answers 404
  * for transient failures (network hiccup, rate limit) — remount with a fresh
  * cache-buster instead of leaving a broken picture. */
 export default function PageImg({ galleryId, index, className, style, alt }: Props): JSX.Element {
-  const [attempt, setAttempt] = useState(0)
+  const [attempt, setAttempt] = useState(0);
 
-  useEffect(() => { setAttempt(0) }, [galleryId, index])
+  useEffect(() => {
+    setAttempt(0);
+  }, [galleryId, index]);
 
   if (attempt > 5) {
     return (
@@ -22,7 +24,7 @@ export default function PageImg({ galleryId, index, className, style, alt }: Pro
         <div>стр. {index + 1}</div>
         <button onClick={() => setAttempt(0)}>↻ повторить</button>
       </div>
-    )
+    );
   }
 
   return (
@@ -36,8 +38,8 @@ export default function PageImg({ galleryId, index, className, style, alt }: Pro
       onError={() => {
         // 404 on a transient failure: brief pause, then remount to retry —
         // nothing above the render tree re-triggers on its own.
-        setTimeout(() => setAttempt((a) => a + 1), 800)
+        setTimeout(() => setAttempt((a) => a + 1), 800);
       }}
     />
-  )
+  );
 }
