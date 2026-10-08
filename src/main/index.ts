@@ -11,7 +11,7 @@ import { galleryFromFolder } from './services/gallery';
 import { openZipGallery, isZipPath, clearZipTmpAll } from './services/zip-gallery';
 import { fetchChapterList, searchMangaDex, fetchChapterCount } from './services/mangadex';
 import { createOnlineGallery, setReadingPosition } from './services/online-gallery';
-import { resolveGallery, sourceLabel, UnsupportedUrlError, type GalleryResolution } from './services/resolve-gallery';
+import { resolveGallery, UnsupportedUrlError, type GalleryResolution } from './services/resolve-gallery';
 import { fetchRemangaChapters, fetchSenkuroChapters } from './services/sources';
 import { fetchMangaShiChapters } from './services/catalog-search';
 import { startEmbeddedTor, stopEmbeddedTor, embeddedTorSocks, whenEmbeddedTorReady } from './services/tor-embedded';
@@ -26,11 +26,9 @@ import {
   searchRemanga,
   searchSenkuro,
   searchSimpleSite,
-  extractGidToken,
 } from './services/catalog-search';
 import { enrichNhentaiPageCounts } from './services/sources/nhentai';
 import { fetchEhPopular } from './services/sources/eh';
-import { fetchArchiveCost, buyArchive } from './services/eh-archive';
 import { runLoginWindow } from './services/login';
 import { probeSocks5Handshake, probeBridgeLine, probeSite, allSiteKeys } from './services/tor-check';
 import { fetchEhTagSuggest, fetchNhentaiTagSuggestions } from './services/tags';
@@ -54,12 +52,13 @@ import { GoogleDrive } from './services/google-drive';
 import { SyncService } from './services/sync';
 import { CH } from '@shared/ipc';
 import { z } from 'zod';
-import { handleSafe, existingDirOrArchive, httpUrl, dlTypeToken } from './ipc/validate';
+import { handleSafe, existingDirOrArchive, httpUrl } from './ipc/validate';
 import { createWindow, registerLifecycle } from './windows';
 import { registerMangaProtocol } from './protocol';
 import { registerSettings } from './ipc/settings';
 import { registerPin } from './ipc/pin';
 import { registerLibrary } from './ipc/library';
+import { registerDownloads } from './ipc/downloads';
 import {
   galleries,
   onlineHeaders,
@@ -96,7 +95,6 @@ const groupleIdxMap = { readmanga: 0, mintmanga: 1, mangapoisk: 2 } as const;
 // for Cloudflare-fronted hosts like nhentai), hiding it from SNI-based DPI.
 // QUIC/HTTP-3 is already on by default in the network service.
 app.commandLine.appendSwitch('enable-features', 'EncryptedClientHello');
-const SERIES_SOURCES = ['MangaDex', 'Remanga', 'Senkuro', 'Manga-shi', 'Readmanga', 'Mintmanga', 'Mangapoisk', 'MangaMello'];
 
 function downloadsDirBase(dir: string | null | undefined): string {
   return dir?.trim() || join(app.getPath('userData'), 'downloads');
@@ -109,26 +107,6 @@ let exAccounts: ExAccountsService;
 let downloads: DownloadManager;
 let pin: PinService;
 let sync: SyncService;
-
-function downloadFetchOpts(sourceUrl: string): { proxy?: string; cookieHeader?: string } {
-  const s = settings.get();
-  const torSocks = effectiveTorSocks();
-  const isEx = sourceUrl.includes('exhentai') || sourceUrl.includes('e-hentai.org');
-  const isMl = sourceUrl.includes('mangalib');
-  const useTor =
-    sourceUrl.includes('.onion') ||
-    (isEx && (s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai'))) ||
-    (isMl && s.tor_proxied_sites.includes('mangalib'));
-  const proxy = useTor
-    ? torSocks
-    : isEx && s.exhentai_proxy_addr.trim()
-      ? s.exhentai_proxy_addr.trim()
-      : isMl && s.mangalib_proxy_addr.trim()
-        ? s.mangalib_proxy_addr.trim()
-        : undefined;
-  const cookieHeader = sourceUrl.includes('.onion') ? s.onion_cookies_raw : isEx ? exAccounts.currentCookieHeader() : undefined;
-  return { proxy, cookieHeader };
-}
 
 function coverMaxBytes(): number {
   return Math.max(16, Number(settings.get().cover_cache_mb) || 256) * 1024 * 1024;
@@ -284,33 +262,6 @@ app.whenReady().then(() => {
     },
   });
 
-  ipcMain.handle(CH.downloadsList, () => downloads.list());
-  handleSafe(CH.downloadsAdd, z.tuple([httpUrl]), async (_e, sourceUrl) => {
-    const { proxy, cookieHeader } = downloadFetchOpts(sourceUrl);
-    const holder: { res: GalleryResolution | null } = { res: null };
-    const task = await downloads.add(
-      sourceUrl,
-      async () => {
-        holder.res = await resolveGallery(sourceUrl, { proxy, cookieHeader });
-        return holder.res;
-      },
-      {
-        Referer: sourceUrl,
-        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-      },
-      proxy,
-    );
-    if (task && holder.res) {
-      const mangaId = holder.res.mangaId;
-      if (mangaId && SERIES_SOURCES.includes(sourceLabel(sourceUrl))) {
-        downloads.setChapterMeta(task.id, { mangaId });
-        const count = await fetchChapterCountSafe(mangaId);
-        if (count != null) downloads.setChapterMeta(task.id, { chapterTotal: count });
-      }
-    }
-    return task;
-  });
-
   async function fetchChapterListFor(mangaId: string): Promise<{ chapter_id: string; chapter_num: string; title: string | null }[]> {
     let chapters;
     if (mangaId.includes('remanga.org')) {
@@ -372,83 +323,14 @@ app.whenReady().then(() => {
     return list ? list.length : null;
   }
 
-  ipcMain.handle(CH.downloadsCheckChapters, async () => {
-    const updated: string[] = [];
-    for (const t of downloads.list()) {
-      if (!t.mangaId || t.chapterTotal == null) continue;
-      const list = await fetchChapterListSafe(t.mangaId);
-      if (!list) continue;
-      if (list.length > t.chapterTotal) {
-        downloads.setChapterMeta(t.id, {
-          newChapters: list.length - t.chapterTotal,
-          latestChapterId: list[list.length - 1].chapter_id,
-        });
-        updated.push(t.id);
-      }
-    }
-    return updated;
-  });
-  ipcMain.handle(CH.downloadsPause, (_e, id: string) => downloads.pause(id));
-  ipcMain.handle(CH.downloadsResume, (_e, id: string) => downloads.resume(id));
-  ipcMain.handle(CH.downloadsRemove, (_e, id: string) => downloads.remove(id));
-  ipcMain.handle(CH.downloadsSetPriority, (_e, id: string, p: number) => downloads.setPriority(id, p));
-  ipcMain.handle(CH.downloadsOpen, (_e, id: string) => {
-    const t = downloads.list().find((x) => x.id === id);
-    if (!t || t.state !== 'completed') return null;
-    const g = galleryFromFolder(t.outDir);
-    if (!g) return null;
-    galleries.set(g.id, g);
-    return { id: g.id, title: g.title, pageCount: g.pages.length, pages: g.pages, url: `file://${t.outDir}` };
-  });
-  ipcMain.handle(CH.downloadsCheckUpdates, async () => {
-    const urls = downloads
-      .list()
-      .filter((t) => t.state === 'completed')
-      .map((t) => t.sourceUrl);
-    return await downloads.checkUpdates(urls, async (url) => {
-      const { proxy, cookieHeader } = downloadFetchOpts(url);
-      return await resolveGallery(url, { proxy, cookieHeader });
-    });
-  });
-
-  function archiverUrlFor(galleryUrl: string): string | null {
-    const gt = extractGidToken(galleryUrl);
-    if (!gt) return null;
-    const base = new URL(galleryUrl);
-    return `${base.origin}/archiver.php?gid=${gt.gid}&token=${gt.token}`;
-  }
-  handleSafe(CH.ehArchiveCost, z.tuple([httpUrl]), async (_e, url) => {
-    const archiver = archiverUrlFor(url);
-    if (!archiver) return null;
-    const { proxy, cookieHeader } = downloadFetchOpts(url);
-    try {
-      return await fetchArchiveCost(archiver, { cookieHeader, proxy });
-    } catch {
-      return null;
-    }
-  });
-  handleSafe(CH.ehArchiveBuy, z.tuple([httpUrl, dlTypeToken]), async (_e, url, dltype) => {
-    const archiver = archiverUrlFor(url);
-    if (!archiver) return null;
-    const { proxy, cookieHeader } = downloadFetchOpts(url);
-    try {
-      return await buyArchive(archiver, { cookieHeader, proxy, dltype });
-    } catch {
-      return null;
-    }
-  });
-  handleSafe(CH.downloadsAddArchive, z.tuple([httpUrl, z.string().min(1).max(512), httpUrl]), (_e, sourceUrl, title, downloadUrl) => {
-    const { proxy, cookieHeader } = downloadFetchOpts(sourceUrl);
-    return downloads.addArchive(
-      sourceUrl,
-      title,
-      downloadUrl,
-      {
-        Referer: new URL(sourceUrl).origin + '/',
-        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-      },
-      proxy,
-    );
+  registerDownloads({
+    downloads,
+    settings,
+    exAccounts,
+    effectiveTorSocks,
+    resolveGallery,
+    fetchChapterCountSafe,
+    fetchChapterListSafe,
   });
 
   registerSettings({
@@ -485,11 +367,6 @@ app.whenReady().then(() => {
 
   registerLibrary({ library, history, settings, sync, broadcastLibrary });
 
-  ipcMain.handle(CH.downloadsPickDir, async () => {
-    const r = await dialog.showOpenDialog({ properties: ['openDirectory'] });
-    if (r.canceled || r.filePaths.length === 0) return null;
-    return r.filePaths[0];
-  });
   ipcMain.handle(CH.pickFolder, async () => {
     const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'openFile'] });
     if (r.canceled || r.filePaths.length === 0) return null;
