@@ -1,17 +1,16 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, net, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
 import { installAppCsp, installDefaultPermissions } from './security';
 import { logger } from './services/logger';
 import { join } from 'path';
-import { pathToFileURL } from 'url';
 import { readFileSync, writeFileSync, copyFileSync } from 'fs';
 import { SettingsService } from './services/settings';
 import { HistoryManager } from './services/history';
 import { openDatabase } from './services/db';
 import { LibraryService } from './services/library';
-import { galleryFromFolder, type Gallery } from './services/gallery';
-import { openZipGallery, readZipEntry, isZipPath, clearZipTmpAll } from './services/zip-gallery';
+import { galleryFromFolder } from './services/gallery';
+import { openZipGallery, isZipPath, clearZipTmpAll } from './services/zip-gallery';
 import { fetchChapterList, searchMangaDex, fetchChapterCount } from './services/mangadex';
-import { createOnlineGallery, requestPage, setReadingPosition, getGalleryPages } from './services/online-gallery';
+import { createOnlineGallery, setReadingPosition } from './services/online-gallery';
 import { resolveGallery, sourceLabel, UnsupportedUrlError, type GalleryResolution } from './services/resolve-gallery';
 import { fetchRemangaChapters, fetchSenkuroChapters } from './services/sources';
 import { fetchMangaShiChapters } from './services/catalog-search';
@@ -29,7 +28,6 @@ import {
   searchSimpleSite,
   extractGidToken,
 } from './services/catalog-search';
-import type { CatalogItem } from './services/sources/catalog-types';
 import { enrichNhentaiPageCounts } from './services/sources/nhentai';
 import { fetchEhPopular } from './services/sources/eh';
 import { fetchArchiveCost, buyArchive } from './services/eh-archive';
@@ -37,11 +35,9 @@ import { runLoginWindow } from './services/login';
 import { probeSocks5Handshake, probeBridgeLine, probeSite, allSiteKeys } from './services/tor-check';
 import { fetchEhTagSuggest, fetchNhentaiTagSuggestions } from './services/tags';
 import { fetchCoverBuffer } from './services/covers';
-import { CoverDiskCache } from './services/cover-cache';
 import { setFrontingEnabled } from './services/domain-fronting';
 import { setTorFallbackAddr } from './services/http';
 import { shutdownBrowserFetch } from './services/browser-fetch';
-import { parseMangaPageUrl } from './services/page-url';
 import { ExAccountsService, parseCookieLogin } from './services/accounts';
 import { setEhSetCookieHandler } from './services/eh-session';
 import { PinService } from './services/pin';
@@ -61,13 +57,24 @@ import { isPortableSettingsChanged } from './services/sync';
 import { CH } from '@shared/ipc';
 import { z } from 'zod';
 import { handleSafe, existingDirOrArchive, httpUrl, dlTypeToken } from './ipc/validate';
-
-const galleries = new Map<string, Gallery>();
+import { createWindow, registerLifecycle } from './windows';
+import { registerMangaProtocol } from './protocol';
+import {
+  galleries,
+  onlineHeaders,
+  coverCache,
+  coverInFlight,
+  getCoverDisk,
+  setCoverDiskMaxBytes,
+  zipMeta,
+  ZIP_TMP,
+  isGroupleWarming,
+  setGroupleWarming,
+  groupleCache,
+} from './app/state';
 
 // Grouple (readmanga etc.) catalog cache: warmed at boot so switching to the
 // source renders instantly (the site itself needs Tor and builds slowly).
-const groupleCache = new Map<string, { base: string; items: CatalogItem[]; ts: number }>();
-let groupleWarming = false;
 async function refreshGroupleCache(source: string): Promise<void> {
   const idx = ({ readmanga: 0, mintmanga: 1, mangapoisk: 2 } as const)[source as keyof typeof groupleIdxMap] ?? undefined;
   if (idx === undefined) return;
@@ -89,21 +96,11 @@ const groupleIdxMap = { readmanga: 0, mintmanga: 1, mangapoisk: 2 } as const;
 // for Cloudflare-fronted hosts like nhentai), hiding it from SNI-based DPI.
 // QUIC/HTTP-3 is already on by default in the network service.
 app.commandLine.appendSwitch('enable-features', 'EncryptedClientHello');
-const onlineHeaders = new Map<string, Record<string, string>>();
-const coverCache = new Map<string, Buffer>();
-const coverInFlight = new Map<string, Promise<Buffer>>();
-let coverDisk: CoverDiskCache | null = null;
-const zipMeta = new Map<string, { zipPath: string; entries: string[] }>();
-const ZIP_TMP = join(app.getPath('userData'), 'tmp', 'zip');
 const SERIES_SOURCES = ['MangaDex', 'Remanga', 'Senkuro', 'Manga-shi', 'Readmanga', 'Mintmanga', 'Mangapoisk', 'MangaMello'];
 
 function downloadsDirBase(dir: string | null | undefined): string {
   return dir?.trim() || join(app.getPath('userData'), 'downloads');
 }
-
-protocol.registerSchemesAsPrivileged([
-  { scheme: 'manga', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
-]);
 
 let settings: SettingsService;
 let history: HistoryManager;
@@ -133,12 +130,8 @@ function downloadFetchOpts(sourceUrl: string): { proxy?: string; cookieHeader?: 
   return { proxy, cookieHeader };
 }
 
-function getCoverDisk(): CoverDiskCache {
-  if (!coverDisk) {
-    const mb = Math.max(16, Number(settings.get().cover_cache_mb) || 256);
-    coverDisk = new CoverDiskCache(join(app.getPath('userData'), 'cover-cache'), mb * 1024 * 1024);
-  }
-  return coverDisk;
+function coverMaxBytes(): number {
+  return Math.max(16, Number(settings.get().cover_cache_mb) || 256) * 1024 * 1024;
 }
 
 function getCover(url: string): Promise<Buffer> {
@@ -150,7 +143,7 @@ function getCover(url: string): Promise<Buffer> {
     try {
       // L2: persistent on-disk cache — survives restarts so library/favorites/
       // history covers are not refetched every launch.
-      const disk = getCoverDisk();
+      const disk = getCoverDisk(coverMaxBytes);
       const onDisk = await disk.get(url);
       if (onDisk) {
         coverCache.set(url, onDisk);
@@ -176,58 +169,6 @@ function effectiveTorSocks(): string {
   return settings?.get().tor_socks_addr || '127.0.0.1:9150';
 }
 
-function createWindow(): void {
-  const win = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 480,
-    minHeight: 360,
-    backgroundColor: '#000000',
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      webSecurity: true,
-      allowRunningInsecureContent: false,
-    },
-  });
-  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  win.webContents.on('will-navigate', (event, url) => {
-    let allowed = false;
-    try {
-      const devUrl = process.env['ELECTRON_RENDERER_URL'];
-      const u = new URL(url);
-      if (devUrl) allowed = u.origin === new URL(devUrl).origin;
-      else allowed = u.href.startsWith(pathToFileURL(join(__dirname, '../renderer')).href);
-    } catch {
-      allowed = false;
-    }
-    if (!allowed) event.preventDefault();
-  });
-  win.webContents.on('will-attach-webview', (event) => {
-    event.preventDefault();
-  });
-  // Hidden helper windows (the browser-fetch engine and the login window) stay
-  // open, so `window-all-closed` never fires and closing the main window left
-  // the app (and its child processes) running. Quit explicitly on main close.
-  win.on('closed', () => {
-    if (process.platform !== 'darwin') app.quit();
-  });
-  if (process.env['ELECTRON_RENDERER_URL']) {
-    win.webContents.on('did-fail-load', (_e, code, desc, url, isMain) => {
-      logger.info('[main-window] load fail', code, desc, url, 'main:', isMain);
-    });
-    win.webContents.on('console-message', (_e, _lvl, msg, line, src) => {
-      console.log(`[main-window-console] (${src ?? '?'}:${line ?? '?'}): ${String(msg).slice(0, 300)}`);
-    });
-    win.loadURL(process.env['ELECTRON_RENDERER_URL']);
-  } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'));
-  }
-}
-
 app.whenReady().then(() => {
   installAppCsp(process.env['ELECTRON_RENDERER_URL']);
   installDefaultPermissions(session.defaultSession);
@@ -249,14 +190,14 @@ app.whenReady().then(() => {
   // (give Tor time to settle) — opening the sources then becomes instant.
   setTimeout(() => {
     void (async () => {
-      if (groupleWarming) return;
-      groupleWarming = true;
+      if (isGroupleWarming()) return;
+      setGroupleWarming(true);
       try {
         await refreshGroupleCache('readmanga');
         await refreshGroupleCache('mintmanga');
         await refreshGroupleCache('mangapoisk');
       } finally {
-        groupleWarming = false;
+        setGroupleWarming(false);
       }
     })();
   }, 5000);
@@ -590,74 +531,12 @@ app.whenReady().then(() => {
     }
   });
 
-  protocol.handle('manga', async (request) => {
-    const url = new URL(request.url);
-    const parts = url.pathname.split('/').filter(Boolean);
-
-    if (url.hostname === 'cover') {
-      const encoded = parts[0];
-      if (!encoded) return new Response('Not found', { status: 404 });
-      const target = decodeURIComponent(encoded);
-      try {
-        const s = settings.get();
-        // Cold start: an .onion cover requested before the bundled Tor finished
-        // bootstrapping would 404 and the <img> would never retry. Wait for the
-        // daemon (bounded) so the very first cover load succeeds.
-        if (target.includes('.onion') && s.builtin_tor && !embeddedTorSocks()) {
-          try {
-            await whenEmbeddedTorReady(60_000);
-          } catch {
-            /* fall through to the configured SOCKS */
-          }
-        }
-        const buf = await getCover(target);
-        return new Response(Uint8Array.from(buf), { headers: { 'Content-Type': 'image/jpeg' } });
-      } catch {
-        return new Response('Not found', { status: 404 });
-      }
-    }
-
-    // Renderer requests pages as `manga://page/<galleryId>/<index>`, so the
-    // gallery id lives in the first path segment when hostname is "page".
-    const parsed = parseMangaPageUrl(request.url);
-    if (!parsed) return new Response('Not found', { status: 404 });
-    const gid = parsed.gid;
-    const index = parsed.index;
-
-    const zip = zipMeta.get(gid);
-    if (zip) {
-      if (!Number.isInteger(index) || index < 0 || index >= zip.entries.length) {
-        return new Response('Not found', { status: 404 });
-      }
-      let file: string;
-      try {
-        file = await readZipEntry(zip.zipPath, zip.entries[index], ZIP_TMP);
-      } catch {
-        return new Response('Not found', { status: 404 });
-      }
-      return net.fetch(pathToFileURL(file).toString());
-    }
-
-    const local = galleries.get(gid);
-    if (local) {
-      if (!Number.isInteger(index) || index < 0 || index >= local.pages.length) {
-        return new Response('Not found', { status: 404 });
-      }
-      return net.fetch(pathToFileURL(local.pages[index]).toString());
-    }
-
-    const info = getGalleryPages(gid);
-    if (!info) return new Response('Not found', { status: 404 });
-    if (!Number.isInteger(index) || index < 0 || index >= info.pageCount) {
-      return new Response('Not found', { status: 404 });
-    }
-    try {
-      const buf = await requestPage(gid, index, onlineHeaders.get(gid) ?? {});
-      if (!buf) return new Response('Not found', { status: 404 });
-      return new Response(Uint8Array.from(buf), { headers: { 'Content-Type': 'image/jpeg' } });
-    } catch {
-      return new Response('Not found', { status: 404 });
-    }
+  registerMangaProtocol({
+    state: { galleries, zipMeta, onlineHeaders, ZIP_TMP },
+    settings,
+    getCover,
+    whenEmbeddedTorReady,
+    embeddedTorSocks,
   });
 
   ipcMain.handle(CH.getSettings, () => settings.get());
@@ -686,7 +565,7 @@ app.whenReady().then(() => {
     const prevSettings = settings.get();
     const before = downloadsDirBase(prevSettings.downloads_dir);
     settings.save(s);
-    coverDisk?.setMaxBytes(Math.max(16, Number(s?.cover_cache_mb) || 256) * 1024 * 1024);
+    setCoverDiskMaxBytes(Math.max(16, Number(s?.cover_cache_mb) || 256) * 1024 * 1024);
     const after = downloadsDirBase(s?.downloads_dir);
     if (before !== after) downloads.setOutDirBase(after);
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s);
@@ -750,9 +629,9 @@ app.whenReady().then(() => {
   });
   ipcMain.handle(CH.libraryCounts, () => library.countByStatus());
   ipcMain.handle(CH.libraryStatuses, (_e, urls: string[]) => library.statusesForUrls(Array.isArray(urls) ? urls.map(String) : []));
-  ipcMain.handle(CH.coverCacheInfo, () => getCoverDisk().stats());
+  ipcMain.handle(CH.coverCacheInfo, () => getCoverDisk(coverMaxBytes).stats());
   ipcMain.handle(CH.coverCacheClear, async () => {
-    await getCoverDisk().clear();
+    await getCoverDisk(coverMaxBytes).clear();
     coverCache.clear();
   });
 
@@ -1193,9 +1072,6 @@ app.whenReady().then(() => {
   });
 
   createWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
 });
 
 async function openFolder(path: string): Promise<{ id: string; title: string; pageCount: number; pages: string[]; url: string } | null> {
@@ -1241,11 +1117,9 @@ async function openFolder(path: string): Promise<{ id: string; title: string; pa
   return { id: g.id, title: g.title, pageCount: g.pages.length, pages: g.pages, url };
 }
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
-
-app.on('will-quit', () => {
-  clearZipTmpAll(ZIP_TMP);
-  void shutdownBrowserFetch();
+registerLifecycle({
+  onWillQuit: () => {
+    clearZipTmpAll(ZIP_TMP);
+    void shutdownBrowserFetch();
+  },
 });
