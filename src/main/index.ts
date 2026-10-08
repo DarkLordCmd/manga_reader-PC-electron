@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, session } from 'electron';
 import { installAppCsp, installDefaultPermissions } from './security';
 import { logger } from './services/logger';
 import { join } from 'path';
-import { readFileSync, writeFileSync, copyFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { SettingsService } from './services/settings';
 import { HistoryManager } from './services/history';
 import { openDatabase } from './services/db';
@@ -49,23 +49,22 @@ import { setCustomDnsServers, parseDnsServerList, checkCustomDns } from './servi
 import { initCookieStore } from './services/comx-gate';
 import { lookup as dnsPromiseLookup } from 'dns';
 import { DownloadManager } from './services/download-manager';
-import { buildBackup, parseBackup, SECRET_SETTINGS } from './services/backup';
 import { GoogleAuth } from './services/google-auth';
 import { GoogleDrive } from './services/google-drive';
 import { SyncService } from './services/sync';
-import { isPortableSettingsChanged } from './services/sync';
 import { CH } from '@shared/ipc';
 import { z } from 'zod';
 import { handleSafe, existingDirOrArchive, httpUrl, dlTypeToken } from './ipc/validate';
 import { createWindow, registerLifecycle } from './windows';
 import { registerMangaProtocol } from './protocol';
+import { registerSettings } from './ipc/settings';
+import { registerPin } from './ipc/pin';
 import {
   galleries,
   onlineHeaders,
   coverCache,
   coverInFlight,
   getCoverDisk,
-  setCoverDiskMaxBytes,
   zipMeta,
   ZIP_TMP,
   isGroupleWarming,
@@ -202,11 +201,7 @@ app.whenReady().then(() => {
     })();
   }, 5000);
   pin = new PinService(app.getPath('userData'));
-  ipcMain.handle(CH.pinHasPin, () => pin.hasPin());
-  ipcMain.handle(CH.pinSetPin, (_e, p: string) => pin.setPin(String(p)));
-  ipcMain.handle(CH.pinRemovePin, (_e, p: string) => pin.removePin(String(p)));
-  ipcMain.handle(CH.pinVerifyPin, (_e, p: string) => pin.verify(String(p)));
-  ipcMain.handle(CH.pinFailedAttempt, () => pin.failedAttempt());
+  registerPin({ pin });
   exAccounts = new ExAccountsService(app.getPath('userData'));
   exAccounts.init();
   registerEhLimitHook({
@@ -455,80 +450,23 @@ app.whenReady().then(() => {
     );
   });
 
-  ipcMain.handle(CH.backupExport, async (_e, includeSecrets: boolean) => {
-    const r = await dialog.showSaveDialog({
-      title: 'Экспорт данных',
-      defaultPath: `manga-reader-backup-${new Date().toISOString().slice(0, 10)}.json`,
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-    });
-    if (r.canceled || !r.filePath) return { canceled: true };
-    const data = buildBackup(settings.get(), repo.all(), exAccounts.accounts, downloads.list(), !!includeSecrets);
-    writeFileSync(r.filePath, JSON.stringify(data, null, 2), 'utf8');
-    return { canceled: false, path: r.filePath };
-  });
-
-  ipcMain.handle(CH.backupImport, async () => {
-    const r = await dialog.showOpenDialog({
-      title: 'Импорт данных',
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-      properties: ['openFile'],
-    });
-    if (r.canceled || r.filePaths.length === 0) return null;
-    let backup;
-    try {
-      backup = parseBackup(readFileSync(r.filePaths[0], 'utf8'));
-    } catch (e: any) {
-      dialog.showErrorBox('Импорт не выполнен', e?.message ?? String(e));
-      return null;
-    }
-    // WAL-safe safety copy: checkpoint first so all committed data is in the
-    // main file, then copy just that file.
-    try {
-      db.pragma('wal_checkpoint(TRUNCATE)');
-    } catch {
-      /* ignore */
-    }
-    try {
-      copyFileSync(join(app.getPath('userData'), 'library.db'), join(app.getPath('userData'), 'library.db.bak'));
-    } catch {
-      /* ignore */
-    }
-
-    try {
-      const res = repo.importItems(backup.series ?? []);
-
-      const next = { ...settings.get(), ...backup.settings };
-      for (const k of SECRET_SETTINGS) {
-        if (String((backup.settings as any)[k] ?? '') === '') (next as any)[k] = (settings.get() as any)[k];
-      }
-      settings.save(next);
-      setFrontingEnabled(!!next.enable_domain_fronting);
-      setLibMirror(next.lib_image_server ?? null);
-      setCustomDnsServers(parseDnsServerList(next.custom_dns ?? ''));
-
-      const accountsAdded = Array.isArray(backup.accounts) ? exAccounts.importAccounts(backup.accounts) : 0;
-
-      let downloadsMerged = 0;
-      const existing = new Set(downloads.list().map((t) => t.sourceUrl));
-      for (const t of backup.downloads ?? []) {
-        if (existing.has(t.sourceUrl)) continue;
-        downloads.adopt(t);
-        existing.add(t.sourceUrl);
-        downloadsMerged++;
-      }
-
+  registerSettings({
+    settings,
+    sync,
+    repo,
+    exAccounts,
+    downloads,
+    db,
+    coverCache,
+    getCoverDisk: () => getCoverDisk(coverMaxBytes),
+    broadcastSettingsChanged: (s) => {
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s);
+    },
+    broadcastLibraryChanged: () => {
       for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.libraryChanged);
-      const summary: import('@shared/ipc').BackupSummary = {
-        seriesAdded: res.added,
-        seriesUpdated: res.updated,
-        accountsAdded,
-        downloadsMerged,
-      };
-      return summary;
-    } catch (e: any) {
-      dialog.showErrorBox('Импорт не выполнен', e?.message ?? String(e));
-      return null;
-    }
+    },
+    effectiveTorSocks,
+    downloadsDirBase,
   });
 
   registerMangaProtocol({
@@ -539,41 +477,6 @@ app.whenReady().then(() => {
     embeddedTorSocks,
   });
 
-  ipcMain.handle(CH.getSettings, () => settings.get());
-  ipcMain.handle(CH.setSettings, (_e, s) => {
-    setFrontingEnabled(!!s?.enable_domain_fronting);
-    setTorFallbackAddr(effectiveTorSocks());
-    setLibMirror(s?.lib_image_server ?? null);
-    setCustomDnsServers(parseDnsServerList(s?.custom_dns ?? ''));
-    // Bundled Tor daemon lifecycle follows the toggle at runtime.
-    if (!!s?.builtin_tor && !embeddedTorSocks()) {
-      void startEmbeddedTor(s?.tor_bridges ?? '', app.getPath('userData')).then((r) => {
-        if (r) setTorFallbackAddr(effectiveTorSocks());
-      });
-    } else if (!s?.builtin_tor && embeddedTorSocks()) {
-      stopEmbeddedTor();
-      setTorFallbackAddr(effectiveTorSocks());
-    }
-    // The renderer sends its full settings snapshot, which can be stale: a
-    // login window may have persisted cookies into settings.json after the
-    // renderer loaded its copy. Do not let the renderer's empty cookie
-    // strings wipe freshly grabbed sessions.
-    const prev = settings.get();
-    for (const k of ['onion_cookies_raw', 'nhentai_cookies_raw', 'nhentai_onion_cookies_raw', 'senkuro_cookies_raw'] as const) {
-      if (String(s?.[k] ?? '') === '' && String(prev[k] ?? '') !== '') s[k] = prev[k];
-    }
-    const prevSettings = settings.get();
-    const before = downloadsDirBase(prevSettings.downloads_dir);
-    settings.save(s);
-    setCoverDiskMaxBytes(Math.max(16, Number(s?.cover_cache_mb) || 256) * 1024 * 1024);
-    const after = downloadsDirBase(s?.downloads_dir);
-    if (before !== after) downloads.setOutDirBase(after);
-    for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s);
-    if (isPortableSettingsChanged(prevSettings, s)) {
-      sync?.markSettingsChanged();
-      sync?.scheduleSync();
-    }
-  });
   ipcMain.handle(CH.getHistory, () => history.toVec());
 
   function broadcastLibrary(): void {
@@ -629,11 +532,6 @@ app.whenReady().then(() => {
   });
   ipcMain.handle(CH.libraryCounts, () => library.countByStatus());
   ipcMain.handle(CH.libraryStatuses, (_e, urls: string[]) => library.statusesForUrls(Array.isArray(urls) ? urls.map(String) : []));
-  ipcMain.handle(CH.coverCacheInfo, () => getCoverDisk(coverMaxBytes).stats());
-  ipcMain.handle(CH.coverCacheClear, async () => {
-    await getCoverDisk(coverMaxBytes).clear();
-    coverCache.clear();
-  });
 
   ipcMain.handle(CH.recordProgress, (_e, url: string, page: number, total: number) => {
     history.updateProgress(url, page, total);
@@ -1063,12 +961,6 @@ app.whenReady().then(() => {
     }
     const count = exAccounts.importFromContent(content);
     return { count, accounts: { accounts: exAccounts.accounts, currentId: exAccounts.currentId } };
-  });
-  ipcMain.handle(CH.markChapterRead, (_e, url: string) => {
-    const s = settings.get();
-    if (!s.read_chapters.includes(url)) {
-      settings.save({ ...s, read_chapters: [...s.read_chapters, url] });
-    }
   });
 
   createWindow();
