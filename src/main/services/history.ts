@@ -1,131 +1,172 @@
-import type { HistoryEntry } from '@shared/types'
-import type { LibraryItem, SeriesUpsert } from '@shared/library'
-import { mangaSeriesUrlFromChapterUrl } from './sources'
-import { InMemorySeriesRepository, type SeriesRepository } from './series-repository'
-import { galleryKeyForUrl, seriesKeyForUrl, sourceLabelForUrl } from './series-key'
-export { galleryKeyForUrl, seriesKeyForUrl, sourceLabelForUrl } from './series-key'
+import type { HistoryEntry } from '@shared/types';
+import type { LibraryItem, SeriesUpsert } from '@shared/library';
+import { mangaSeriesUrlFromChapterUrl } from './sources';
+import { InMemorySeriesRepository, type SeriesRepository } from './series-repository';
+import { galleryKeyForUrl, seriesKeyForUrl, sourceLabelForUrl } from './series-key';
+export { galleryKeyForUrl, seriesKeyForUrl, sourceLabelForUrl } from './series-key';
 
 export interface HistoryUpdate {
-  url: string
-  series_id: string
-  title: string
-  cover_url: string | null
-  source: string
-  chapter_label: string | null
-  chapter_index: number | null
-  chapter_total: number | null
-  total_pages: number
-  category: string
-  kind?: string | null
+  url: string;
+  series_id: string;
+  title: string;
+  cover_url: string | null;
+  source: string;
+  chapter_label: string | null;
+  chapter_index: number | null;
+  chapter_total: number | null;
+  total_pages: number;
+  category: string;
+  kind?: string | null;
 }
 
 export function normalizeHistory(entries: HistoryEntry[]): SeriesUpsert[] {
   const normalized = entries.map((e) => {
-    const seriesId = e.series_id || e.url
-    const key = seriesKeyForUrl(e.url) ?? mangaSeriesUrlFromChapterUrl(seriesId) ?? seriesId
-    return { e, key }
-  })
-  normalized.sort((a, b) => b.e.opened_at - a.e.opened_at)
-  const byKey = new Map<string, SeriesUpsert>()
+    const seriesId = e.series_id || e.url;
+    const key = seriesKeyForUrl(e.url) ?? mangaSeriesUrlFromChapterUrl(seriesId) ?? seriesId;
+    return { e, key };
+  });
+  normalized.sort((a, b) => b.e.opened_at - a.e.opened_at);
+  const byKey = new Map<string, SeriesUpsert>();
   for (const { e, key } of normalized) {
-    const existing = byKey.get(key)
+    const existing = byKey.get(key);
     if (!existing) {
       byKey.set(key, {
-        key, seriesId: e.series_id || e.url, url: e.url, title: e.title,
-        coverUrl: e.cover_url, source: e.source, category: e.category, kind: e.kind ?? null,
-        currentPage: e.current_page, totalPages: e.total_pages,
-        chapterLabel: e.chapter_label, chapterIndex: e.chapter_index, chapterTotal: e.chapter_total,
-        openedAt: e.opened_at, createdAt: e.opened_at
-      })
-      continue
+        key,
+        seriesId: e.series_id || e.url,
+        url: e.url,
+        title: e.title,
+        coverUrl: e.cover_url,
+        source: e.source,
+        category: e.category,
+        kind: e.kind ?? null,
+        currentPage: e.current_page,
+        totalPages: e.total_pages,
+        chapterLabel: e.chapter_label,
+        chapterIndex: e.chapter_index,
+        chapterTotal: e.chapter_total,
+        openedAt: e.opened_at,
+        createdAt: e.opened_at,
+      });
+      continue;
     }
-    existing.currentPage = Math.max(existing.currentPage, e.current_page)
-    existing.totalPages = Math.max(existing.totalPages, e.total_pages)
-    existing.coverUrl = existing.coverUrl ?? e.cover_url
-    existing.chapterLabel = existing.chapterLabel ?? e.chapter_label
-    existing.chapterIndex = existing.chapterIndex ?? e.chapter_index
-    existing.chapterTotal = existing.chapterTotal ?? e.chapter_total
-    existing.openedAt = Math.max(existing.openedAt ?? 0, e.opened_at)
-    existing.createdAt = Math.min(existing.createdAt ?? e.opened_at, e.opened_at)
+    existing.currentPage = Math.max(existing.currentPage, e.current_page);
+    existing.totalPages = Math.max(existing.totalPages, e.total_pages);
+    existing.coverUrl = existing.coverUrl ?? e.cover_url;
+    existing.chapterLabel = existing.chapterLabel ?? e.chapter_label;
+    existing.chapterIndex = existing.chapterIndex ?? e.chapter_index;
+    existing.chapterTotal = existing.chapterTotal ?? e.chapter_total;
+    existing.openedAt = Math.max(existing.openedAt ?? 0, e.opened_at);
+    existing.createdAt = Math.min(existing.createdAt ?? e.opened_at, e.opened_at);
   }
-  return [...byKey.values()]
+  return [...byKey.values()];
 }
 
 function toHistoryEntry(i: LibraryItem): HistoryEntry {
   return {
-    url: i.url, series_id: i.seriesId, title: i.title, cover_url: i.coverUrl,
-    source: i.source, chapter_label: i.chapterLabel, chapter_index: i.chapterIndex,
-    chapter_total: i.chapterTotal, current_page: i.currentPage, total_pages: i.totalPages,
-    category: i.category, kind: i.kind ?? null, opened_at: i.openedAt
-  }
+    url: i.url,
+    series_id: i.seriesId,
+    title: i.title,
+    cover_url: i.coverUrl,
+    source: i.source,
+    chapter_label: i.chapterLabel,
+    chapter_index: i.chapterIndex,
+    chapter_total: i.chapterTotal,
+    current_page: i.currentPage,
+    total_pages: i.totalPages,
+    category: i.category,
+    kind: i.kind ?? null,
+    opened_at: i.openedAt,
+  };
 }
 
 function toUpsert(u: HistoryUpdate, key: string, seriesId: string): SeriesUpsert {
   return {
-    key, seriesId: seriesId || u.url, url: u.url, title: u.title, coverUrl: u.cover_url,
-    source: u.source, category: u.category, kind: u.kind ?? null, currentPage: 1, totalPages: u.total_pages,
-    chapterLabel: u.chapter_label, chapterIndex: u.chapter_index, chapterTotal: u.chapter_total,
-    openedAt: Date.now()
-  }
+    key,
+    seriesId: seriesId || u.url,
+    url: u.url,
+    title: u.title,
+    coverUrl: u.cover_url,
+    source: u.source,
+    category: u.category,
+    kind: u.kind ?? null,
+    currentPage: 1,
+    totalPages: u.total_pages,
+    chapterLabel: u.chapter_label,
+    chapterIndex: u.chapter_index,
+    chapterTotal: u.chapter_total,
+    openedAt: Date.now(),
+  };
 }
 
 export class HistoryManager {
-  private repo: SeriesRepository
+  private repo: SeriesRepository;
 
   constructor(repo: SeriesRepository = new InMemorySeriesRepository()) {
-    this.repo = repo
+    this.repo = repo;
   }
 
   load(raw: HistoryEntry[]): void {
-    if (this.repo.allIncludingDeleted().length > 0 || raw.length === 0) return
-    for (const item of normalizeHistory(raw)) this.repo.upsertHistory(item)
+    if (this.repo.allIncludingDeleted().length > 0 || raw.length === 0) return;
+    for (const item of normalizeHistory(raw)) this.repo.upsertHistory(item);
   }
 
   all(): HistoryEntry[] {
     // Reading history only: a row created by adding a work to the library /
     // favorites (without opening it) has totalPages === 0 and must not appear.
-    return this.repo.all()
+    return this.repo
+      .all()
       .filter((i) => i.totalPages > 0)
       .map(toHistoryEntry)
-      .sort((a, b) => b.opened_at - a.opened_at)
+      .sort((a, b) => b.opened_at - a.opened_at);
   }
-  mainEntries(): HistoryEntry[] { return this.all().filter((e) => e.category === 'main') }
-  r34Entries(): HistoryEntry[] { return this.all().filter((e) => e.category === 'r34') }
-  toVec(): HistoryEntry[] { return this.all() }
+  mainEntries(): HistoryEntry[] {
+    return this.all().filter((e) => e.category === 'main');
+  }
+  r34Entries(): HistoryEntry[] {
+    return this.all().filter((e) => e.category === 'r34');
+  }
+  toVec(): HistoryEntry[] {
+    return this.all();
+  }
 
   clear(): void {
-    this.repo.clearHistory()
+    this.repo.clearHistory();
   }
 
   addOrUpdate(update: HistoryUpdate): void {
-    const key = seriesKeyForUrl(update.url) ?? update.series_id ?? update.url
-    const existing = this.repo.get(key) ?? this.repo.findByUrl(update.url)
+    const key = seriesKeyForUrl(update.url) ?? update.series_id ?? update.url;
+    const existing = this.repo.get(key) ?? this.repo.findByUrl(update.url);
     if (existing) {
-      if (existing.url !== update.url && update.chapter_index != null && existing.chapterIndex != null && update.chapter_index < existing.chapterIndex) {
-        return
+      if (
+        existing.url !== update.url &&
+        update.chapter_index != null &&
+        existing.chapterIndex != null &&
+        update.chapter_index < existing.chapterIndex
+      ) {
+        return;
       }
-      const next = toUpsert(update, existing.key, existing.seriesId)
-      next.kind = update.kind ?? existing.kind ?? null
+      const next = toUpsert(update, existing.key, existing.seriesId);
+      next.kind = update.kind ?? existing.kind ?? null;
       if (existing.url === update.url) {
-        next.currentPage = Math.max(existing.currentPage, 1)
-        next.totalPages = Math.max(existing.totalPages, update.total_pages)
+        next.currentPage = Math.max(existing.currentPage, 1);
+        next.totalPages = Math.max(existing.totalPages, update.total_pages);
       } else {
-        next.coverUrl = update.cover_url ?? existing.coverUrl
-        next.currentPage = existing.currentPage
-        next.totalPages = Math.max(existing.totalPages, update.total_pages)
+        next.coverUrl = update.cover_url ?? existing.coverUrl;
+        next.currentPage = existing.currentPage;
+        next.totalPages = Math.max(existing.totalPages, update.total_pages);
       }
-      this.repo.upsertHistory(next)
+      this.repo.upsertHistory(next);
       if (existing.url !== update.url) {
-        this.repo.updateProgress(existing.key, 1, Math.max(existing.totalPages, update.total_pages), Date.now())
+        this.repo.updateProgress(existing.key, 1, Math.max(existing.totalPages, update.total_pages), Date.now());
       }
     } else {
-      this.repo.upsertHistory(toUpsert(update, key, update.series_id || update.url))
+      this.repo.upsertHistory(toUpsert(update, key, update.series_id || update.url));
     }
   }
 
   updateProgress(url: string, currentPage: number, totalPages: number): void {
-    const key = seriesKeyForUrl(url)
-    const item = this.repo.findByUrl(url) ?? (key ? this.repo.get(key) : null)
-    if (item) this.repo.updateProgress(item.key, currentPage, totalPages, Date.now())
+    const key = seriesKeyForUrl(url);
+    const item = this.repo.findByUrl(url) ?? (key ? this.repo.get(key) : null);
+    if (item) this.repo.updateProgress(item.key, currentPage, totalPages, Date.now());
   }
 }

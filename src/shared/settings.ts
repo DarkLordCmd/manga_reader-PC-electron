@@ -1,56 +1,74 @@
-import type { BookDirection, HistoryEntry, ReadingMode } from './types'
-import { normalizeQuickSearches, type QuickSearch } from './quick-search'
+import type { BookDirection, HistoryEntry, ReadingMode } from './types';
+import { normalizeQuickSearches, type QuickSearch } from './quick-search';
 
 export interface Settings {
-  reading_mode: ReadingMode
-  book_direction: BookDirection
-  width_scale: number
-  pages_per_screen: number
-  show_thumbnails: boolean
-  page_margin: number
-  thumb_size: number
-  last_folder: string | null
-  read_progress: Record<string, [number, number]>
-  tor_socks_addr: string
-  tor_bridges: string
-  exhentai_proxy_addr: string
-  mangalib_proxy_addr: string
-  builtin_tor: boolean
-  onion_cookies_raw: string
-  nhentai_cookies_raw: string
-  senkuro_cookies_raw: string
-  nhentai_onion_cookies_raw: string
-  nhentai_onion_base: string
-  infinite_scroll: boolean
-  tor_proxied_sites: string[]
-  nhentai_show_page_counts: boolean
-  enable_domain_fronting: boolean
-  viewing_history: HistoryEntry[]
-  show_r34_history: boolean
-  eh_tag_bookmarks: string[]
-  read_chapters: string[]
-  downloads_dir: string | null
-  lib_image_server: string | null
-  custom_dns: string | null
-  last_catalog_source: string | null
-  quick_searches: QuickSearch[]
-  library_auto_add: boolean
-  sync_enabled: boolean
-  sync_auto: boolean
-  cover_cache_mb: number
+  reading_mode: ReadingMode;
+  book_direction: BookDirection;
+  width_scale: number;
+  pages_per_screen: number;
+  show_thumbnails: boolean;
+  page_margin: number;
+  thumb_size: number;
+  last_folder: string | null;
+  read_progress: Record<string, [number, number]>;
+  tor_socks_addr: string;
+  tor_bridges: string;
+  exhentai_proxy_addr: string;
+  mangalib_proxy_addr: string;
+  builtin_tor: boolean;
+  onion_cookies_raw: string;
+  nhentai_cookies_raw: string;
+  senkuro_cookies_raw: string;
+  nhentai_onion_cookies_raw: string;
+  nhentai_onion_base: string;
+  infinite_scroll: boolean;
+  tor_proxied_sites: string[];
+  nhentai_show_page_counts: boolean;
+  enable_domain_fronting: boolean;
+  viewing_history: HistoryEntry[];
+  show_r34_history: boolean;
+  eh_tag_bookmarks: string[];
+  read_chapters: string[];
+  downloads_dir: string | null;
+  lib_image_server: string | null;
+  custom_dns: string | null;
+  last_catalog_source: string | null;
+  quick_searches: QuickSearch[];
+  library_auto_add: boolean;
+  sync_enabled: boolean;
+  sync_auto: boolean;
+  cover_cache_mb: number;
 }
 
 export function defaultSettings(): Settings {
   return {
-    reading_mode: 'Scroll', book_direction: 'Rtl', width_scale: 0.85,
-    pages_per_screen: 2, show_thumbnails: true, page_margin: 12,
-    thumb_size: 110, last_folder: null, read_progress: {},
-    tor_socks_addr: '127.0.0.1:9150', tor_bridges: '', exhentai_proxy_addr: '', mangalib_proxy_addr: '', builtin_tor: false,
-    onion_cookies_raw: '', nhentai_cookies_raw: '', nhentai_onion_cookies_raw: '', nhentai_onion_base: '',
+    reading_mode: 'Scroll',
+    book_direction: 'Rtl',
+    width_scale: 0.85,
+    pages_per_screen: 2,
+    show_thumbnails: true,
+    page_margin: 12,
+    thumb_size: 110,
+    last_folder: null,
+    read_progress: {},
+    tor_socks_addr: '127.0.0.1:9150',
+    tor_bridges: '',
+    exhentai_proxy_addr: '',
+    mangalib_proxy_addr: '',
+    builtin_tor: false,
+    onion_cookies_raw: '',
+    nhentai_cookies_raw: '',
+    nhentai_onion_cookies_raw: '',
+    nhentai_onion_base: '',
     senkuro_cookies_raw: '',
-    infinite_scroll: false, tor_proxied_sites: [], nhentai_show_page_counts: true,
+    infinite_scroll: false,
+    tor_proxied_sites: [],
+    nhentai_show_page_counts: true,
     enable_domain_fronting: false,
-    viewing_history: [], show_r34_history: true, eh_tag_bookmarks: [], read_chapters: [],
+    viewing_history: [],
+    show_r34_history: true,
+    eh_tag_bookmarks: [],
+    read_chapters: [],
     downloads_dir: null,
     lib_image_server: null,
     custom_dns: null,
@@ -59,35 +77,35 @@ export function defaultSettings(): Settings {
     library_auto_add: true,
     sync_enabled: false,
     sync_auto: true,
-    cover_cache_mb: 256
-  }
+    cover_cache_mb: 256,
+  };
 }
 
-const num = (v: unknown, d: number): number => (typeof v === 'number' && isFinite(v) ? v : d)
-const bool = (v: unknown, d: boolean): boolean => (typeof v === 'boolean' ? v : d)
-const str = (v: unknown, d: string): string => (typeof v === 'string' ? v : d)
-const strArr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+const num = (v: unknown, d: number): number => (typeof v === 'number' && isFinite(v) ? v : d);
+const bool = (v: unknown, d: boolean): boolean => (typeof v === 'boolean' ? v : d);
+const str = (v: unknown, d: string): string => (typeof v === 'string' ? v : d);
+const strArr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
 
 export function startPageFor(url: string, readProgress: Record<string, [number, number]>): number {
-  const p = readProgress[url]
-  if (!p || !Array.isArray(p)) return 0
-  const [page, total] = p
-  if (total > 0 && page >= total) return 0
-  return Math.max(0, page - 1)
+  const p = readProgress[url];
+  if (!p || !Array.isArray(p)) return 0;
+  const [page, total] = p;
+  if (total > 0 && page >= total) return 0;
+  return Math.max(0, page - 1);
 }
 
 export function parseSettings(raw: unknown): Settings {
-  const d = defaultSettings()
-  if (!raw || typeof raw !== 'object') return d
-  const o = raw as Record<string, unknown>
+  const d = defaultSettings();
+  if (!raw || typeof raw !== 'object') return d;
+  const o = raw as Record<string, unknown>;
   const history: HistoryEntry[] = Array.isArray(o.viewing_history)
     ? o.viewing_history.filter((e): e is HistoryEntry => !!e && typeof e === 'object')
-    : []
-  const progress: Record<string, [number, number]> = {}
+    : [];
+  const progress: Record<string, [number, number]> = {};
   if (o.read_progress && typeof o.read_progress === 'object') {
     for (const [k, v] of Object.entries(o.read_progress as Record<string, unknown>)) {
       if (Array.isArray(v) && v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number') {
-        progress[k] = [v[0], v[1]]
+        progress[k] = [v[0], v[1]];
       }
     }
   }
@@ -127,6 +145,6 @@ export function parseSettings(raw: unknown): Settings {
     library_auto_add: bool(o.library_auto_add, true),
     sync_enabled: bool(o.sync_enabled, false),
     sync_auto: bool(o.sync_auto, true),
-    cover_cache_mb: Math.max(16, Math.min(8192, num(o.cover_cache_mb, 256)))
-  }
+    cover_cache_mb: Math.max(16, Math.min(8192, num(o.cover_cache_mb, 256))),
+  };
 }

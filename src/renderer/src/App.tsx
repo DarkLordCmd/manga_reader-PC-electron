@@ -1,24 +1,24 @@
-import { useEffect, useState } from 'react'
-import { StoreProvider, useStore } from './state/store'
-import Sidebar from './components/Sidebar'
-import TopBar from './components/TopBar'
-import LockScreen from './components/LockScreen'
-import Reader from './screens/Reader'
-import Catalog from './screens/Catalog'
-import Popular from './screens/Popular'
-import Library from './screens/Library'
-import Favorites from './screens/Favorites'
-import History from './screens/History'
-import Settings from './screens/Settings'
-import Downloads from './screens/Downloads'
+import { useEffect, useState } from 'react';
+import { StoreProvider, useStore } from './state/store';
+import Sidebar from './components/Sidebar';
+import TopBar from './components/TopBar';
+import LockScreen from './components/LockScreen';
+import Reader from './screens/Reader';
+import Catalog from './screens/Catalog';
+import Popular from './screens/Popular';
+import Library from './screens/Library';
+import Favorites from './screens/Favorites';
+import History from './screens/History';
+import Settings from './screens/Settings';
+import Downloads from './screens/Downloads';
 
 function Shell(): JSX.Element {
-  const { screen, setScreen, settings } = useStore()
+  const { screen, setScreen, settings } = useStore();
   // Hide the R34-only Popular screen when the privacy toggle is off; if it was
   // the active screen, fall back to the catalog.
   useEffect(() => {
-    if (!settings.show_r34_history && screen === 'Popular') setScreen('Catalog')
-  }, [settings.show_r34_history, screen, setScreen])
+    if (!settings.show_r34_history && screen === 'Popular') setScreen('Catalog');
+  }, [settings.show_r34_history, screen, setScreen]);
   return (
     <div className="app">
       <Sidebar />
@@ -35,7 +35,7 @@ function Shell(): JSX.Element {
             display: screen === 'Catalog' ? 'flex' : 'none',
             flexDirection: 'column',
             flex: 1,
-            minHeight: 0
+            minHeight: 0,
           }}
         >
           <Catalog />
@@ -48,15 +48,19 @@ function Shell(): JSX.Element {
         {screen === 'Settings' && <Settings />}
       </div>
     </div>
-  )
+  );
 }
 
 export default function App(): JSX.Element {
-  const [unlocked, setUnlocked] = useState<boolean | null>(null)
+  const [unlocked, setUnlocked] = useState<boolean | null>(null);
   useEffect(() => {
-    window.api.pinHasPin().then((has) => setUnlocked(!has))
-  }, [])
-  if (unlocked === null) return <div className="app" />
-  if (!unlocked) return <LockScreen onUnlock={() => setUnlocked(true)} />
-  return <StoreProvider><Shell /></StoreProvider>
+    window.api.pinHasPin().then((has) => setUnlocked(!has));
+  }, []);
+  if (unlocked === null) return <div className="app" />;
+  if (!unlocked) return <LockScreen onUnlock={() => setUnlocked(true)} />;
+  return (
+    <StoreProvider>
+      <Shell />
+    </StoreProvider>
+  );
 }

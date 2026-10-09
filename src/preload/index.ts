@@ -1,8 +1,8 @@
-import { contextBridge, ipcRenderer } from 'electron'
-import { CH, type Api } from '@shared/ipc'
-import type { DownloadTask } from '@shared/downloads'
-import type { EhLimitState } from '@shared/ipc'
-import type { Settings } from '@shared/settings'
+import { contextBridge, ipcRenderer } from 'electron';
+import { CH, type Api } from '@shared/ipc';
+import type { DownloadTask } from '@shared/downloads';
+import type { EhLimitState } from '@shared/ipc';
+import type { Settings } from '@shared/settings';
 
 const api: Api = {
   getSettings: () => ipcRenderer.invoke(CH.getSettings),
@@ -15,7 +15,8 @@ const api: Api = {
   clearHistory: () => ipcRenderer.invoke(CH.clearHistory),
   openUrl: (url, startPage, mangaId, coverUrl, kind) => ipcRenderer.invoke(CH.openUrl, url, startPage, mangaId, coverUrl, kind),
   fetchChapterList: (mangaId) => ipcRenderer.invoke(CH.fetchChapterList, mangaId),
-  searchCatalog: (source, query, page, sort, filters, cursor) => ipcRenderer.invoke(CH.searchCatalog, source, query, page, sort, filters, cursor),
+  searchCatalog: (source, query, page, sort, filters, cursor) =>
+    ipcRenderer.invoke(CH.searchCatalog, source, query, page, sort, filters, cursor),
   catalogPopular: (source) => ipcRenderer.invoke(CH.catalogPopular, source),
   loginSite: (url) => ipcRenderer.invoke(CH.loginSite, url),
   loginPassword: (user, pass) => ipcRenderer.invoke(CH.loginPassword, user, pass),
@@ -56,19 +57,19 @@ const api: Api = {
   pinVerifyPin: (pin) => ipcRenderer.invoke(CH.pinVerifyPin, pin),
   pinFailedAttempt: () => ipcRenderer.invoke(CH.pinFailedAttempt),
   onEhLimitsChanged: (cb) => {
-    const fn = (_e: unknown, s: EhLimitState): void => cb(s)
-    ipcRenderer.on(CH.ehLimitsChanged, fn)
-    return () => ipcRenderer.removeListener(CH.ehLimitsChanged, fn)
+    const fn = (_e: unknown, s: EhLimitState): void => cb(s);
+    ipcRenderer.on(CH.ehLimitsChanged, fn);
+    return () => ipcRenderer.removeListener(CH.ehLimitsChanged, fn);
   },
   onDownloadsChanged: (cb) => {
-    const fn = (_e: unknown, tasks: DownloadTask[]): void => cb(tasks)
-    ipcRenderer.on(CH.downloadsChanged, fn)
-    return () => ipcRenderer.removeListener(CH.downloadsChanged, fn)
+    const fn = (_e: unknown, tasks: DownloadTask[]): void => cb(tasks);
+    ipcRenderer.on(CH.downloadsChanged, fn);
+    return () => ipcRenderer.removeListener(CH.downloadsChanged, fn);
   },
   onNhentaiCounts: (cb) => {
-    const fn = (_e: unknown, entries: { url: string; pages: number }[]): void => cb(entries)
-    ipcRenderer.on(CH.nhentaiCounts, fn)
-    return () => ipcRenderer.removeListener(CH.nhentaiCounts, fn)
+    const fn = (_e: unknown, entries: { url: string; pages: number }[]): void => cb(entries);
+    ipcRenderer.on(CH.nhentaiCounts, fn);
+    return () => ipcRenderer.removeListener(CH.nhentaiCounts, fn);
   },
   libraryList: (query) => ipcRenderer.invoke(CH.libraryList, query),
   libraryGet: (key) => ipcRenderer.invoke(CH.libraryGet, key),
@@ -95,20 +96,20 @@ const api: Api = {
   syncNow: () => ipcRenderer.invoke(CH.syncNow),
   syncGetState: () => ipcRenderer.invoke(CH.syncGetState),
   onSyncChanged: (cb) => {
-    const fn = (_e: unknown, s: import('@shared/sync').SyncState): void => cb(s)
-    ipcRenderer.on(CH.syncChanged, fn)
-    return () => ipcRenderer.removeListener(CH.syncChanged, fn)
+    const fn = (_e: unknown, s: import('@shared/sync').SyncState): void => cb(s);
+    ipcRenderer.on(CH.syncChanged, fn);
+    return () => ipcRenderer.removeListener(CH.syncChanged, fn);
   },
   onLibraryChanged: (cb) => {
-    const fn = (): void => cb()
-    ipcRenderer.on(CH.libraryChanged, fn)
-    return () => ipcRenderer.removeListener(CH.libraryChanged, fn)
+    const fn = (): void => cb();
+    ipcRenderer.on(CH.libraryChanged, fn);
+    return () => ipcRenderer.removeListener(CH.libraryChanged, fn);
   },
   onSettingsChanged: (cb) => {
-    const fn = (_e: unknown, s: Settings): void => cb(s)
-    ipcRenderer.on(CH.settingsChanged, fn)
-    return () => ipcRenderer.removeListener(CH.settingsChanged, fn)
-  }
-}
+    const fn = (_e: unknown, s: Settings): void => cb(s);
+    ipcRenderer.on(CH.settingsChanged, fn);
+    return () => ipcRenderer.removeListener(CH.settingsChanged, fn);
+  },
+};
 
-contextBridge.exposeInMainWorld('api', api)
+contextBridge.exposeInMainWorld('api', api);
