@@ -24,11 +24,19 @@ mac:
   target: dmg
   category: public.app-category.entertainment
   # Requires a signed Dev ID cert (see README "Code signing").
+  extraResources:
+    - from: vendor/tor
+      to: tor
+      filter: ['**/*']
 linux:
   target:
     - AppImage
     - deb
   category: Graphics
+  extraResources:
+    - from: vendor/tor
+      to: tor
+      filter: ['**/*']
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

@@ -22,8 +22,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Fetch Tor expert bundle (Windows only)
-        if: runner.os == 'Windows'
+      - name: Fetch Tor expert bundle for this platform
         run: node scripts/fetch-tor.mjs
       - name: Build and publish
         run: npx electron-builder --publish always

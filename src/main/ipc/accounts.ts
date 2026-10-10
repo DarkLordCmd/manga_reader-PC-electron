@@ -1,7 +1,10 @@
 import { dialog, ipcMain } from 'electron';
 import { readFileSync } from 'fs';
+import { z } from 'zod';
 import { CH } from '@shared/ipc';
+import type { CookieLoginInput } from '@shared/ipc';
 import type { Settings } from '@shared/settings';
+import { handleSafe, anyString, looseObject, nonNegInt } from './validate';
 import type { SettingsService } from '../services/settings';
 import { ExAccountsService, parseCookieLogin } from '../services/accounts';
 
@@ -16,7 +19,7 @@ export interface AccountsDeps {
 export function registerAccounts(deps: AccountsDeps): void {
   const { settings, exAccounts, effectiveTorSocks, runLoginWindow, broadcastSettingsChanged } = deps;
 
-  ipcMain.handle(CH.loginSite, async (_e, url: string) => {
+  handleSafe(CH.loginSite, z.tuple([anyString]), async (_e, url: string) => {
     const s = settings.get();
     // Tor only for the sites that actually need it (.onion, E-Hentai family,
     // nhentai) — routing other logins through a Tor exit gets them banned
@@ -37,7 +40,7 @@ export function registerAccounts(deps: AccountsDeps): void {
     settings.save(next);
     return result.cookies;
   });
-  ipcMain.handle(CH.loginPassword, async (_e, user: string, pass: string) => {
+  handleSafe(CH.loginPassword, z.tuple([anyString, anyString]), async (_e, user: string, pass: string) => {
     const r = await exAccounts.passwordLogin(user, pass);
     if (r.ok) {
       const s = settings.get();
@@ -46,26 +49,25 @@ export function registerAccounts(deps: AccountsDeps): void {
     }
     return r;
   });
-  ipcMain.handle(CH.cookieLogin, async (_e, input: any) => {
-    return await exAccounts.cookieLogin({
-      ipbMemberId: String(input?.ipbMemberId ?? ''),
-      ipbPassHash: String(input?.ipbPassHash ?? ''),
-      igneous: input?.igneous ?? null,
-      verify: input?.verify !== false,
-    });
+  handleSafe(CH.cookieLogin, z.tuple([looseObject<CookieLoginInput>()]), async (_e, input: CookieLoginInput) => {
+    return await exAccounts.cookieLogin(input);
   });
   ipcMain.handle(CH.refreshIgneous, async () => await exAccounts.refreshIgneous());
-  ipcMain.handle(CH.parseCookieText, (_e, text: string) => parseCookieLogin(String(text ?? '')));
+  handleSafe(CH.parseCookieText, z.tuple([anyString]), (_e, text: string) => parseCookieLogin(text ?? ''));
   ipcMain.handle(CH.getExAccounts, () => ({ accounts: exAccounts.accounts, currentId: exAccounts.currentId }));
-  ipcMain.handle(CH.setExAccount, (_e, id: number) => {
+  handleSafe(CH.setExAccount, z.tuple([nonNegInt]), (_e, id: number) => {
     exAccounts.setCurrent(id);
     return { accounts: exAccounts.accounts, currentId: exAccounts.currentId };
   });
-  ipcMain.handle(CH.addExAccount, (_e, name: string, memberId: string, passHash: string, igneous: string) => {
-    exAccounts.addManual(name, memberId, passHash, igneous);
-    return { accounts: exAccounts.accounts, currentId: exAccounts.currentId };
-  });
-  ipcMain.handle(CH.removeExAccount, (_e, id: number) => {
+  handleSafe(
+    CH.addExAccount,
+    z.tuple([anyString, anyString, anyString, anyString]),
+    (_e, name: string, memberId: string, passHash: string, igneous: string) => {
+      exAccounts.addManual(name, memberId, passHash, igneous);
+      return { accounts: exAccounts.accounts, currentId: exAccounts.currentId };
+    },
+  );
+  handleSafe(CH.removeExAccount, z.tuple([nonNegInt]), (_e, id: number) => {
     exAccounts.remove(id);
     return { accounts: exAccounts.accounts, currentId: exAccounts.currentId };
   });

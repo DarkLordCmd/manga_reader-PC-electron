@@ -27,8 +27,21 @@ const MIRRORS = [
 ];
 const VENDOR = join(process.cwd(), 'vendor', 'tor');
 const TMP = join(process.cwd(), 'scripts', '.tor-tmp');
-const ARCHIVE_PREFIX = 'tor-expert-bundle-windows-x86_64-';
 const LOCAL_SOCKS = process.env.TOR_SOCKS || '127.0.0.1:9150';
+
+// Official expert bundles exist per platform/arch (verified against the same
+// sha256sums-signed-build.txt all platforms share). Keep vendor/tor populated
+// for the CURRENT host only — electron-builder scopes it per target platform.
+const BUNDLES = {
+  win32: { prefix: 'tor-expert-bundle-windows', exe: 'tor.exe' },
+  linux: { prefix: 'tor-expert-bundle-linux', exe: 'tor' },
+  darwin: { prefix: 'tor-expert-bundle-macos', exe: 'tor' },
+};
+const PLATFORM_BUNDLE = BUNDLES[process.platform];
+if (!PLATFORM_BUNDLE) throw new Error(`fetch-tor: unsupported platform ${process.platform}`);
+const ARCH = process.arch === 'arm64' ? 'aarch64' : process.arch === 'x64' ? 'x86_64' : process.arch;
+const ARCHIVE_PREFIX = `${PLATFORM_BUNDLE.prefix}-${ARCH}-`;
+const TOR_EXE = PLATFORM_BUNDLE.exe;
 
 function socks5Connect(proxyHost, proxyPort, destHost, destPort, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
@@ -133,13 +146,13 @@ function sourceFromInstalledTorBrowser() {
     'D:\\Tor Browser\\Browser\\TorBrowser\\Tor',
   ];
   for (const dir of dirs) {
-    if (dir && existsSync(join(dir, 'tor.exe'))) return dir;
+    if (dir && existsSync(join(dir, TOR_EXE))) return dir;
   }
   return null;
 }
 
 function copyFromInstalledTorBrowser(verFile, ver, sourceDir) {
-  copyFileSync(join(sourceDir, 'tor.exe'), join(VENDOR, 'tor.exe'));
+  copyFileSync(join(sourceDir, TOR_EXE), join(VENDOR, TOR_EXE));
   const pt = join(sourceDir, 'PluggableTransports');
   if (existsSync(pt)) {
     for (const name of readdirSync(pt)) copyFileSync(join(pt, name), join(VENDOR, name));
@@ -160,7 +173,7 @@ async function main() {
   } catch {
     const localTB = sourceFromInstalledTorBrowser();
     if (!localTB) throw new Error('mirrors unreachable and no local Tor Browser found');
-    if (existsSync(verFile) && existsSync(join(VENDOR, 'tor.exe'))) {
+    if (existsSync(verFile) && existsSync(join(VENDOR, TOR_EXE))) {
       console.log('[fetch-tor] mirrors unreachable — keeping existing vendor/tor from', readFileSync(verFile, 'utf8').trim());
       return;
     }
@@ -168,7 +181,7 @@ async function main() {
     copyFromInstalledTorBrowser(verFile, ver ?? 'unknown', localTB);
     return;
   }
-  if (existsSync(verFile) && readFileSync(verFile, 'utf8').trim() === ver && existsSync(join(VENDOR, 'tor.exe'))) {
+  if (existsSync(verFile) && readFileSync(verFile, 'utf8').trim() === ver && existsSync(join(VENDOR, TOR_EXE))) {
     console.log(`[fetch-tor] vendor/tor already has ${ver} — skipping download`);
     return;
   }
@@ -220,8 +233,8 @@ async function main() {
   for (const src of [tmp]) {
     flattenAll(src, VENDOR);
   }
-  if (!existsSync(join(VENDOR, 'tor.exe'))) {
-    throw new Error('tor.exe not found in extracted archive — unexpected tar layout');
+  if (!existsSync(join(VENDOR, TOR_EXE))) {
+    throw new Error(`${TOR_EXE} not found in extracted archive — unexpected tar layout`);
   }
   writeFileSync(verFile, ver);
   rmSync(tmp, { recursive: true, force: true });
@@ -245,5 +258,5 @@ main().catch((e) => {
   console.log('[fetch-tor] FAILED:', e.message);
   // Non-fatal at build time when a previous vendor/tor exists; a checksum
   // mismatch aborts loudly so a bad archive is never packaged.
-  process.exitCode = existsSync(join(VENDOR, 'tor.exe')) ? 0 : 1;
+  process.exitCode = existsSync(join(VENDOR, TOR_EXE)) ? 0 : 1;
 });

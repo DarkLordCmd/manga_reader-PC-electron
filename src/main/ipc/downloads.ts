@@ -1,7 +1,7 @@
 import { dialog, ipcMain } from 'electron';
 import { z } from 'zod';
 import { CH } from '@shared/ipc';
-import { handleSafe, httpUrl, dlTypeToken } from './validate';
+import { handleSafe, httpUrl, dlTypeToken, idString, nonNegInt } from './validate';
 import { galleryFromFolder } from '../services/gallery';
 import { sourceLabel, type GalleryResolution } from '../services/resolve-gallery';
 import { fetchArchiveCost, buyArchive } from '../services/eh-archive';
@@ -73,11 +73,11 @@ export function registerDownloads(deps: {
     }
     return updated;
   });
-  ipcMain.handle(CH.downloadsPause, (_e, id: string) => downloads.pause(id));
-  ipcMain.handle(CH.downloadsResume, (_e, id: string) => downloads.resume(id));
-  ipcMain.handle(CH.downloadsRemove, (_e, id: string) => downloads.remove(id));
-  ipcMain.handle(CH.downloadsSetPriority, (_e, id: string, p: number) => downloads.setPriority(id, p));
-  ipcMain.handle(CH.downloadsOpen, (_e, id: string) => {
+  handleSafe(CH.downloadsPause, z.tuple([idString]), (_e, id: string) => downloads.pause(id));
+  handleSafe(CH.downloadsResume, z.tuple([idString]), (_e, id: string) => downloads.resume(id));
+  handleSafe(CH.downloadsRemove, z.tuple([idString]), (_e, id: string) => downloads.remove(id));
+  handleSafe(CH.downloadsSetPriority, z.tuple([idString, z.number()]), (_e, id: string, p: number) => downloads.setPriority(id, p));
+  handleSafe(CH.downloadsOpen, z.tuple([idString]), (_e, id: string) => {
     const t = downloads.list().find((x) => x.id === id);
     if (!t || t.state !== 'completed') return null;
     const g = galleryFromFolder(t.outDir);

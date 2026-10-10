@@ -1,9 +1,11 @@
 import { app, dialog, ipcMain } from 'electron';
 import { readFileSync, writeFileSync, copyFileSync } from 'fs';
 import { join } from 'path';
+import { z } from 'zod';
 import { CH } from '@shared/ipc';
 import type { BackupSummary } from '@shared/ipc';
 import type { Settings } from '@shared/settings';
+import { handleSafe, anyString, looseObject } from './validate';
 import type { SettingsService } from '../services/settings';
 import type { SyncService } from '../services/sync';
 import { isPortableSettingsChanged } from '../services/sync';
@@ -18,6 +20,12 @@ import { setLibMirror } from '../services/lib-mirror';
 import { setCustomDnsServers, parseDnsServerList } from '../services/custom-dns';
 import { startEmbeddedTor, stopEmbeddedTor, embeddedTorSocks } from '../services/tor-embedded';
 import { setCoverDiskMaxBytes } from '../app/state';
+
+/** Secret settings that are session/`.onion` cookies — the renderer's stale
+ * snapshot must never blank them. Derived from SECRET_SETTINGS so the set of
+ * cookie secrets stays in one place. */
+type CookieSecretField = Extract<(typeof SECRET_SETTINGS)[number], `${string}_cookies_raw`>;
+const COOKIE_SECRET_FIELDS = SECRET_SETTINGS.filter((k) => k.endsWith('_cookies_raw')) as CookieSecretField[];
 
 export function registerSettings(deps: {
   settings: SettingsService;
@@ -35,7 +43,7 @@ export function registerSettings(deps: {
 }): void {
   const { settings, sync, repo, exAccounts, downloads, db, coverCache } = deps;
 
-  ipcMain.handle(CH.backupExport, async (_e, includeSecrets: boolean) => {
+  handleSafe(CH.backupExport, z.tuple([z.boolean()]), async (_e, includeSecrets: boolean) => {
     const r = await dialog.showSaveDialog({
       title: 'Экспорт данных',
       defaultPath: `manga-reader-backup-${new Date().toISOString().slice(0, 10)}.json`,
@@ -112,7 +120,7 @@ export function registerSettings(deps: {
   });
 
   ipcMain.handle(CH.getSettings, () => settings.get());
-  ipcMain.handle(CH.setSettings, (_e, s: Settings) => {
+  handleSafe(CH.setSettings, z.tuple([looseObject<Settings>()]), (_e, s: Settings) => {
     setFrontingEnabled(!!s?.enable_domain_fronting);
     setTorFallbackAddr(deps.effectiveTorSocks());
     setLibMirror(s?.lib_image_server ?? null);
@@ -129,10 +137,11 @@ export function registerSettings(deps: {
     // The renderer sends its full settings snapshot, which can be stale: a
     // login window may have persisted cookies into settings.json after the
     // renderer loaded its copy. Do not let the renderer's empty cookie
-    // strings wipe freshly grabbed sessions.
+    // strings wipe freshly grabbed sessions. The cookie keys are derived from
+    // the single SECRET_SETTINGS list (backup.ts) so the two never drift.
     const prev = settings.get();
-    for (const k of ['onion_cookies_raw', 'nhentai_cookies_raw', 'nhentai_onion_cookies_raw', 'senkuro_cookies_raw'] as const) {
-      if (String(s?.[k] ?? '') === '' && String(prev[k] ?? '') !== '') s[k] = prev[k];
+    for (const k of COOKIE_SECRET_FIELDS) {
+      if (String(s[k] ?? '') === '' && String(prev[k] ?? '') !== '') s[k] = prev[k];
     }
     const prevSettings = settings.get();
     const before = deps.downloadsDirBase(prevSettings.downloads_dir);
@@ -147,7 +156,7 @@ export function registerSettings(deps: {
     }
   });
 
-  ipcMain.handle(CH.markChapterRead, (_e, url: string) => {
+  handleSafe(CH.markChapterRead, z.tuple([anyString]), (_e, url: string) => {
     const s = settings.get();
     if (!s.read_chapters.includes(url)) {
       settings.save({ ...s, read_chapters: [...s.read_chapters, url] });

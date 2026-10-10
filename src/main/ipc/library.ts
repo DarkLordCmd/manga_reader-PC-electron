@@ -1,9 +1,22 @@
 import { ipcMain } from 'electron';
+import { z } from 'zod';
 import { CH } from '@shared/ipc';
+import type { LibraryQuery, ReadingStatus } from '@shared/library';
+import { handleSafe, anyString, nonNegInt, stringArray } from './validate';
 import type { LibraryService } from '../services/library';
 import type { HistoryManager } from '../services/history';
 import type { SettingsService } from '../services/settings';
 import type { SyncService } from '../services/sync';
+
+const libraryEntry = z.object({
+  url: anyString,
+  title: anyString,
+  coverUrl: z.string().nullable(),
+  source: anyString,
+  seriesId: anyString,
+  category: anyString.optional(),
+  kind: z.string().nullable().optional(),
+});
 
 export function registerLibrary(deps: {
   library: LibraryService;
@@ -16,56 +29,64 @@ export function registerLibrary(deps: {
 
   ipcMain.handle(CH.getHistory, () => history.toVec());
 
-  ipcMain.handle(CH.libraryList, (_e, query) => library.list(query ?? {}));
-  ipcMain.handle(CH.libraryGet, (_e, key: string) => library.get(String(key)));
-  ipcMain.handle(CH.libraryAdd, (_e, entry) => {
+  handleSafe(CH.libraryList, z.tuple([z.custom<LibraryQuery>().optional()]), (_e, query?: LibraryQuery) => library.list(query ?? {}));
+  handleSafe(CH.libraryGet, z.tuple([anyString]), (_e, key: string) => library.get(String(key)));
+  handleSafe(CH.libraryAdd, z.tuple([libraryEntry.extend({})]), (_e, entry) => {
     const item = library.addFromCatalog(entry);
     broadcastLibrary();
     return item;
   });
-  ipcMain.handle(CH.libraryLookup, (_e, url: string, seriesId: string) => library.lookup(String(url), String(seriesId)));
-  ipcMain.handle(CH.librarySetFavorite, (_e, key: string, at: number | null) => {
+  handleSafe(CH.libraryLookup, z.tuple([anyString, anyString]), (_e, url: string, seriesId: string) =>
+    library.lookup(String(url), String(seriesId)),
+  );
+  handleSafe(CH.librarySetFavorite, z.tuple([anyString, z.number().int().nullable()]), (_e, key: string, at: number | null) => {
     library.setFavorite(String(key), at);
     broadcastLibrary();
   });
-  ipcMain.handle(CH.libraryAddFavorite, (_e, entry) => {
+  handleSafe(CH.libraryAddFavorite, z.tuple([libraryEntry.extend({})]), (_e, entry) => {
     const it = library.addFavorite(entry);
     broadcastLibrary();
     return it;
   });
-  ipcMain.handle(CH.librarySetStatusFor, (_e, entry, status) => {
+  handleSafe(CH.librarySetStatusFor, z.tuple([libraryEntry.extend({}), z.custom<ReadingStatus>()]), (_e, entry, status: ReadingStatus) => {
     const it = library.setStatusFor(entry, status);
     broadcastLibrary();
     return it;
   });
-  ipcMain.handle(CH.librarySetStatus, (_e, key: string, status: any) => {
-    library.setStatus(String(key), status);
-    broadcastLibrary();
-  });
-  ipcMain.handle(CH.librarySetNote, (_e, key: string, note: string) => {
+  handleSafe(
+    CH.librarySetStatus,
+    z.tuple([anyString, z.custom<ReadingStatus>().nullable()]),
+    (_e, key: string, status: ReadingStatus | null) => {
+      library.setStatus(String(key), status);
+      broadcastLibrary();
+    },
+  );
+  handleSafe(CH.librarySetNote, z.tuple([anyString, anyString]), (_e, key: string, note: string) => {
     library.setNote(String(key), String(note ?? ''));
     broadcastLibrary();
   });
-  ipcMain.handle(CH.librarySetRating, (_e, key: string, rating: number | null) => {
+  handleSafe(CH.librarySetRating, z.tuple([anyString, z.number().nullable()]), (_e, key: string, rating: number | null) => {
     library.setRating(String(key), rating);
     broadcastLibrary();
   });
-  ipcMain.handle(CH.librarySetTags, (_e, key: string, tags: string[]) => {
+  handleSafe(CH.librarySetTags, z.tuple([anyString, stringArray]), (_e, key: string, tags: string[]) => {
     library.setTags(String(key), Array.isArray(tags) ? tags : []);
     broadcastLibrary();
   });
-  ipcMain.handle(CH.libraryRemove, (_e, key: string) => {
+  handleSafe(CH.libraryRemove, z.tuple([anyString]), (_e, key: string) => {
     library.removeFromLibrary(String(key));
     broadcastLibrary();
   });
-  ipcMain.handle(CH.libraryDelete, (_e, key: string) => {
+  handleSafe(CH.libraryDelete, z.tuple([anyString]), (_e, key: string) => {
     library.deleteSeries(String(key));
     broadcastLibrary();
   });
   ipcMain.handle(CH.libraryCounts, () => library.countByStatus());
-  ipcMain.handle(CH.libraryStatuses, (_e, urls: string[]) => library.statusesForUrls(Array.isArray(urls) ? urls.map(String) : []));
+  handleSafe(CH.libraryStatuses, z.tuple([stringArray]), (_e, urls: string[]) =>
+    library.statusesForUrls(Array.isArray(urls) ? urls.map(String) : []),
+  );
 
-  ipcMain.handle(CH.recordProgress, (_e, url: string, page: number, total: number) => {
+  handleSafe(CH.recordProgress, z.tuple([anyString, nonNegInt, nonNegInt]), (_e, url: string, page: number, total: number) => {
     history.updateProgress(url, page, total);
     const s = settings.get();
     // Mirror into read_progress too — startPageFor() reads it when the user

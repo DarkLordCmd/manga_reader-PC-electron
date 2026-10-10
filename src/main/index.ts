@@ -49,6 +49,7 @@ import {
   galleries,
   onlineHeaders,
   coverCache,
+  cacheCover,
   coverInFlight,
   getCoverDisk,
   zipMeta,
@@ -110,11 +111,11 @@ function getCover(url: string): Promise<Buffer> {
       const disk = getCoverDisk(coverMaxBytes);
       const onDisk = await disk.get(url);
       if (onDisk) {
-        coverCache.set(url, onDisk);
+        cacheCover(url, onDisk);
         return onDisk;
       }
       const buf = await fetchCoverBuffer(url, settings.get(), exAccounts.currentCookieHeader());
-      coverCache.set(url, buf);
+      cacheCover(url, buf);
       void disk.put(url, buf);
       return buf;
     } finally {

@@ -38,6 +38,23 @@ export const httpUrl: ZodType<string> = z
 /** Короткий токен dltype EH-архива (значения приходят с сайта: org/resample/…). */
 export const dlTypeToken: ZodType<string> = z.string().regex(/^[A-Za-z0-9_-]{1,32}$/, 'некорректный dltype');
 
+/** Любая непустая строка (имена, id, url-тексты, заметки). */
+export const anyString: ZodType<string> = z.string().max(65536);
+/** Строка-идентификатор без управляющих символов. */
+export const idString: ZodType<string> = z
+  .string()
+  .min(1)
+  .max(1024)
+  .refine((s) => !/[\x00-\x1f]/.test(s), 'содержит управляющие символы');
+/** Неотрицательное целое. */
+export const nonNegInt: ZodType<number> = z.number().int().min(0);
+/** Шаблон объектов библиотеки/каталога — своя структура проверяется в service-слое. */
+export function looseObject<T>(): ZodType<T> {
+  return z.custom<T>((v) => !!v && typeof v === 'object' && !Array.isArray(v), 'ожидается объект');
+}
+/** Шаблон массива строк. */
+export const stringArray: ZodType<string[]> = z.array(z.string()).max(10_000);
+
 /** Обёртка ipcMain.handle с валидацией аргументов до вызова обработчика. */
 export function handleSafe<T extends unknown[]>(
   channel: string,

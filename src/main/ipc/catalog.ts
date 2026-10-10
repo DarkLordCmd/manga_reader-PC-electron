@@ -1,6 +1,9 @@
 import { ipcMain } from 'electron';
 import { lookup as dnsPromiseLookup } from 'dns';
+import { z } from 'zod';
 import { CH } from '@shared/ipc';
+import type { CatalogCursor } from '@shared/ipc';
+import { handleSafe, nonNegInt, anyString, stringArray } from './validate';
 import type { SettingsService } from '../services/settings';
 import type { ExAccountsService } from '../services/accounts';
 import type { SimpleSiteConfig } from '../services/sources/catalog-types';
@@ -106,11 +109,19 @@ export function registerCatalog(deps: CatalogDeps): {
     return list ? list.length : null;
   }
 
-  ipcMain.handle(CH.fetchChapterList, async (_e, mangaId: string) => {
+  handleSafe(CH.fetchChapterList, z.tuple([anyString]), async (_e, mangaId: string) => {
     return await fetchChapterListFor(mangaId);
   });
-  ipcMain.handle(
+  handleSafe(
     CH.searchCatalog,
+    z.tuple([
+      z.string().max(64),
+      anyString,
+      nonNegInt,
+      z.string().max(32),
+      z.record(z.string(), z.unknown()).optional(),
+      z.custom<CatalogCursor | null>().optional(),
+    ]),
     async (_e, source: string, query: string, page: number, sort: string, filters: any = {}, cursor: any = null) => {
       const s = settings.get();
       // Onion/proxied sources must wait for the bundled daemon to finish
@@ -260,33 +271,37 @@ export function registerCatalog(deps: CatalogDeps): {
       return [];
     },
   );
-  ipcMain.handle(CH.catalogPopular, async (_e, source: 'ehentai' | 'exhentai' | 'exhentai_onion') => {
-    const s = settings.get();
-    const useOnion = source === 'exhentai_onion';
-    const torProxied = useOnion || s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai');
-    if (s.builtin_tor && !embeddedTorSocks() && torProxied) {
-      try {
-        await whenEmbeddedTorReady(120_000);
-      } catch {
-        /* fall through */
+  handleSafe(
+    CH.catalogPopular,
+    z.tuple([z.enum(['ehentai', 'exhentai', 'exhentai_onion'])]),
+    async (_e, source: 'ehentai' | 'exhentai' | 'exhentai_onion') => {
+      const s = settings.get();
+      const useOnion = source === 'exhentai_onion';
+      const torProxied = useOnion || s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai');
+      if (s.builtin_tor && !embeddedTorSocks() && torProxied) {
+        try {
+          await whenEmbeddedTorReady(120_000);
+        } catch {
+          /* fall through */
+        }
       }
-    }
-    const torSocks = effectiveTorSocks();
-    const cookieHeader = useOnion ? s.onion_cookies_raw : exAccounts.currentCookieHeader();
-    const ex = await fetchEhPopular(source, {
-      cookieHeader,
-      torSocksAddr: torSocks,
-      exProxyAddr: s.exhentai_proxy_addr,
-      torProxied,
-    });
-    return ex.map((c) => ({ url: c.url, title: c.title, coverUrl: c.coverUrl, pages: c.pages, score: c.rating, kind: c.category }));
-  });
-  ipcMain.handle(CH.ehTagSuggest, async (_e, text: string) => {
+      const torSocks = effectiveTorSocks();
+      const cookieHeader = useOnion ? s.onion_cookies_raw : exAccounts.currentCookieHeader();
+      const ex = await fetchEhPopular(source, {
+        cookieHeader,
+        torSocksAddr: torSocks,
+        exProxyAddr: s.exhentai_proxy_addr,
+        torProxied,
+      });
+      return ex.map((c) => ({ url: c.url, title: c.title, coverUrl: c.coverUrl, pages: c.pages, score: c.rating, kind: c.category }));
+    },
+  );
+  handleSafe(CH.ehTagSuggest, z.tuple([anyString]), async (_e, text: string) => {
     const s = settings.get();
     const proxy = s.tor_proxied_sites.includes('ehentai') ? effectiveTorSocks() : s.exhentai_proxy_addr.trim() || undefined;
     return await fetchEhTagSuggest(text, { proxy, cookieHeader: exAccounts.currentCookieHeader() || s.onion_cookies_raw });
   });
-  ipcMain.handle(CH.nhentaiTagSuggest, async (_e, text: string) => {
+  handleSafe(CH.nhentaiTagSuggest, z.tuple([anyString]), async (_e, text: string) => {
     const s = settings.get();
     const proxy = s.tor_proxied_sites.includes('nhentai') ? effectiveTorSocks() : undefined;
     return await fetchNhentaiTagSuggestions(text, { proxy });
@@ -295,7 +310,7 @@ export function registerCatalog(deps: CatalogDeps): {
     const s = settings.get();
     return await probeSocks5Handshake(effectiveTorSocks());
   });
-  ipcMain.handle(CH.checkBridges, async (_e, lines: string[]) => {
+  handleSafe(CH.checkBridges, z.tuple([stringArray]), async (_e, lines: string[]) => {
     return await Promise.all(lines.map((line) => probeBridgeLine(line)));
   });
   ipcMain.handle(CH.checkSites, async () => {

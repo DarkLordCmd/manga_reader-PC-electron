@@ -31,12 +31,13 @@ npm run format       # prettier --write .
 npm run dist   # Windows: качает Tor-бандл → electron-vite build → electron-builder (nsis + portable)
 ```
 
-- Tor-бандл (`vendor/tor`, только Windows) скачивает `scripts/fetch-tor.mjs`
-  напрямую с официальных зеркал torproject.org и **проверяет sha256 по
-  `sha256sums-signed-build.txt`** перед распаковкой. Пропускается, если
-  `vendor/tor` уже содержит актуальную версию.
-- Артефакты: `dist/Manga Reader Setup 0.1.0.exe` (установщик NSIS),
-  `dist/Manga Reader 0.1.0.exe` (portable), `dist/win-unpacked/`.
+- Tor-бандл (`vendor/tor`, скачивается под **текущую ОС/архитектуру** — Windows,
+  Linux, macOS) получает `scripts/fetch-tor.mjs` напрямую с официальных зеркал
+  torproject.org и **проверяет sha256 по `sha256sums-signed-build.txt`** перед
+  распаковкой. Пропускается, если `vendor/tor` уже содержит актуальную версию.
+- Артефакты: `dist/Manga Reader Setup 0.2.0.exe` (установщик NSIS),
+  `dist/Manga Reader 0.2.0.exe` (portable), `dist/win-unpacked/` (Linux —
+  `AppImage`/`deb`, macOS — `dmg`).
 
 ## Google-синхронизация
 
@@ -57,7 +58,9 @@ npm run dev           # или npm run dist
 ## Tor / fronting
 
 - Встроенный Tor включается в настройках (Built-in Tor); onion-источники
-  (ExHentai onion, NHentai onion) ходят через него автоматически.
+  (ExHentai onion, NHentai onion) ходят через него автоматически. Окно/бинар
+  берётся из `resources/tor` (Windows-сборка проверена на CI; Linux/macOS —
+  бандлы тоже загружаются скриптом, но ещё проходят ручную проверку).
 - Мосты задаются в настройках; `scripts/fetch-tor.mjs` использует
   socks5 `127.0.0.1:9150` (Tor Browser) как fallback-транспорт для скачивания.
 - Domain fronting для обхода блокировок — toggle в настройках (Network).

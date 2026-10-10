@@ -1,7 +1,7 @@
 import { dialog, ipcMain } from 'electron';
 import { z } from 'zod';
 import { CH } from '@shared/ipc';
-import { handleSafe, existingDirOrArchive, httpUrl } from './validate';
+import { handleSafe, existingDirOrArchive, httpUrl, anyString, nonNegInt } from './validate';
 import { UnsupportedUrlError, type GalleryResolution } from '../services/resolve-gallery';
 import type { Gallery } from '../services/gallery';
 import type { ZipGalleryInfo } from '../services/zip-gallery';
@@ -127,13 +127,19 @@ export function registerGallery(deps: GalleryDeps): void {
       // Mangalib: dedicated proxy (e.g. a Belarus-exit SOCKS/HTTP) when configured.
       if (!useTor && url.includes('mangalib') && s.mangalib_proxy_addr.trim()) proxy = s.mangalib_proxy_addr.trim();
       // Clearnet ExHentai/E-Hentai uses the active account pool cookies and,
-      // if configured, the dedicated exhentai_proxy_addr proxy.
+      // if configured, the dedicated exhentai_proxy_addr proxy. Cookies must be
+      // routed per source — the onion jar must never leak onto clearnet
+      // requests (and vice versa).
       const isClearnetEx = url.includes('exhentai') || url.includes('e-hentai.org');
       const cookieHeader = url.includes('.onion')
         ? s.onion_cookies_raw
-        : isClearnetEx
-          ? exAccounts.currentCookieHeader()
-          : s.onion_cookies_raw;
+        : url.includes('nhentai')
+          ? s.nhentai_cookies_raw
+          : url.includes('senkuro')
+            ? s.senkuro_cookies_raw
+            : isClearnetEx
+              ? exAccounts.currentCookieHeader()
+              : undefined;
       if (isClearnetEx && !url.includes('.onion') && s.exhentai_proxy_addr.trim()) proxy = s.exhentai_proxy_addr.trim();
       let result: GalleryResolution;
       try {
@@ -196,7 +202,7 @@ export function registerGallery(deps: GalleryDeps): void {
       };
     },
   );
-  ipcMain.handle(CH.setReadingPosition, (_e, gid: string, index: number) => {
+  handleSafe(CH.setReadingPosition, z.tuple([anyString, nonNegInt]), (_e, gid: string, index: number) => {
     setReadingPosition(gid, index);
   });
   handleSafe(CH.rescanFolder, z.tuple([existingDirOrArchive]), (_e, path) => {

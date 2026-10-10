@@ -1,4 +1,5 @@
 import { protocol, net } from 'electron';
+import { detectImageMime } from './app/mime';
 import { pathToFileURL } from 'url';
 import { readZipEntry } from './services/zip-gallery';
 import { requestPage, getGalleryPages } from './services/online-gallery';
@@ -50,7 +51,7 @@ export function registerMangaProtocol(deps: {
           }
         }
         const buf = await deps.getCover(target);
-        return new Response(Uint8Array.from(buf), { headers: { 'Content-Type': 'image/jpeg' } });
+        return new Response(Uint8Array.from(buf), { headers: { 'Content-Type': detectImageMime(buf) } });
       } catch {
         return new Response('Not found', { status: 404 });
       }
@@ -93,7 +94,7 @@ export function registerMangaProtocol(deps: {
     try {
       const buf = await requestPage(gid, index, onlineHeaders.get(gid) ?? {});
       if (!buf) return new Response('Not found', { status: 404 });
-      return new Response(Uint8Array.from(buf), { headers: { 'Content-Type': 'image/jpeg' } });
+      return new Response(Uint8Array.from(buf), { headers: { 'Content-Type': detectImageMime(buf) } });
     } catch {
       return new Response('Not found', { status: 404 });
     }
