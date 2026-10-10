@@ -177,7 +177,7 @@ export async function fetchSenkuroChapter(
   if (!slug) throw new Error('Senkuro: не удалось разобрать slug главы');
   const base = chapterUrl.includes('senkuro.com') ? 'https://senkuro.com' : 'https://senkuro.me';
   const gql = JSON.stringify({
-    query: `query { mangaChapter(slug: "${slug}") { id name number pages { number image { original { url } compress: resize(width: 1200, quality: 80, format: WEBP) { url } } } } }`,
+    query: `query { mangaChapter(slug: "${slug}") { id name number volume pages { number image { original { url } compress: resize(width: 1200, quality: 80, format: WEBP) { url } } } } }`,
   });
   // The chapter-page GraphQL is served like the rest of senkuro.me — the
   // bearer token (from the session cookie) must travel along, or authorized
@@ -191,6 +191,9 @@ export async function fetchSenkuroChapter(
     if (typeof u === 'string') pageUrls.push(u);
   }
   if (pageUrls.length === 0) throw new Error('Senkuro: не удалось извлечь URL страниц');
-  const title = chapter?.name ?? String(chapter?.number ?? slug);
+  // Keep the reader title consistent with the chapter list: same label as the
+  // catalog (`vol / num`), not a bare chapter number.
+  const title =
+    typeof chapter?.name === 'string' && chapter.name ? chapter.name : senkuroChapterNumber(chapter?.number, chapter?.volume) || slug;
   return { title, pageUrls, base };
 }
