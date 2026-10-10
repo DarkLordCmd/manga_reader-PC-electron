@@ -92,7 +92,7 @@ export async function resolveGallery(url: string, opts: { proxy?: string; cookie
     };
   }
   if (trimmed.includes('senkuro') && trimmed.includes('/chapter/')) {
-    const r = await fetchSenkuroChapter(trimmed);
+    const r = await fetchSenkuroChapter(trimmed, opts.cookieHeader ?? '');
     return { title: r.title, pageUrls: r.pageUrls, coverUrl: null, source: 'Senkuro', referer: `${r.base}/`, mangaId: seriesId, seriesId };
   }
   if (trimmed.includes('mangamello')) {

@@ -54,7 +54,7 @@ export function registerCatalog(deps: CatalogDeps): {
       chapters = await fetchRemangaChapters(mangaId);
     } else if (mangaId.includes('senkuro')) {
       const slug = mangaId.trim().replace(/\/+$/, '').split('/').filter(Boolean).pop() ?? mangaId;
-      chapters = await fetchSenkuroChapters(slug, settings.get().onion_cookies_raw);
+      chapters = await fetchSenkuroChapters(slug, settings.get().senkuro_cookies_raw);
     } else if (mangaId.includes('mangalib')) {
       const { mangalibChapters, mangalibChapterUrl, mangalibChapterSortKey } = await import('../services/sources/mangalib');
       const s = settings.get();

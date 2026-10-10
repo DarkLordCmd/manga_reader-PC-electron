@@ -156,14 +156,20 @@ export async function fetchSenkuroChapters(mangaSlug: string, cookieHeader = '')
   return all;
 }
 
-export async function fetchSenkuroChapter(chapterUrl: string): Promise<{ title: string; pageUrls: string[]; base: string }> {
+export async function fetchSenkuroChapter(
+  chapterUrl: string,
+  cookieHeader = '',
+): Promise<{ title: string; pageUrls: string[]; base: string }> {
   const slug = chapterUrl.trim().replace(/\/+$/, '').split('/').pop() ?? '';
   if (!slug) throw new Error('Senkuro: не удалось разобрать slug главы');
   const base = chapterUrl.includes('senkuro.com') ? 'https://senkuro.com' : 'https://senkuro.me';
   const gql = JSON.stringify({
     query: `query { mangaChapter(slug: "${slug}") { id name number pages { number image { original { url } compress: resize(width: 1200, quality: 80, format: WEBP) { url } } } } }`,
   });
-  const json = (await httpPostJson(SENKURO_GRAPHQL, gql, { ...senkuroHeaders(''), Referer: `${base}/`, Origin: base })) as any;
+  // The chapter-page GraphQL is served like the rest of senkuro.me — the
+  // bearer token (from the session cookie) must travel along, or authorized
+  // content returns empty/restricted.
+  const json = (await httpPostJson(SENKURO_GRAPHQL, gql, { ...senkuroHeaders(cookieHeader), Referer: `${base}/`, Origin: base })) as any;
   const chapter = json?.data?.mangaChapter;
   const pages: any[] = chapter?.pages ?? [];
   const pageUrls: string[] = [];
