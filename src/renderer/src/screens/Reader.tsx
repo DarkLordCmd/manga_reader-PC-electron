@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { startPageFor } from '@shared/settings';
+import type { ArchiveCost } from '@shared/ipc';
 import { useStore } from '../state/store';
 import { useHotkeys } from '../hooks/useHotkeys';
 import ScrollView from '../components/ScrollView';
 import BookView from '../components/BookView';
 import ThumbnailPanel from '../components/ThumbnailPanel';
 import ChapterListModal from '../components/ChapterListModal';
+import { isReaderAtEnd } from './reader/viewMath';
 
 export default function Reader(): JSX.Element {
   const { settings, setSettings, opened, setOpened } = useStore();
@@ -16,6 +18,9 @@ export default function Reader(): JSX.Element {
   const [showHelp, setShowHelp] = useState(false);
   const [showChapters, setShowChapters] = useState(false);
   const [openingUrl, setOpeningUrl] = useState(false);
+  const [archive, setArchive] = useState<ArchiveCost | null>(null);
+  const [archiveDltype, setArchiveDltype] = useState('org');
+  const [archiveBusy, setArchiveBusy] = useState(false);
 
   const perScreen = Math.max(1, settings.pages_per_screen);
   const pageCount = opened?.pageCount ?? 0;
@@ -109,14 +114,20 @@ export default function Reader(): JSX.Element {
   }, []);
   const onJumpDone = useCallback(() => setJumpTo(null), []);
 
+  // Whether the final screen of the gallery is on display. In Book mode the
+  // visible spread may END on the last page while currentIndex (first page of
+  // the spread) is not the last page — a plain `currentIndex === pageCount-1`
+  // misses even page counts entirely.
+  const atEnd = useMemo(
+    () => isReaderAtEnd(currentIndex, pageCount, perScreen, settings.reading_mode),
+    [currentIndex, pageCount, perScreen, settings.reading_mode],
+  );
+
   // Mark chapter as fully read when reaching the last page.
   useEffect(() => {
     if (!opened || opened.kind !== 'online' || pageCount === 0) return;
-    if (!Number.isInteger(currentIndex) || currentIndex + 1 >= pageCount) {
-      if (!Number.isInteger(currentIndex)) return;
-      window.api.markChapterRead(opened.url);
-    }
-  }, [opened, currentIndex, pageCount]);
+    if (atEnd) window.api.markChapterRead(opened.url);
+  }, [opened, atEnd, pageCount]);
 
   // Auto-advance to the next chapter after ~1s at the end (Scroll mode).
   // Guards: only fire when the user really is on the LAST page — a NaN or
@@ -211,34 +222,42 @@ export default function Reader(): JSX.Element {
     [opened, settings.read_progress, setOpened],
   );
 
-  const buyArchive = useCallback(async () => {
+  const openArchiveBuy = useCallback(async () => {
     if (opened?.kind !== 'online') return;
-    const cost = await window.api.ehArchiveCost(opened.url);
-    if (!cost) {
-      alert('Не удалось получить страницу архива');
-      return;
+    setArchiveBusy(true);
+    try {
+      const cost = await window.api.ehArchiveCost(opened.url);
+      if (!cost) {
+        alert('Не удалось получить страницу архива');
+        return;
+      }
+      setArchiveDltype(cost.options[0]?.key ?? 'org');
+      setArchive(cost);
+    } finally {
+      setArchiveBusy(false);
     }
-    const costText = cost.costGp != null ? `Стоимость: ${cost.costGp} GP.` : 'Стоимость неизвестна.';
-    let dltype = cost.options[0]?.key ?? 'org';
-    if (cost.options.length > 1) {
-      const labels = cost.options.map((o) => `'${o.key}' (${o.label})`).join(' / ');
-      const input = window.prompt(`${costText} Выберите формат архива: ${labels}`, dltype);
-      const chosen = input != null && input.trim() !== '' ? cost.options.find((o) => o.key === input.trim()) : undefined;
-      if (chosen) dltype = chosen.key;
-    }
-    if (!window.confirm(`${costText} Купить и скачать оригинальный архив?`)) return;
-    const r = await window.api.ehArchiveBuy(opened.url, dltype);
-    if (!r?.downloadUrl) {
-      alert('Не удалось купить архив (нет ссылки на скачивание)');
-      return;
-    }
-    const task = await window.api.downloadsAddArchive(opened.url, opened.title, r.downloadUrl);
-    if (!task) {
-      alert('Такая галерея уже есть в загрузках');
-      return;
-    }
-    alert('Архив скачивается в Downloads');
   }, [opened]);
+
+  const buyArchive = useCallback(async () => {
+    if (!archive || opened?.kind !== 'online') return;
+    setArchiveBusy(true);
+    try {
+      const r = await window.api.ehArchiveBuy(opened.url, archiveDltype);
+      if (!r?.downloadUrl) {
+        alert('Не удалось купить архив (нет ссылки на скачивание)');
+        return;
+      }
+      const task = await window.api.downloadsAddArchive(opened.url, opened.title, r.downloadUrl);
+      if (!task) {
+        alert('Такая галерея уже есть в загрузках');
+        return;
+      }
+      setArchive(null);
+      alert('Архив скачивается в Downloads');
+    } finally {
+      setArchiveBusy(false);
+    }
+  }, [archive, archiveDltype, opened]);
 
   return (
     <div className={`reader${hideToolbar ? ' immersive' : ''}`}>
@@ -273,7 +292,9 @@ export default function Reader(): JSX.Element {
         )}
         {opened && <button onClick={() => void window.api.recordProgress(opened.url, 0, 1)}>Сбросить</button>}
         {opened?.kind === 'online' && (opened.source.includes('ExHentai') || opened.source.includes('E-Hentai')) && (
-          <button onClick={() => void buyArchive()}>⬇ Archive</button>
+          <button disabled={archiveBusy} onClick={() => void openArchiveBuy()}>
+            ⬇ Archive
+          </button>
         )}
         <div className="spacer" />
         <input
@@ -378,6 +399,35 @@ export default function Reader(): JSX.Element {
               <li>M — Toggle reading mode</li>
               <li>? — Toggle this help</li>
             </ul>
+          </div>
+        </div>
+      )}
+
+      {archive && opened?.kind === 'online' && (
+        <div className="overlay" onClick={() => !archiveBusy && setArchive(null)}>
+          <div className="overlay-card archive-buy">
+            <h3>Скачать архив</h3>
+            <p>{archive.costGp != null ? `Стоимость: ${archive.costGp} GP.` : 'Стоимость неизвестна.'}</p>
+            {archive.options.length > 0 && (
+              <label className="row">
+                Формат:
+                <select value={archiveDltype} onChange={(e) => setArchiveDltype(e.target.value)}>
+                  {archive.options.map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label || o.key}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <div className="row">
+              <button disabled={archiveBusy} onClick={() => void buyArchive()}>
+                {archiveBusy ? 'Покупаю…' : 'Купить и скачать'}
+              </button>
+              <button disabled={archiveBusy} onClick={() => setArchive(null)}>
+                Отмена
+              </button>
+            </div>
           </div>
         </div>
       )}
