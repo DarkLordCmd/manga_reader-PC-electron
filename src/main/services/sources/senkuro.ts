@@ -10,6 +10,17 @@ const SENKURO_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 // guessing the wrong host was why searches came back empty.
 const SENKURO_GRAPHQL = 'https://api.senkuro.me/graphql';
 
+/** Chapter number label from the API's `number`/`volume` fields, which are
+ * STRINGS despite the GraphQL scalar. Dedupes the common case where volume and
+ * number coincide (volume "1", number "1" → "1"), keeps multi-volume works
+ * readable ("2 / 5"). */
+export function senkuroChapterNumber(number: unknown, volume: unknown): string {
+  const num = number != null ? String(number) : '';
+  const vol = volume != null ? String(volume) : '';
+  if (!num) return '';
+  return vol && vol !== num ? `${vol} / ${num}` : num;
+}
+
 export function senkuroHeaders(cookieHeader: string): Record<string, string> {
   const h: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -139,12 +150,14 @@ export async function fetchSenkuroChapters(mangaSlug: string, cookieHeader = '')
     for (const edge of data?.edges ?? []) {
       const node = edge?.node ?? {};
       const slug: string = node.slug ?? '';
-      const number: string = typeof node.number === 'number' ? String(node.number) : '';
+      // `number`/`volume` come back as STRINGS ("1") — the site's API, despite
+      // the GraphQL scalar, does not coerce to Int. Map whatever we get.
+      const chapter_num = senkuroChapterNumber(node.number, node.volume);
       const name: string | null = typeof node.name === 'string' && node.name ? node.name : null;
       all.push({
         chapter_id: `https://senkuro.me/manga/${mangaSlug}/chapter/${slug}`,
-        chapter_num: number,
-        title: name ?? (mainName ? mainName : null),
+        chapter_num,
+        title: name ?? (chapter_num ? null : mainName),
         lang: 'senkuro',
       });
     }
