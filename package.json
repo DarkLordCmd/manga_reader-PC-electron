@@ -1,12 +1,32 @@
 {
   "name": "manga-reader-electron",
-  "version": "0.1.0",
-  "description": "Manga Reader ported to Electron",
+  "version": "0.2.0",
+  "description": "Manga/comics reader for Electron: catalog and gallery search across >10 sources (MangaDex, ExHentai, NHentai, Com-X, Senkuro, Remanga, mangalib and RU aggregators), built-in Tor/bridges with domain fronting, downloads, local zip/folder gallery, E-Hentai accounts, Google Drive sync and at-rest secret encryption.",
   "main": "./out/main/index.js",
-  "author": "",
+  "author": "DarkLordCmd",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DarkLordCmd/manga_reader-PC-electron.git"
+  },
+  "homepage": "https://github.com/DarkLordCmd/manga_reader-PC-electron",
+  "bugs": {
+    "url": "https://github.com/DarkLordCmd/manga_reader-PC-electron/issues"
+  },
+  "keywords": [
+    "manga",
+    "comics",
+    "reader",
+    "electron",
+    "e-hentai",
+    "exhentai",
+    "nhentai",
+    "mangadex",
+    "tor"
+  ],
   "scripts": {
     "dev": "electron-vite dev",
+    "start": "electron .",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "test": "vitest run",
@@ -24,9 +44,10 @@
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/yauzl": "^3.4.0",
     "@types/yazl": "^3.3.1",
     "@vitejs/plugin-react": "^4.3.4",
-    "electron": "^33.2.0",
+    "electron": "^44.7.0",
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
     "eslint": "^9.39.5",
@@ -41,10 +62,10 @@
     "yazl": "^3.3.1"
   },
   "dependencies": {
-    "@types/yauzl": "^3.4.0",
     "better-sqlite3": "^12.11.1",
     "cheerio": "^1.2.0",
     "electron-log": "^5.4.4",
+    "electron-updater": "^6.6.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "socks-proxy-agent": "^8.0.5",
@@ -53,7 +74,8 @@
     "zod": "^3.25.76"
   },
   "allowScripts": {
-    "electron@33.4.11": true,
+    "electron@44.7.0": true,
+    "better-sqlite3@12.11.1": true,
     "esbuild@0.21.5": true
   }
 }

@@ -8,17 +8,22 @@ files:
   - package.json
 asarUnpack:
   - '**/node_modules/better-sqlite3/**'
-extraResources:
-  - from: vendor/tor
-    to: tor
-    filter: ['**/*']
 win:
   target:
     - nsis
     - portable
+  # Tor expert bundle is downloaded Windows-only (scripts/fetch-tor.mjs,
+  # verified against torproject sha256sums-signed-build.txt). Bundling it on
+  # non-Windows targets would ship the wrong platform's binaries, so it stays
+  # win-scoped.
+  extraResources:
+    - from: vendor/tor
+      to: tor
+      filter: ['**/*']
 mac:
   target: dmg
   category: public.app-category.entertainment
+  # Requires a signed Dev ID cert (see README "Code signing").
 linux:
   target:
     - AppImage
@@ -27,3 +32,8 @@ linux:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+publish:
+  provider: github
+  owner: DarkLordCmd
+  repo: manga_reader-PC-electron
+  private: false

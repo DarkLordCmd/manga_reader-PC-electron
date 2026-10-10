@@ -21,12 +21,7 @@ export function spreadIndices(start: number, pageCount: number, pagesPerScreen: 
  * Book: the visible spread covers the last page (works for odd and even
  * page counts — `currentIndex` is the first page of the spread, so a naive
  * `currentIndex + 1 >= pageCount` misses even counts entirely). */
-export function isReaderAtEnd(
-  currentIndex: number,
-  pageCount: number,
-  pagesPerScreen: number,
-  mode: 'Scroll' | 'Book',
-): boolean {
+export function isReaderAtEnd(currentIndex: number, pageCount: number, pagesPerScreen: number, mode: 'Scroll' | 'Book'): boolean {
   if (!Number.isInteger(currentIndex) || pageCount <= 0) return false;
   if (mode === 'Book') {
     const start = spreadStart(currentIndex, pageCount, pagesPerScreen);

@@ -19,15 +19,7 @@ interface Props {
  * — the browser then (re)fires a `click` on whichever child sat under the
  * cursor, so navigation must NOT live on onClick handlers, or a swipe that
  * ends over a tap-zone would advance twice. */
-export default function BookView({
-  galleryId,
-  pageCount,
-  currentIndex,
-  pagesPerScreen,
-  direction,
-  onPrev,
-  onNext,
-}: Props): JSX.Element {
+export default function BookView({ galleryId, pageCount, currentIndex, pagesPerScreen, direction, onPrev, onNext }: Props): JSX.Element {
   const press = useRef<{ x: number; y: number } | null>(null);
 
   const start = spreadStart(currentIndex, pageCount, pagesPerScreen);

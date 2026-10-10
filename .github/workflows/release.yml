@@ -1,0 +1,31 @@
+name: release
+
+# Build on version tags and publish to GitHub Releases. The `publish` config in
+# electron-builder.yml (provider github) also writes app-update.yml, which the
+# in-app electron-updater uses to ship updates.
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+          - os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Fetch Tor expert bundle (Windows only)
+        if: runner.os == 'Windows'
+        run: node scripts/fetch-tor.mjs
+      - name: Build and publish
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

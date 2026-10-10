@@ -43,6 +43,7 @@ import { registerGallery } from './ipc/gallery';
 import { registerAccounts } from './ipc/accounts';
 import { registerSync, broadcastSyncChanged } from './ipc/sync';
 import { registerEhLimits } from './ipc/eh-limits';
+import { registerAutoUpdater } from './updater';
 import type { Settings } from '@shared/settings';
 import {
   galleries,
@@ -325,6 +326,7 @@ app.whenReady().then(() => {
     broadcastSettingsChanged,
   });
 
+  registerAutoUpdater();
   createWindow();
 });
 
