@@ -33,7 +33,6 @@ export default function ScrollView({
   // Guard window started ONCE when a jump begins (not refreshed by each align
   // tick) — otherwise the observer is blocked for as long as alignment runs.
   const jumpStartRef = useRef<number>(Date.now());
-  const visibleRef = useRef<number | null>(null);
 
   // Content coordinate of an item: how far it sits from the top of the scroll
   // container's CONTENT, independent of any positioned ancestor (offsetParent)
@@ -47,14 +46,45 @@ export default function ScrollView({
   };
 
   // Report the vertical offset INSIDE the current (visible) webtoon page so
-  // the reader can persist "mid-page" positions for tall strips.
+  // the reader can persist "mid-page" positions for tall strips. Self-sufficient:
+  // the dominant visible page is derived from live DOM geometry (cached), NOT
+  // from the observer's async visibleRef — so the offset captures on any scroll
+  // regardless of observer scheduling.
+  const lastSeenRef = useRef<number | null>(null);
+  const visiblePageIndex = (): number => {
+    const c = containerRef.current;
+    if (!c) return -1;
+    const vTop = c.getBoundingClientRect().top;
+    const vBot = vTop + c.clientHeight;
+    const cached = lastSeenRef.current;
+    const ce = cached != null ? itemRefs.current[cached] : null;
+    if (ce && cached != null) {
+      const r = ce.getBoundingClientRect();
+      if (r.height > 0 && r.top < vBot && r.bottom > vTop) return cached;
+    }
+    let best = -1;
+    let bestRatio = 0;
+    for (let i = 0; i < itemRefs.current.length; i++) {
+      const el = itemRefs.current[i];
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (r.bottom <= vTop || r.top >= vBot) continue;
+      const vis = Math.min(r.bottom, vBot) - Math.max(r.top, vTop);
+      const ratio = Math.max(0, vis) / Math.max(1, r.height);
+      if (ratio > bestRatio) {
+        bestRatio = ratio;
+        best = i;
+      }
+    }
+    lastSeenRef.current = best;
+    return best;
+  };
+
   const reportPos = (): void => {
     const c = containerRef.current;
     if (!c || !onVisiblePos) return;
-    const idx = visibleRef.current;
-    if (idx == null) return;
-    const el = itemRefs.current[idx];
-    if (!el) return;
+    const idx = visiblePageIndex();
+    if (idx < 0) return;
     const off = Math.max(0, c.scrollTop - itemContentTop(idx));
     onVisiblePos(idx, off);
   };
@@ -83,8 +113,12 @@ export default function ScrollView({
           if (!best || en.intersectionRatio > best.ratio) best = { ratio: en.intersectionRatio, index };
         }
         if (best) {
-          visibleRef.current = best.index;
           onVisible(best.index);
+          // Capture the in-page offset on page transitions too (not only on
+          // scroll events) — some environments suppress scroll events, and this
+          // keeps the reader's current page + offset an atomic observation.
+          const c = containerRef.current;
+          if (c && onVisiblePos) onVisiblePos(best.index, Math.max(0, c.scrollTop - itemContentTop(best.index)));
         }
       },
       { root: container, threshold: [0] },

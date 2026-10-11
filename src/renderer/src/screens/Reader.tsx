@@ -69,12 +69,13 @@ export default function Reader(): JSX.Element {
   idxRef.current = currentIndex;
   const offRef = useRef(0);
   const offsetDirtyRef = useRef(false);
-  const onVisiblePos = useCallback((_index: number, offsetPx: number): void => {
+  const onVisiblePos = useCallback((index: number, offsetPx: number): void => {
+    // Atomic pair: page index and in-page offset come from the SAME scroll
+    // observation, so a flush can never mix a page from one moment with an
+    // offset from another (the "not always the right spot" flakiness).
     offRef.current = Math.round(offsetPx);
-    // A scroll-driven reading position is only trustworthy after a real scroll;
-    // everything before the first scroll is a restore/race artifact that must
-    // not overwrite the stored offset (else resuming lands at the page top).
     offsetDirtyRef.current = true;
+    setCurrentIndex((prev) => (prev === index ? prev : index)); // bails out when unchanged
   }, []);
   const flushProgress = useCallback(
     (immediate: boolean): void => {
