@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { startPageFor } from '@shared/settings';
+import { startPageFor, startScrollFor } from '@shared/settings';
 import type { ArchiveCost } from '@shared/ipc';
 import { useStore } from '../state/store';
 import { useHotkeys } from '../hooks/useHotkeys';
@@ -12,7 +12,7 @@ import { isReaderAtEnd, clampWidthScale, WIDTH_SCALE_DEFAULT } from './reader/vi
 export default function Reader(): JSX.Element {
   const { settings, setSettings, opened, setOpened } = useStore();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [jumpTo, setJumpTo] = useState<number | null>(null);
+  const [jumpTo, setJumpTo] = useState<{ index: number; offset: number } | null>(null);
   const [jumpText, setJumpText] = useState('');
   const [urlText, setUrlText] = useState('');
   const [showHelp, setShowHelp] = useState(false);
@@ -37,8 +37,15 @@ export default function Reader(): JSX.Element {
     setCurrentIndex(idx);
     // Jump the ScrollView to the restored position — otherwise it sits on
     // the top of the document, the observer fires for page 1 and the saved
-    // progress is silently reset to the first page.
-    setJumpTo(idx > 0 ? idx : null);
+    // progress is silently reset to the first page. Webtoons additionally
+    // restore the vertical offset saved inside the page (fetched fresh, so a
+    // re-open within the same session sees the latest position too).
+    const key = opened?.url ?? '';
+    void window.api.getSettings().then((fresh) => {
+      const off = startScrollFor(key, fresh.read_scroll);
+      setJumpTo(idx > 0 || off > 0 ? { index: idx, offset: off } : null);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, pageCount]);
 
   useEffect(() => {
@@ -53,19 +60,24 @@ export default function Reader(): JSX.Element {
   // Progress is flushed like JHenTai does: a periodic timer + a final write
   // when the reader (or gallery) closes — not an IPC on every scroll tick.
   const idxRef = useRef(0);
-  const savedRef = useRef({ url: '', page: -1 });
+  const savedRef = useRef({ url: '', page: -1, off: -1 });
   idxRef.current = currentIndex;
+  const offRef = useRef(0);
+  const onVisiblePos = useCallback((_index: number, offsetPx: number): void => {
+    offRef.current = Math.round(offsetPx);
+  }, []);
   const flushProgress = useCallback(
     (immediate: boolean): void => {
       const o = opened;
       if (!o || pageCount === 0) return;
       const page = idxRef.current + 1;
-      if (!immediate && page === savedRef.current.page && o.url === savedRef.current.url) return;
-      savedRef.current = { url: o.url, page };
+      const off = offRef.current;
+      if (!immediate && page === savedRef.current.page && o.url === savedRef.current.url && off === savedRef.current.off) return;
+      savedRef.current = { url: o.url, page, off };
       // Also informs the main process so warm-ahead (load pages ~32 forward)
       // re-centers around the current position.
       if (o.kind === 'online') window.api.setReadingPosition(o.id, idxRef.current);
-      window.api.recordProgress(o.url, page, pageCount);
+      window.api.recordProgress(o.url, page, pageCount, offRef.current);
     },
     [opened, pageCount],
   );
@@ -88,12 +100,12 @@ export default function Reader(): JSX.Element {
   const goNext = useCallback(() => {
     const next = Math.min(currentIndex + perScreen, Math.max(0, pageCount - 1));
     setCurrentIndex(next);
-    if (settings.reading_mode === 'Scroll') setJumpTo(next);
+    if (settings.reading_mode === 'Scroll') setJumpTo({ index: next, offset: 0 });
   }, [currentIndex, perScreen, pageCount, settings.reading_mode]);
   const goPrev = useCallback(() => {
     const next = Math.max(0, currentIndex - perScreen);
     setCurrentIndex(next);
-    if (settings.reading_mode === 'Scroll') setJumpTo(next);
+    if (settings.reading_mode === 'Scroll') setJumpTo({ index: next, offset: 0 });
   }, [currentIndex, perScreen, settings.reading_mode]);
 
   const setWidthBy = useCallback(
@@ -227,7 +239,7 @@ export default function Reader(): JSX.Element {
   const jump = useMemo(
     () => (): void => {
       const n = parseInt(jumpText, 10);
-      if (!isNaN(n)) setJumpTo(Math.min(Math.max(0, n - 1), Math.max(0, pageCount - 1)));
+      if (!isNaN(n)) setJumpTo({ index: Math.min(Math.max(0, n - 1), Math.max(0, pageCount - 1)), offset: 0 });
     },
     [jumpText, pageCount],
   );
@@ -242,7 +254,7 @@ export default function Reader(): JSX.Element {
     const g = await window.api.rescanFolder(opened.url.slice('file://'.length));
     if (g) {
       setOpened({ kind: 'local', ...g, startPage: 0 });
-      setJumpTo(0);
+      setJumpTo({ index: 0, offset: 0 });
     }
   }, [opened, setOpened]);
 
@@ -361,7 +373,11 @@ export default function Reader(): JSX.Element {
             ＋ Library
           </button>
         )}
-        {opened && <button onClick={() => void window.api.recordProgress(opened.url, 0, 1)}>Сбросить</button>}
+        {opened && (
+          <button onClick={() => void window.api.recordProgress(opened.url, 0, 1, 0)} title="Сбросить прогресс этой главы">
+            Сбросить
+          </button>
+        )}
         {opened?.kind === 'online' && (opened.source.includes('ExHentai') || opened.source.includes('E-Hentai')) && (
           <button disabled={archiveBusy} onClick={() => void openArchiveBuy()}>
             ⬇ Archive
@@ -408,7 +424,7 @@ export default function Reader(): JSX.Element {
               thumbSize={settings.thumb_size}
               onSelect={(i) => {
                 setCurrentIndex(i);
-                setJumpTo(i);
+                setJumpTo({ index: i, offset: 0 });
               }}
             />
           )}
@@ -422,6 +438,7 @@ export default function Reader(): JSX.Element {
                 jumpTo={jumpTo}
                 webtoon={webtoon}
                 onVisible={onVisible}
+                onVisiblePos={onVisiblePos}
                 onJumpDone={onJumpDone}
               />
             )}
@@ -446,7 +463,7 @@ export default function Reader(): JSX.Element {
                 onChange={(e) => {
                   const v = Number(e.target.value) - 1;
                   setCurrentIndex(v);
-                  setJumpTo(v);
+                  setJumpTo({ index: v, offset: 0 });
                 }}
               />
             )}

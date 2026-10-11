@@ -193,7 +193,7 @@ export interface Api {
   openFolder(path: string): Promise<OpenFolderResult | null>;
   rescanFolder(path: string): Promise<OpenFolderResult | null>;
   getHistory(): Promise<HistoryEntry[]>;
-  recordProgress(url: string, page: number, total: number): Promise<void>;
+  recordProgress(url: string, page: number, total: number, offset?: number): Promise<void>;
   clearHistory(): Promise<void>;
   openUrl(
     url: string,

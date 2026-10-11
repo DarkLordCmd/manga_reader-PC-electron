@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSettings, defaultSettings, startPageFor } from '../src/shared/settings';
+import { parseSettings, defaultSettings, startPageFor, startScrollFor } from '../src/shared/settings';
 
 describe('parseSettings', () => {
   it('fills defaults for a missing object', () => {
@@ -54,6 +54,7 @@ describe('parseSettings', () => {
     const s = parseSettings({});
     expect(s.tor_proxied_sites).toEqual([]);
     expect(s.read_progress).toEqual({});
+    expect(s.read_scroll).toEqual({});
     expect(s.read_chapters).toEqual([]);
     expect(s.eh_tag_bookmarks).toEqual([]);
   });
@@ -68,5 +69,16 @@ describe('startPageFor', () => {
   });
   it('returns 0 when unknown', () => {
     expect(startPageFor('x', {})).toBe(0);
+  });
+});
+
+describe('startScrollFor', () => {
+  it('returns the saved vertical offset inside the page', () => {
+    expect(startScrollFor('u', { u: 120 })).toBe(120);
+  });
+  it('returns 0 when nothing or non-positive is saved', () => {
+    expect(startScrollFor('x', {})).toBe(0);
+    expect(startScrollFor('u', { u: 0 })).toBe(0);
+    expect(startScrollFor('u', { u: -3 })).toBe(0);
   });
 });

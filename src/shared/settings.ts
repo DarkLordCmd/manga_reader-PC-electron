@@ -11,6 +11,10 @@ export interface Settings {
   thumb_size: number;
   last_folder: string | null;
   read_progress: Record<string, [number, number]>;
+  /** Vertical offset (px) inside the current webtoon page — tall long-strip
+   * pages otherwise always resume at their very top. Keyed by url like
+   * read_progress; only meaningful in Scroll mode. */
+  read_scroll: Record<string, number>;
   tor_socks_addr: string;
   tor_bridges: string;
   exhentai_proxy_addr: string;
@@ -51,6 +55,7 @@ export function defaultSettings(): Settings {
     thumb_size: 110,
     last_folder: null,
     read_progress: {},
+    read_scroll: {},
     tor_socks_addr: '127.0.0.1:9150',
     tor_bridges: '',
     exhentai_proxy_addr: '',
@@ -94,6 +99,12 @@ export function startPageFor(url: string, readProgress: Record<string, [number, 
   return Math.max(0, page - 1);
 }
 
+/** Saved vertical offset inside the current webtoon page (px), if any. */
+export function startScrollFor(url: string, readScroll: Record<string, number>): number {
+  const v = readScroll[url];
+  return typeof v === 'number' && isFinite(v) && v > 0 ? v : 0;
+}
+
 export function parseSettings(raw: unknown): Settings {
   const d = defaultSettings();
   if (!raw || typeof raw !== 'object') return d;
@@ -109,6 +120,12 @@ export function parseSettings(raw: unknown): Settings {
       }
     }
   }
+  const scroll: Record<string, number> = {};
+  if (o.read_scroll && typeof o.read_scroll === 'object') {
+    for (const [k, v] of Object.entries(o.read_scroll as Record<string, unknown>)) {
+      if (typeof v === 'number' && isFinite(v) && v > 0) scroll[k] = v;
+    }
+  }
   return {
     reading_mode: o.reading_mode === 'Book' ? 'Book' : 'Scroll',
     book_direction: o.book_direction === 'Ltr' ? 'Ltr' : 'Rtl',
@@ -119,6 +136,7 @@ export function parseSettings(raw: unknown): Settings {
     thumb_size: num(o.thumb_size, d.thumb_size),
     last_folder: typeof o.last_folder === 'string' ? o.last_folder : null,
     read_progress: progress,
+    read_scroll: scroll,
     tor_socks_addr: str(o.tor_socks_addr, d.tor_socks_addr),
     tor_bridges: str(o.tor_bridges, ''),
     exhentai_proxy_addr: str(o.exhentai_proxy_addr, ''),

@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import { z } from 'zod';
 import { CH } from '@shared/ipc';
 import type { LibraryQuery, ReadingStatus } from '@shared/library';
+import type { Settings } from '@shared/settings';
 import { handleSafe, anyString, nonNegInt, stringArray } from './validate';
 import type { LibraryService } from '../services/library';
 import type { HistoryManager } from '../services/history';
@@ -86,15 +87,26 @@ export function registerLibrary(deps: {
     library.statusesForUrls(Array.isArray(urls) ? urls.map(String) : []),
   );
 
-  handleSafe(CH.recordProgress, z.tuple([anyString, nonNegInt, nonNegInt]), (_e, url: string, page: number, total: number) => {
-    history.updateProgress(url, page, total);
-    const s = settings.get();
-    // Mirror into read_progress too — startPageFor() reads it when the user
-    // re-open through the chapters list / URL bar, not through history.
-    const rp = { ...s.read_progress, [url]: [page, total] as [number, number] };
-    settings.save({ ...s, viewing_history: history.toVec(), read_progress: rp });
-    sync?.scheduleSync();
-  });
+  handleSafe(
+    CH.recordProgress,
+    z.tuple([anyString, nonNegInt, nonNegInt, z.number().min(0).optional()]),
+    (_e, url: string, page: number, total: number, offset?: number) => {
+      history.updateProgress(url, page, total);
+      const s = settings.get();
+      // Mirror into read_progress too — startPageFor() reads it when the user
+      // re-open through the chapters list / URL bar, not through history.
+      const rp = { ...s.read_progress, [url]: [page, total] as [number, number] };
+      const saved: Record<string, unknown> = { ...s, viewing_history: history.toVec(), read_progress: rp };
+      // Keep the vertical offset inside a tall webtoon page (px) so resuming
+      // lands where the reader left off instead of at the page's top.
+      if (typeof offset === 'number' && offset >= 0) {
+        const rs = { ...s.read_scroll, [url]: offset };
+        saved.read_scroll = rs;
+      }
+      settings.save(saved as unknown as Settings);
+      sync?.scheduleSync();
+    },
+  );
   ipcMain.handle(CH.clearHistory, () => {
     history.clear();
     settings.save({ ...settings.get(), viewing_history: [] });
