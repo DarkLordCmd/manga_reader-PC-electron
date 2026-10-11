@@ -35,6 +35,17 @@ export default function ScrollView({
   const jumpStartRef = useRef<number>(Date.now());
   const visibleRef = useRef<number | null>(null);
 
+  // Content coordinate of an item: how far it sits from the top of the scroll
+  // container's CONTENT, independent of any positioned ancestor (offsetParent)
+  // or content-visibility placeholder sizing. `container.scrollTop + rect.top -
+  // containerRect.top` cancels the current scroll, so it is stable.
+  const itemContentTop = (idx: number): number => {
+    const c = containerRef.current;
+    const el = itemRefs.current[idx];
+    if (!c || !el) return 0;
+    return c.scrollTop + el.getBoundingClientRect().top - c.getBoundingClientRect().top;
+  };
+
   // Report the vertical offset INSIDE the current (visible) webtoon page so
   // the reader can persist "mid-page" positions for tall strips.
   const reportPos = (): void => {
@@ -42,9 +53,9 @@ export default function ScrollView({
     if (!c || !onVisiblePos) return;
     const idx = visibleRef.current;
     if (idx == null) return;
-    const item = itemRefs.current[idx];
-    if (!item) return;
-    const off = Math.max(0, Math.min(c.scrollTop - item.offsetTop, Math.max(0, item.clientHeight - 1)));
+    const el = itemRefs.current[idx];
+    if (!el) return;
+    const off = Math.max(0, c.scrollTop - itemContentTop(idx));
     onVisiblePos(idx, off);
   };
 
@@ -91,8 +102,8 @@ export default function ScrollView({
       const c = containerRef.current;
       if (!target || !c) return;
       // Restored webtoons may re-enter mid-page: land at offset within the
-      // item, not only at its top.
-      const want = target.offsetTop + (jumpTo.offset ?? 0);
+      // item, not only at its top. Same content-coordinate basis as reportPos.
+      const want = itemContentTop(jumpTo.index) + (jumpTo.offset ?? 0);
       if (Math.abs(want - c.scrollTop) > 40) c.scrollTo({ top: want });
     };
     let n = 0;
