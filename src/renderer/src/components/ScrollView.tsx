@@ -30,7 +30,9 @@ export default function ScrollView({
 }: Props): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const jumpSettleRef = useRef<number | null>(null);
+  // Guard window started ONCE when a jump begins (not refreshed by each align
+  // tick) — otherwise the observer is blocked for as long as alignment runs.
+  const jumpStartRef = useRef<number>(Date.now());
   const visibleRef = useRef<number | null>(null);
 
   // Report the vertical offset INSIDE the current (visible) webtoon page so
@@ -49,6 +51,9 @@ export default function ScrollView({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    // A freshly mounted gallery starts at the top: suppress the observer's
+    // initial "page 1 is visible" report until the restore jump (if any) lands.
+    jumpStartRef.current = Date.now();
     const observer = new IntersectionObserver(
       (entries) => {
         for (const en of entries) {
@@ -60,7 +65,7 @@ export default function ScrollView({
           // During the settle window right after a programmatic jump the
           // observer still reports pre-scroll geometry — discard those so a
           // restored gallery cannot snap its highlight back to page 1.
-          if (jumpSettleRef.current != null && Date.now() <= jumpSettleRef.current + 700) continue;
+          if (Date.now() <= jumpStartRef.current + 700) continue;
           visibleRef.current = index;
           onVisible(index);
         }
@@ -78,11 +83,10 @@ export default function ScrollView({
 
   useEffect(() => {
     if (jumpTo == null) return;
-    jumpSettleRef.current = Date.now();
+    jumpStartRef.current = Date.now();
     // NOTE: never call onJumpDone() here — clearing the jumpTo state would
     // re-run this effect and the cleanup would kill the hold instantly.
     const flush = (): void => {
-      jumpSettleRef.current = Date.now();
       const target = itemRefs.current[jumpTo.index];
       const c = containerRef.current;
       if (!target || !c) return;

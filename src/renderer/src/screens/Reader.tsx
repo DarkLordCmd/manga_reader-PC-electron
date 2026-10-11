@@ -29,6 +29,11 @@ export default function Reader(): JSX.Element {
   const [hideToolbar, setHideToolbar] = useState(false);
 
   useEffect(() => {
+    // New gallery: forget the previous chapter's in-page offset until the user
+    // actually scrolls (offsetDirty gate in flushProgress protects the stored
+    // value from being overwritten by race/restore flushes).
+    offRef.current = 0;
+    offsetDirtyRef.current = false;
     const last = Math.max(0, pageCount - 1);
     const sp = opened?.startPage ?? 0;
     // Clamp the restored position: a gallery that shrank (rescan, shorter
@@ -60,18 +65,23 @@ export default function Reader(): JSX.Element {
   // Progress is flushed like JHenTai does: a periodic timer + a final write
   // when the reader (or gallery) closes — not an IPC on every scroll tick.
   const idxRef = useRef(0);
-  const savedRef = useRef({ url: '', page: -1, off: -1 });
+  const savedRef = useRef<{ url: string; page: number; off: number | undefined }>({ url: '', page: -1, off: undefined });
   idxRef.current = currentIndex;
   const offRef = useRef(0);
+  const offsetDirtyRef = useRef(false);
   const onVisiblePos = useCallback((_index: number, offsetPx: number): void => {
     offRef.current = Math.round(offsetPx);
+    // A scroll-driven reading position is only trustworthy after a real scroll;
+    // everything before the first scroll is a restore/race artifact that must
+    // not overwrite the stored offset (else resuming lands at the page top).
+    offsetDirtyRef.current = true;
   }, []);
   const flushProgress = useCallback(
     (immediate: boolean): void => {
       const o = opened;
       if (!o || pageCount === 0) return;
       const page = idxRef.current + 1;
-      const off = offRef.current;
+      const off = offsetDirtyRef.current ? offRef.current : undefined;
       if (!immediate && page === savedRef.current.page && o.url === savedRef.current.url && off === savedRef.current.off) return;
       savedRef.current = { url: o.url, page, off };
       // Also informs the main process so warm-ahead (load pages ~32 forward)
