@@ -29,13 +29,17 @@ export default function Reader(): JSX.Element {
   const [hideToolbar, setHideToolbar] = useState(false);
 
   useEffect(() => {
+    const last = Math.max(0, pageCount - 1);
     const sp = opened?.startPage ?? 0;
-    setCurrentIndex(sp);
+    // Clamp the restored position: a gallery that shrank (rescan, shorter
+    // chapter) must never show Pg outside 1..pageCount.
+    const idx = Math.min(Math.max(0, Number.isFinite(sp) ? sp : 0), last);
+    setCurrentIndex(idx);
     // Jump the ScrollView to the restored position — otherwise it sits on
     // the top of the document, the observer fires for page 1 and the saved
     // progress is silently reset to the first page.
-    setJumpTo(sp > 0 ? sp : null);
-  }, [opened]);
+    setJumpTo(idx > 0 ? idx : null);
+  }, [opened, pageCount]);
 
   useEffect(() => {
     if (!showHelp) return;

@@ -36,7 +36,10 @@ export default function ScrollView({
     const observer = new IntersectionObserver(
       (entries) => {
         for (const en of entries) {
-          if (!en.isIntersecting || en.intersectionRatio <= 0.5) continue;
+          // Webtoon pages are often TALLER than the viewport, so `ratio > 0.5`
+          // would never be reached and the page counter would stick. Treat any
+          // page with a meaningful visible sliver as the current one.
+          if (!en.isIntersecting || en.intersectionRatio <= 0.05) continue;
           const index = Number((en.target as HTMLElement).dataset.index);
           // During the settle window right after a programmatic jump the
           // observer still reports pre-scroll geometry — discard those so a
@@ -45,7 +48,7 @@ export default function ScrollView({
           onVisible(index);
         }
       },
-      { root: container, threshold: [0.5] },
+      { root: container, threshold: [0.05] },
     );
     itemRefs.current.forEach((el) => el && observer.observe(el));
     return () => observer.disconnect();

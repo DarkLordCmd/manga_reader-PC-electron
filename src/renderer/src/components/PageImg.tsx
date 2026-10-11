@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Props {
   galleryId: string;
@@ -13,9 +13,18 @@ interface Props {
  * cache-buster instead of leaving a broken picture. */
 export default function PageImg({ galleryId, index, className, style, alt }: Props): JSX.Element {
   const [attempt, setAttempt] = useState(0);
+  const retryTimer = useRef<number | null>(null);
 
   useEffect(() => {
     setAttempt(0);
+    // A pending retry from the previous page/gallery must not fire after the
+    // remount reset — otherwise it steals an attempt from the new page.
+    return () => {
+      if (retryTimer.current != null) {
+        clearTimeout(retryTimer.current);
+        retryTimer.current = null;
+      }
+    };
   }, [galleryId, index]);
 
   if (attempt > 5) {
@@ -38,7 +47,8 @@ export default function PageImg({ galleryId, index, className, style, alt }: Pro
       onError={() => {
         // 404 on a transient failure: brief pause, then remount to retry —
         // nothing above the render tree re-triggers on its own.
-        setTimeout(() => setAttempt((a) => a + 1), 800);
+        if (retryTimer.current != null) clearTimeout(retryTimer.current);
+        retryTimer.current = window.setTimeout(() => setAttempt((a) => a + 1), 800);
       }}
     />
   );
