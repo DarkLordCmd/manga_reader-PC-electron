@@ -67,21 +67,27 @@ export default function ScrollView({
     jumpStartRef.current = Date.now();
     const observer = new IntersectionObserver(
       (entries) => {
+        // Very tall webtoon pages fill the viewport only partially, so their
+        // intersectionRatio can stay far below 0.05 forever — a fixed threshold
+        // would never call them "visible" and both the page counter and the
+        // mid-page offset get stuck. Pick the intersecting page with the
+        // LARGEST ratio instead (the one that dominates the screen).
+        let best: { ratio: number; index: number } | null = null;
         for (const en of entries) {
-          // Webtoon pages are often TALLER than the viewport, so `ratio > 0.5`
-          // would never be reached and the page counter would stick. Treat any
-          // page with a meaningful visible sliver as the current one.
-          if (!en.isIntersecting || en.intersectionRatio <= 0.05) continue;
-          const index = Number((en.target as HTMLElement).dataset.index);
+          if (!en.isIntersecting || en.intersectionRatio <= 0) continue;
           // During the settle window right after a programmatic jump the
           // observer still reports pre-scroll geometry — discard those so a
           // restored gallery cannot snap its highlight back to page 1.
           if (Date.now() <= jumpStartRef.current + 700) continue;
-          visibleRef.current = index;
-          onVisible(index);
+          const index = Number((en.target as HTMLElement).dataset.index);
+          if (!best || en.intersectionRatio > best.ratio) best = { ratio: en.intersectionRatio, index };
+        }
+        if (best) {
+          visibleRef.current = best.index;
+          onVisible(best.index);
         }
       },
-      { root: container, threshold: [0.05] },
+      { root: container, threshold: [0] },
     );
     itemRefs.current.forEach((el) => el && observer.observe(el));
     const onScroll = (): void => reportPos();
