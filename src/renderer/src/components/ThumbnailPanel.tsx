@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { thumbWindow } from '../screens/reader/thumbWindow';
 
 interface Props {
   galleryId: string;
@@ -7,6 +8,11 @@ interface Props {
   thumbSize: number;
   onSelect: (index: number) => void;
 }
+
+const WINDOW_HALF = 40;
+// Approximate row height (image + padding + gap). Thumb heights are variable —
+// drift only affects the placeholder spacers, not the current-button snapping.
+const ROW = (thumbSize: number): number => thumbSize * 1.4 + 14;
 
 export default function ThumbnailPanel({ galleryId, pageCount, currentIndex, thumbSize, onSelect }: Props): JSX.Element {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -21,9 +27,14 @@ export default function ThumbnailPanel({ galleryId, pageCount, currentIndex, thu
     lastIndex.current = currentIndex;
   }, [currentIndex, galleryId, pageCount]);
 
+  const w = thumbWindow(currentIndex, pageCount, WINDOW_HALF, ROW(thumbSize));
+  const items: number[] = [];
+  for (let i = w.from; i <= w.to && i >= 0; i++) items.push(i);
+
   return (
     <div className="thumb-panel">
-      {Array.from({ length: pageCount }, (_, i) => (
+      {w.topPad > 0 && <div aria-hidden style={{ flex: '0 0 auto', height: w.topPad }} />}
+      {items.map((i) => (
         <button
           key={i}
           ref={(el) => {
@@ -37,6 +48,7 @@ export default function ThumbnailPanel({ galleryId, pageCount, currentIndex, thu
           <span>{i + 1}</span>
         </button>
       ))}
+      {w.bottomPad > 0 && <div aria-hidden style={{ flex: '0 0 auto', height: w.bottomPad }} />}
     </div>
   );
 }

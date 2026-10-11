@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import type { Settings } from '@shared/settings';
 import { defaultSettings } from '@shared/settings';
 import type { ChapterListItem } from '@shared/ipc';
@@ -36,7 +36,24 @@ interface Store {
 const Ctx = createContext<Store | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }): JSX.Element {
-  const [screen, setScreen] = useState<Screen>('Reader');
+  const [screen, setScreenState] = useState<Screen>(() => {
+    const saved = sessionStorage.getItem('mr:screen');
+    const valid =
+      saved === 'Catalog' ||
+      saved === 'Popular' ||
+      saved === 'Library' ||
+      saved === 'Favorites' ||
+      saved === 'History' ||
+      saved === 'Downloads' ||
+      saved === 'Settings';
+    return valid ? (saved as Screen) : 'Catalog';
+  });
+  const setScreen = useCallback((s: Screen): void => {
+    setScreenState(s);
+    // Remember the last non-Reader screen (Reader is transient — a restored
+    // online gallery id would be stale after a restart).
+    if (s !== 'Reader') sessionStorage.setItem('mr:screen', s);
+  }, []);
   const [settings, setSettingsState] = useState<Settings>(defaultSettings());
   const [opened, setOpened] = useState<OpenedGallery | null>(null);
   const [pendingChapterList, setPendingChapterList] = useState<{ mangaId: string; title: string } | null>(null);

@@ -7,6 +7,9 @@ export interface HotkeyHandlers {
   onToggleMode: () => void;
   onToggleHelp: () => void;
   onToggleImmersive?: () => void;
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onZoomReset?: () => void;
 }
 
 export function useHotkeys(h: HotkeyHandlers, rtl = false): void {
@@ -52,6 +55,16 @@ export function useHotkeys(h: HotkeyHandlers, rtl = false): void {
         case 'f':
         case 'F':
           h.onToggleImmersive?.();
+          break;
+        case '=':
+        case '+':
+          h.onZoomIn?.();
+          break;
+        case '-':
+          h.onZoomOut?.();
+          break;
+        case '0':
+          h.onZoomReset?.();
           break;
         case '?':
           h.onToggleHelp();

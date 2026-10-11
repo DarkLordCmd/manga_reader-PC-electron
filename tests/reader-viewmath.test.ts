@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { spreadStart, spreadIndices, isReaderAtEnd } from '../src/renderer/src/screens/reader/viewMath';
+import {
+  spreadStart,
+  spreadIndices,
+  isReaderAtEnd,
+  clampWidthScale,
+  WIDTH_SCALE_DEFAULT,
+} from '../src/renderer/src/screens/reader/viewMath';
 
 describe('spreadStart', () => {
   it('shows page 1 alone, then aligns to spread boundaries', () => {
@@ -51,5 +57,15 @@ describe('isReaderAtEnd', () => {
   it('returns false for empty galleries and non-integer indices', () => {
     expect(isReaderAtEnd(0, 0, 2, 'Book')).toBe(false);
     expect(isReaderAtEnd(Number.NaN, 5, 2, 'Scroll')).toBe(false);
+  });
+});
+
+describe('clampWidthScale', () => {
+  it('clamps into the reader zoom range and rounds to 0.01', () => {
+    expect(clampWidthScale(0.9)).toBe(0.9);
+    expect(clampWidthScale(0.94)).toBe(0.94);
+    expect(clampWidthScale(2)).toBe(1.5);
+    expect(clampWidthScale(0.1)).toBe(0.5);
+    expect(clampWidthScale(Number.POSITIVE_INFINITY)).toBe(WIDTH_SCALE_DEFAULT);
   });
 });

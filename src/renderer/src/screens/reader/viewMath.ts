@@ -1,5 +1,15 @@
 /** Reader page-navigation math, extracted pure so it can be unit-tested. */
 
+export const WIDTH_SCALE_MIN = 0.5;
+export const WIDTH_SCALE_MAX = 1.5;
+export const WIDTH_SCALE_DEFAULT = 0.85;
+
+/** Quick-zoom clamp for the Scroll-mode image width. */
+export function clampWidthScale(value: number): number {
+  if (!Number.isFinite(value)) return WIDTH_SCALE_DEFAULT;
+  return Math.min(WIDTH_SCALE_MAX, Math.max(WIDTH_SCALE_MIN, Math.round(value * 100) / 100));
+}
+
 /** First index of the visible spread in Book mode. Page 1 is shown alone
  * (first > 0 alignment keeps two-page spreads from merging unrelated pages). */
 export function spreadStart(currentIndex: number, pageCount: number, pagesPerScreen: number): number {
