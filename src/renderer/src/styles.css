@@ -459,6 +459,30 @@ input[type='range'] {
   gap: 2px;
   margin: 8px 0;
 }
+.chapter-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.chapter-row .chapter-item {
+  flex: 1;
+  min-width: 0;
+}
+.chapter-toggle {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+.chapter-toggle:hover {
+  background: #2d2d2d;
+  color: var(--text);
+}
 .chapter-item {
   text-align: left;
   padding: 6px 8px;

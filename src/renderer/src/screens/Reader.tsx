@@ -198,7 +198,7 @@ export default function Reader(): JSX.Element {
     const coverUrl = opened.coverUrl;
     const t = setTimeout(() => {
       void (async () => {
-        const r = await window.api.openUrl(next.chapter_id, 0, mangaId, coverUrl);
+        const r = await window.api.openUrl(next.chapter_id, 0, mangaId, coverUrl, null, idx + 1);
         if (r) {
           setOpened({
             kind: 'online',
@@ -262,7 +262,7 @@ export default function Reader(): JSX.Element {
       const current = opened?.kind === 'online' ? opened : null;
       try {
         const saved = startPageFor(chapterId, settings.read_progress);
-        const r = await window.api.openUrl(chapterId, saved, current?.mangaId ?? null, current?.coverUrl ?? null);
+        const r = await window.api.openUrl(chapterId, saved, current?.mangaId ?? null, current?.coverUrl ?? null, null, chapterIndex);
         if (r) {
           setOpened({ kind: 'online', ...r, startPage: saved, coverUrl: current?.coverUrl ?? null, chapterList, chapterIndex });
           setShowChapters(false);

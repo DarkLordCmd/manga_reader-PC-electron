@@ -163,6 +163,16 @@ export function registerSettings(deps: {
     }
   });
 
+  handleSafe(CH.setChapterRead, z.tuple([anyString, z.boolean()]), (_e, url: string, read: boolean) => {
+    const s = settings.get();
+    const has = s.read_chapters.includes(url);
+    if (read === has) return;
+    const read_chapters = read ? [...s.read_chapters, url] : s.read_chapters.filter((u) => u !== url);
+    const next = { ...s, read_chapters };
+    settings.save(next);
+    deps.broadcastSettingsChanged(next);
+  });
+
   ipcMain.handle(CH.coverCacheInfo, () => deps.getCoverDisk().stats());
   ipcMain.handle(CH.coverCacheClear, async () => {
     await deps.getCoverDisk().clear();

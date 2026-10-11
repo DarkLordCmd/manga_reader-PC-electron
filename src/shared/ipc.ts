@@ -201,6 +201,7 @@ export interface Api {
     mangaId?: string | null,
     coverUrl?: string | null,
     kind?: string | null,
+    chapterIndex?: number | null,
   ): Promise<OpenResult | null>;
   fetchChapterList(mangaId: string): Promise<ChapterListItem[]>;
   searchCatalog(
@@ -231,6 +232,8 @@ export interface Api {
   removeExAccount(id: number): Promise<ExAccountsResult>;
   importExAccounts(): Promise<ImportAccountsResult | null>;
   markChapterRead(url: string): Promise<void>;
+  /** Manual toggle: mark a chapter read/unread in settings.read_chapters. */
+  setChapterRead(url: string, read: boolean): Promise<void>;
   downloadsList(): Promise<DownloadTask[]>;
   downloadsAdd(sourceUrl: string): Promise<DownloadTask | null>;
   downloadsPause(id: string): Promise<void>;
@@ -342,6 +345,7 @@ export const CH = {
   removeExAccount: 'ex:remove',
   importExAccounts: 'ex:import',
   markChapterRead: 'reader:markread',
+  setChapterRead: 'reader:setread',
   downloadsList: 'downloads:list',
   downloadsAdd: 'downloads:add',
   downloadsPause: 'downloads:pause',

@@ -108,8 +108,9 @@ export function registerGallery(deps: GalleryDeps): void {
       z.union([z.string(), z.null()]).optional(),
       z.union([z.string(), z.null()]).optional(),
       z.union([z.string(), z.null()]).optional(),
+      z.number().int().nullable().optional(),
     ]),
-    async (_e, url, startPage, mangaId, coverUrl, kind) => {
+    async (_e, url, startPage, mangaId, coverUrl, kind, chapterIndex) => {
       const trimmed = url.trim();
       const s = settings.get();
       const torSocks = effectiveTorSocks();
@@ -165,7 +166,10 @@ export function registerGallery(deps: GalleryDeps): void {
         cover_url: coverUrl ?? result.coverUrl,
         source: result.source,
         chapter_label: null,
-        chapter_index: null,
+        // Position in the chapter list — lets HistoryManager keep the series
+        // "continue" row on the FURTHEST chapter, so accidentally opening an
+        // old chapter no longer rewinds reading progress.
+        chapter_index: typeof chapterIndex === 'number' ? chapterIndex : null,
         chapter_total: null,
         total_pages: result.pageUrls.length,
         kind: kind ?? null,

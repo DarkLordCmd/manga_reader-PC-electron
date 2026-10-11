@@ -423,7 +423,7 @@ export function useCatalogSearch() {
     setOpening(true);
     setChapterError(null);
     try {
-      const r = await window.api.openUrl(chapterId, 0, mangaId, coverUrl, picked?.kind ?? null);
+      const r = await window.api.openUrl(chapterId, 0, mangaId, coverUrl, picked?.kind ?? null, chapterIndex);
       if (r) {
         if (source === 'mangadex' && mangaId && chapters) {
           const total = chapters.length;

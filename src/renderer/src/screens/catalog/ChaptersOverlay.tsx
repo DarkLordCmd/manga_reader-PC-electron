@@ -33,14 +33,19 @@ export default function ChaptersOverlay({ s }: { s: CatalogSearch }): JSX.Elemen
             s.chapters.map((c, i) => {
               const isRead = s.settings.read_chapters.includes(c.chapter_id);
               return (
-                <button
-                  key={c.chapter_id}
-                  className={`chapter-item${isRead ? ' read' : ''}`}
-                  onClick={() => void s.openChapter(c.chapter_id, i)}
-                >
-                  {isRead ? '✓ ' : ''}
-                  {c.title ? `${c.chapter_num} — ${c.title}` : c.chapter_num}
-                </button>
+                <div key={c.chapter_id} className="chapter-row">
+                  <button className={`chapter-item${isRead ? ' read' : ''}`} onClick={() => void s.openChapter(c.chapter_id, i)}>
+                    {c.title ? `${c.chapter_num} — ${c.title}` : c.chapter_num}
+                  </button>
+                  <button
+                    className="chapter-toggle"
+                    title={isRead ? 'Снять отметку «прочитано»' : 'Отметить прочитанной'}
+                    aria-pressed={isRead}
+                    onClick={() => void window.api.setChapterRead(c.chapter_id, !isRead)}
+                  >
+                    {isRead ? '✓' : '○'}
+                  </button>
+                </div>
               );
             })}
         </div>

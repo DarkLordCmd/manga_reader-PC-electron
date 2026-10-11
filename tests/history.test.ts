@@ -53,6 +53,32 @@ describe('seriesKeyForUrl (MangaNet model: host-stable identity)', () => {
   });
 });
 
+describe('HistoryManager keeps the furthest chapter (rewind guard)', () => {
+  const base = { title: 't', cover_url: null, source: 'Senkuro', chapter_label: null, chapter_total: null, category: 'main', kind: null };
+  const ch = (n: number, idx: number, url: string) => ({ ...base, url, series_id: 'sk:foo', chapter_index: idx, total_pages: 12 });
+
+  it('opening an older chapter does not rewind the continue row', () => {
+    const m = new HistoryManager();
+    const c1 = 'https://senkuro.me/manga/foo/chapter/1/';
+    const c10 = 'https://senkuro.me/manga/foo/chapter/10/';
+    m.addOrUpdate(ch(1, 0, c1));
+    m.addOrUpdate(ch(10, 9, c10));
+    m.addOrUpdate(ch(1, 0, c1)); // accidentally re-opened the very first chapter
+    const row = m.all()[0];
+    expect(row.url).toBe(c10);
+    expect(row.chapter_index).toBe(9);
+  });
+
+  it('moving forward still advances the row', () => {
+    const m = new HistoryManager();
+    const c1 = 'https://senkuro.me/manga/foo/chapter/1/';
+    const c5 = 'https://senkuro.me/manga/foo/chapter/5/';
+    m.addOrUpdate(ch(1, 0, c1));
+    m.addOrUpdate(ch(5, 4, c5));
+    expect(m.all()[0].url).toBe(c5);
+  });
+});
+
 describe('HistoryManager merge by gallery key', () => {
   const base = {
     title: 't',

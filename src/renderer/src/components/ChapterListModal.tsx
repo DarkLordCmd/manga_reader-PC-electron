@@ -42,12 +42,21 @@ export default function ChapterListModal({ mangaId, currentUrl, onOpenChapter, o
               const isCurrent = c.chapter_id === currentUrl;
               const isRead = settings.read_chapters.includes(c.chapter_id);
               const label = c.title ? `${c.chapter_num} — ${c.title}` : c.chapter_num;
-              const cls = ['chapter-item', isCurrent ? ' current' : '', isRead ? ' read' : ''].join('');
+              const cls = ['chapter-item', isCurrent ? ' current' : '', isRead ? ' read' : ''].join(' ');
               return (
-                <button key={c.chapter_id} className={cls} onClick={() => onOpenChapter(c.chapter_id, chapters, i)}>
-                  {isRead ? '✓ ' : ''}
-                  {label}
-                </button>
+                <div key={c.chapter_id} className="chapter-row">
+                  <button className={cls} onClick={() => onOpenChapter(c.chapter_id, chapters, i)}>
+                    {label}
+                  </button>
+                  <button
+                    className="chapter-toggle"
+                    title={isRead ? 'Снять отметку «прочитано»' : 'Отметить прочитанной'}
+                    aria-pressed={isRead}
+                    onClick={() => void window.api.setChapterRead(c.chapter_id, !isRead)}
+                  >
+                    {isRead ? '✓' : '○'}
+                  </button>
+                </div>
               );
             })}
         </div>

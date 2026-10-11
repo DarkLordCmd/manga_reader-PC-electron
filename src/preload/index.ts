@@ -13,7 +13,8 @@ const api: Api = {
   getHistory: () => ipcRenderer.invoke(CH.getHistory),
   recordProgress: (url, page, total, offset) => ipcRenderer.invoke(CH.recordProgress, url, page, total, offset),
   clearHistory: () => ipcRenderer.invoke(CH.clearHistory),
-  openUrl: (url, startPage, mangaId, coverUrl, kind) => ipcRenderer.invoke(CH.openUrl, url, startPage, mangaId, coverUrl, kind),
+  openUrl: (url, startPage, mangaId, coverUrl, kind, chapterIndex) =>
+    ipcRenderer.invoke(CH.openUrl, url, startPage, mangaId, coverUrl, kind, chapterIndex),
   fetchChapterList: (mangaId) => ipcRenderer.invoke(CH.fetchChapterList, mangaId),
   searchCatalog: (source, query, page, sort, filters, cursor) =>
     ipcRenderer.invoke(CH.searchCatalog, source, query, page, sort, filters, cursor),
@@ -37,6 +38,7 @@ const api: Api = {
   removeExAccount: (id) => ipcRenderer.invoke(CH.removeExAccount, id),
   importExAccounts: () => ipcRenderer.invoke(CH.importExAccounts),
   markChapterRead: (url) => ipcRenderer.invoke(CH.markChapterRead, url),
+  setChapterRead: (url, read) => ipcRenderer.invoke(CH.setChapterRead, url, read),
   downloadsList: () => ipcRenderer.invoke(CH.downloadsList),
   downloadsAdd: (sourceUrl) => ipcRenderer.invoke(CH.downloadsAdd, sourceUrl),
   downloadsPause: (id) => ipcRenderer.invoke(CH.downloadsPause, id),
