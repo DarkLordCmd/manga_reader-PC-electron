@@ -170,45 +170,14 @@ export default function Reader(): JSX.Element {
     if (atEnd) window.api.markChapterRead(opened.url);
   }, [opened, atEnd, pageCount]);
 
-  // Pre-warm the NEXT chapter while the reader is on the last two pages so the
-  // 1s auto-advance has the resolved gallery ready and opens instantly. Guarded:
-  // only online Scroll galleries with a following chapter; the result is keyed
-  // to the exact chapter_id so a switch or a backward scroll never uses it.
-  const prefetchRef = useRef<{ key: string; r: import('@shared/ipc').OpenResult | null } | null>(null);
-  useEffect(() => {
-    if (!opened || opened.kind !== 'online' || settings.reading_mode !== 'Scroll') return;
-    const list = opened.chapterList;
-    const idx = opened.chapterIndex;
-    if (!list || idx == null || pageCount === 0) return;
-    const next = list[idx + 1];
-    if (!next) return;
-    if (currentIndex < pageCount - 2) {
-      prefetchRef.current = null;
-      return;
-    }
-    if (currentIndex === pageCount - 1) {
-      // We're on the last page — the advance below consumes (or re-fetches).
-      return;
-    }
-    if (prefetchRef.current?.key === next.chapter_id) return;
-    const mangaId = opened.mangaId;
-    const coverUrl = opened.coverUrl;
-    prefetchRef.current = { key: next.chapter_id, r: null };
-    window.api
-      .openUrl(next.chapter_id, 0, mangaId, coverUrl)
-      .then((r) => {
-        if (prefetchRef.current?.key === next.chapter_id && r) prefetchRef.current.r = r;
-      })
-      .catch(() => {
-        if (prefetchRef.current?.key === next.chapter_id) prefetchRef.current = null;
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opened, currentIndex, pageCount, settings.reading_mode]);
-
   // Auto-advance to the next chapter after ~1s at the end (Scroll mode).
   // Guards: only fire when the user really is on the LAST page — a NaN or
   // stale currentIndex (transient observer report / gallery change) must
   // never legitimately open the next chapter on its own.
+  // NOTE: no eager pre-warm of the next chapter — openUrl has side effects
+  // (history update, library auto-add) and running it a page early made the
+  // history row jump to an unread chapter ("continue from history" opened the
+  // next one).
   const advancedRef = useRef(false);
   useEffect(() => {
     if (!opened || opened.kind !== 'online' || settings.reading_mode !== 'Scroll') return;
@@ -228,8 +197,7 @@ export default function Reader(): JSX.Element {
     const coverUrl = opened.coverUrl;
     const t = setTimeout(() => {
       void (async () => {
-        const ready = prefetchRef.current?.key === next.chapter_id ? prefetchRef.current.r : null;
-        const r = ready ?? (await window.api.openUrl(next.chapter_id, 0, mangaId, coverUrl));
+        const r = await window.api.openUrl(next.chapter_id, 0, mangaId, coverUrl);
         if (r) {
           setOpened({
             kind: 'online',
