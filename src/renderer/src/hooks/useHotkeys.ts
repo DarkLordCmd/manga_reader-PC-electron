@@ -13,7 +13,7 @@ export function useHotkeys(h: HotkeyHandlers, rtl = false): void {
   useEffect(() => {
     const fn = (e: KeyboardEvent): void => {
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       switch (e.key) {
         case 'ArrowLeft':
         case 'a':

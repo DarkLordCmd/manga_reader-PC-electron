@@ -208,6 +208,8 @@ export default function Reader(): JSX.Element {
       } else {
         alert('Не удалось открыть URL');
       }
+    } catch (e: any) {
+      alert(`Не удалось открыть URL: ${e?.message ?? e}`);
     } finally {
       setOpeningUrl(false);
     }
@@ -216,11 +218,15 @@ export default function Reader(): JSX.Element {
   const openChapter = useCallback(
     async (chapterId: string, chapterList: import('@shared/ipc').ChapterListItem[], chapterIndex: number) => {
       const current = opened?.kind === 'online' ? opened : null;
-      const saved = startPageFor(chapterId, settings.read_progress);
-      const r = await window.api.openUrl(chapterId, saved, current?.mangaId ?? null, current?.coverUrl ?? null);
-      if (r) {
-        setOpened({ kind: 'online', ...r, startPage: saved, coverUrl: current?.coverUrl ?? null, chapterList, chapterIndex });
-        setShowChapters(false);
+      try {
+        const saved = startPageFor(chapterId, settings.read_progress);
+        const r = await window.api.openUrl(chapterId, saved, current?.mangaId ?? null, current?.coverUrl ?? null);
+        if (r) {
+          setOpened({ kind: 'online', ...r, startPage: saved, coverUrl: current?.coverUrl ?? null, chapterList, chapterIndex });
+          setShowChapters(false);
+        }
+      } catch (e: any) {
+        alert(`Не удалось открыть главу: ${e?.message ?? e}`);
       }
     },
     [opened, settings.read_progress, setOpened],
@@ -317,7 +323,15 @@ export default function Reader(): JSX.Element {
         <span className="muted">
           Pg {pageCount === 0 ? 0 : currentIndex + 1}/{pageCount}
         </span>
-        <input value={jumpText} onChange={(e) => setJumpText(e.target.value)} placeholder="#" style={{ width: 44 }} />
+        <input
+          value={jumpText}
+          onChange={(e) => setJumpText(e.target.value)}
+          placeholder="#"
+          style={{ width: 44 }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') jump();
+          }}
+        />
         <button onClick={jump}>Go</button>
       </div>
 
@@ -401,6 +415,7 @@ export default function Reader(): JSX.Element {
               <li>↓ / S — Next screen</li>
               <li>T — Toggle thumbnails</li>
               <li>M — Toggle reading mode</li>
+              <li>H / F — Fullscreen (immersive)</li>
               <li>? — Toggle this help</li>
             </ul>
           </div>

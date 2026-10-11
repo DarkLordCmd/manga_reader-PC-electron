@@ -421,17 +421,25 @@ export function useCatalogSearch() {
     const mangaId = picked?.url ?? null;
     const coverUrl = picked?.coverUrl ?? null;
     setOpening(true);
-    const r = await window.api.openUrl(chapterId, 0, mangaId, coverUrl, picked?.kind ?? null);
-    setOpening(false);
-    if (r) {
-      if (source === 'mangadex' && mangaId && chapters) {
-        const total = chapters.length;
-        const progress = { ...settings.read_progress, [mangaId]: [chapterIndex + 1, total] as [number, number] };
-        setSettings({ ...settings, read_progress: progress });
+    setChapterError(null);
+    try {
+      const r = await window.api.openUrl(chapterId, 0, mangaId, coverUrl, picked?.kind ?? null);
+      if (r) {
+        if (source === 'mangadex' && mangaId && chapters) {
+          const total = chapters.length;
+          const progress = { ...settings.read_progress, [mangaId]: [chapterIndex + 1, total] as [number, number] };
+          setSettings({ ...settings, read_progress: progress });
+        }
+        setOpened({ kind: 'online', ...r, startPage: 0, coverUrl, chapterList: chapters, chapterIndex });
+        setPicked(null);
+        setScreen('Reader');
+      } else {
+        setChapterError('Не удалось открыть главу: неверный URL или источник не поддерживается');
       }
-      setOpened({ kind: 'online', ...r, startPage: 0, coverUrl, chapterList: chapters, chapterIndex });
-      setPicked(null);
-      setScreen('Reader');
+    } catch (e: any) {
+      setChapterError(String(e?.message ?? e));
+    } finally {
+      setOpening(false);
     }
   };
 
