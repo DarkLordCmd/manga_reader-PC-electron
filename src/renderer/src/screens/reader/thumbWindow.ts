@@ -12,8 +12,9 @@ export interface ThumbWindow {
 
 export function thumbWindow(currentIndex: number, pageCount: number, windowHalf: number, rowHeight: number): ThumbWindow {
   if (pageCount <= 0) return { from: 0, to: -1, size: 0, topPad: 0, bottomPad: 0 };
+  const index = Number.isFinite(currentIndex) ? Math.max(0, Math.floor(currentIndex)) : 0;
   const size = Math.min(pageCount, windowHalf * 2 + 1);
-  let from = Math.max(0, currentIndex - windowHalf);
+  let from = Math.max(0, index - windowHalf);
   from = Math.max(0, Math.min(from, pageCount - size));
   const to = from + size - 1;
   return {

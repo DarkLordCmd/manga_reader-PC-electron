@@ -33,4 +33,12 @@ describe('thumbWindow', () => {
     expect(w.size).toBe(0);
     expect(w.to).toBe(-1);
   });
+
+  it('treats a non-finite index as 0', () => {
+    const w = thumbWindow(Number.NaN, 100, 40, ROW);
+    expect(w.from).toBe(0);
+    expect(w.to).toBe(80);
+    const neg = thumbWindow(-5, 100, 10, ROW);
+    expect(neg.from).toBe(0);
+  });
 });
