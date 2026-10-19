@@ -5,6 +5,7 @@ import { READING_STATUSES } from '@shared/library';
 import LibraryItemModal from '../components/LibraryItemModal';
 import CoverImg from '../components/CoverImg';
 import KindBadge from '../components/KindBadge';
+import StatusBadge from '../components/StatusBadge';
 import ContextMenu, { type MenuItem } from '../components/ContextMenu';
 import { buildLibraryMenuItems, STATUS_LABELS } from '../lib/library-menu';
 
@@ -103,6 +104,7 @@ export default function Library(): JSX.Element {
             <div className="history-cover">
               <CoverImg url={it.coverUrl} />
               <KindBadge kind={it.kind} />
+              <StatusBadge status={it.status} />
             </div>
             <div className="history-title" title={it.title}>
               {it.title || 'Без названия'}

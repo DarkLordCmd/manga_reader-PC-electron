@@ -4,6 +4,7 @@ import type { LibraryItem } from '@shared/library';
 import ContextMenu, { type MenuItem } from '../components/ContextMenu';
 import CoverImg from '../components/CoverImg';
 import KindBadge from '../components/KindBadge';
+import StatusBadge from '../components/StatusBadge';
 import { buildLibraryMenuItems, STATUS_LABELS } from '../lib/library-menu';
 
 export default function Favorites(): JSX.Element {
@@ -65,6 +66,7 @@ export default function Favorites(): JSX.Element {
             <div className="history-cover">
               {it.coverUrl ? <CoverImg url={it.coverUrl} /> : <div className="cover-placeholder" />}
               <KindBadge kind={it.kind} />
+              <StatusBadge status={it.status} />
             </div>
             <div className="history-title" title={it.title}>
               {it.title || 'Без названия'}
