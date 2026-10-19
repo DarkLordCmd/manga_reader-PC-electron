@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { app } from 'electron';
 import { probeBridgeLine, parseBridgeAddr } from './tor-check';
@@ -16,10 +16,14 @@ import { logger } from './logger';
  *   - obfs4proxy/lyrebird ships next to the tor binary;
  *   - `--__OwningControllerProcess` makes tor exit when our process exits. */
 export const EMBEDDED_SOCKS_PORT = 9153;
+export const EMBEDDED_CONTROL_PORT = 9158;
 
 const BOOT_TIMEOUT_MS = 90_000;
 const WATCHDOG_INTERVAL_MS = 20_000;
 const MAX_CONSECUTIVE_SOCKS_FAILURES = 2;
+/** Circuit checks are noisier than a dead listener (a transient network blip
+ * rebuilds circuits within seconds), so require a minute before rotating. */
+const MAX_CONSECUTIVE_CIRCUIT_FAILURES = 3;
 
 let proc: ChildProcess | null = null;
 let activeSocks: string | null = null;
@@ -31,6 +35,11 @@ let lastStart: { bridges: string; dataDir: string } | null = null;
 let watchdog: ReturnType<typeof setInterval> | undefined = undefined;
 let socksAliveStreak = 0;
 let restarting = false;
+/** Set while an intentional stop/rotation is in progress, so the child's
+ * `exit` event does not schedule a second, competing restart. */
+let stopping = false;
+let restartTimer: ReturnType<typeof setTimeout> | undefined = undefined;
+let restartDelayMs = 5_000;
 
 function resetReadyPromise(): void {
   readyPromise = new Promise((resolve) => {
@@ -134,17 +143,114 @@ function socksAlive(timeoutMs = 4_000): Promise<boolean> {
   });
 }
 
-function stopProcess(): void {
-  if (proc) {
+/** Parses the Tor control reply for `status/circuit-established`: 1 = at
+ * least one usable circuit exists, 0 = daemon alive but unable to reach the
+ * network (dead bridge/guard). `null` means the reply did not contain it. */
+export function parseCircuitEstablished(reply: string): boolean | null {
+  const m = reply.match(/status\/circuit-established=([01])/);
+  return m ? m[1] === '1' : null;
+}
+
+/** Runs one authenticated command on the local Tor control port and returns
+ * the full reply, or null when the port/cookie is unavailable. */
+function controlCommand(command: string, dataDir: string, timeoutMs = 5_000): Promise<string | null> {
+  return new Promise((resolve) => {
+    let cookie: Buffer;
     try {
-      proc.kill();
+      cookie = readFileSync(join(dataDir, 'control_auth_cookie'));
+    } catch {
+      resolve(null);
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const net = require('net') as typeof import('net');
+    const sock = net.connect({ host: '127.0.0.1', port: EMBEDDED_CONTROL_PORT });
+    let buf = '';
+    let stage = 1;
+    const finish = (v: string | null): void => {
+      clearTimeout(timer);
+      try {
+        sock.destroy();
+      } catch {
+        /* ignore */
+      }
+      resolve(v);
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    sock.setTimeout(timeoutMs);
+    sock.once('error', () => finish(null));
+    sock.once('timeout', () => finish(null));
+    sock.once('connect', () => sock.write(`AUTHENTICATE ${cookie.toString('hex')}\r\n`));
+    sock.on('data', (chunk) => {
+      buf += chunk.toString('utf8');
+      if (stage === 1 && buf.includes('250 OK')) {
+        stage = 2;
+        buf = '';
+        sock.write(`${command}\r\n`);
+        return;
+      }
+      if (stage === 2 && (buf.includes('250 OK') || /^5\d\d /m.test(buf))) {
+        finish(/^5\d\d /m.test(buf) ? null : buf);
+      }
+    });
+  });
+}
+
+function controlCircuitEstablished(dataDir: string): Promise<boolean | null> {
+  return controlCommand('GETINFO status/circuit-established', dataDir).then((reply) =>
+    reply === null ? null : parseCircuitEstablished(reply),
+  );
+}
+
+/** Drops the current circuit (`SIGNAL NEWNYM`) so the next request does not
+ * inherit a slow/dead path. Used by the login window when the first page
+ * takes too long; a no-op when the bundled daemon is not running. */
+export async function requestNewTorCircuit(): Promise<boolean> {
+  const cfg = lastStart;
+  if (!cfg || !proc || !activeSocks) return false;
+  const reply = await controlCommand('SIGNAL NEWNYM', cfg.dataDir);
+  const ok = !!reply && reply.includes('250 OK');
+  logger.info(`[tor-embedded] SIGNAL NEWNYM ${ok ? 'ok' : 'failed'}`);
+  return ok;
+}
+
+function stopProcess(): void {
+  const child = proc;
+  proc = null;
+  activeSocks = null;
+  currentBridge = null;
+  if (child) {
+    try {
+      child.kill();
     } catch {
       /* ignore */
     }
   }
-  proc = null;
-  activeSocks = null;
-  currentBridge = null;
+}
+
+/** Restarts Tor after an unexpected exit or a confirmed dead-circuit state.
+ * Uses the same bridge list/data dir as the last successful start; the delay
+ * backs off to 60 s so a permanently blocked network is not hammered. */
+function scheduleRestart(reason: string): void {
+  if (stopping || restartTimer) return;
+  const cfg = lastStart;
+  if (!cfg) return;
+  const delay = restartDelayMs;
+  restartDelayMs = Math.min(60_000, restartDelayMs * 2);
+  logger.info(`[tor-embedded] ${reason}; restarting in ${Math.round(delay / 1000)}s`);
+  restartTimer = setTimeout(() => {
+    restartTimer = undefined;
+    if (stopping) return;
+    void runRotation(cfg.bridges, join(cfg.dataDir, '..'))
+      .then((r) => {
+        if (r) restartDelayMs = 5_000;
+        else scheduleRestart('restart produced no usable Tor');
+      })
+      .catch((e) => {
+        logger.warn('[tor-embedded] restart failed', e);
+        scheduleRestart('restart error');
+      });
+  }, delay);
 }
 
 function launchTor(bridgeLine: string, binDir: string, dataDir: string): void {
@@ -152,7 +258,7 @@ function launchTor(bridgeLine: string, binDir: string, dataDir: string): void {
     '--SocksPort',
     `127.0.0.1:${EMBEDDED_SOCKS_PORT} IPv6Traffic PreferIPv6`,
     '--ControlPort',
-    '127.0.0.1:9158',
+    `127.0.0.1:${EMBEDDED_CONTROL_PORT}`,
     '--CookieAuthentication',
     '1',
     '--ClientOnly',
@@ -176,11 +282,17 @@ function launchTor(bridgeLine: string, binDir: string, dataDir: string): void {
     proc = null;
     return;
   }
-  proc.stdout?.on('data', onTorLine);
-  proc.stderr?.on('data', onTorLine);
-  proc.on('exit', (code) => {
+  const child = proc;
+  child.stdout?.on('data', onTorLine);
+  child.stderr?.on('data', onTorLine);
+  child.on('exit', (code) => {
+    // A newer process may already have replaced this one (bridge rotation);
+    // an exit from the old child must not kill or restart the new daemon.
+    if (child !== proc) return;
     logger.info(`[tor-embedded] tor exited code=${code}${currentBridge ? ' (bridge ' + parseBridgeAddr(currentBridge)?.host + ')' : ''}`);
     stopProcess();
+    if (stopping) return;
+    scheduleRestart('tor exited unexpectedly');
   });
 }
 
@@ -191,6 +303,7 @@ function onTorLine(buf: Buffer): void {
     if (t.includes('Bootstrapped 100%')) {
       activeSocks = `127.0.0.1:${EMBEDDED_SOCKS_PORT}`;
       socksAliveStreak = 0;
+      restartDelayMs = 5_000;
       readyResolve?.();
       logger.info(`[tor-embedded] ready on ${activeSocks}${currentBridge ? ' via bridge ' + parseBridgeAddr(currentBridge)?.host : ''}`);
     }
@@ -238,6 +351,10 @@ async function runRotation(bridges: string, userDataDir: string): Promise<{ sock
     logger.info('[tor-embedded] bundled tor not found (vendor/tor or resources/tor) — fallback to user Tor');
     return null;
   }
+  if (restartTimer) {
+    clearTimeout(restartTimer);
+    restartTimer = undefined;
+  }
   const dataRoot = join(userDataDir, 'tor-data');
   mkdirSync(dataRoot, { recursive: true });
   lastStart = { bridges, dataDir: dataRoot };
@@ -245,7 +362,9 @@ async function runRotation(bridges: string, userDataDir: string): Promise<{ sock
   const ranked = await rankBridges(bridges);
   if (ranked.length === 0) {
     logger.info('[tor-embedded] no reachable bridge — starting tor WITHOUT bridges (direct)');
-    return await attemptBridge('', binDir, dataRoot);
+    const direct = await attemptBridge('', binDir, dataRoot);
+    if (direct) startWatchdog('', dataRoot);
+    return direct;
   }
   const candidates = ranked.filter((l) => !skippedBridges.has(l));
   const tried = candidates.length > 0 ? candidates : ranked; // nothing left → start over
@@ -257,7 +376,7 @@ async function runRotation(bridges: string, userDataDir: string): Promise<{ sock
     logger.info(`[tor-embedded] trying bridge ${parseBridgeAddr(cand)?.host}`);
     const r = await attemptBridge(cand, binDir, dataRoot);
     if (r) {
-      startWatchdog(cand);
+      startWatchdog(cand, dataRoot);
       return r;
     }
     logger.info(`[tor-embedded] bridge ${parseBridgeAddr(cand)?.host} failed to bootstrap — blacklisting for this session`);
@@ -267,36 +386,77 @@ async function runRotation(bridges: string, userDataDir: string): Promise<{ sock
   // Every bridge failed → allow next invocation to try everything again.
   skippedBridges.clear();
   logger.info('[tor-embedded] all bridges exhausted; falling back to direct start');
-  return await attemptBridge('', binDir, dataRoot);
+  const direct = await attemptBridge('', binDir, dataRoot);
+  if (direct) startWatchdog('', dataRoot);
+  return direct;
 }
 
-function startWatchdog(bridgeLine: string): void {
+function startWatchdog(bridgeLine: string, dataDir: string): void {
   clearInterval(watchdog!);
   socksAliveStreak = 0;
   watchdog = setInterval(async () => {
     if (!proc || restarting) return;
     const alive = await socksAlive();
-    socksAliveStreak = alive ? 0 : socksAliveStreak + 1;
-    if (socksAliveStreak < MAX_CONSECUTIVE_SOCKS_FAILURES) return;
-    logger.info(`[tor-embedded] SOCKS listener dead via bridge ${parseBridgeAddr(bridgeLine)?.host} — rotating`);
+    const circuit = alive ? await controlCircuitEstablished(dataDir) : null;
+    // A listening SOCKS port with `circuit-established=0` means the daemon is
+    // up but cut off from the network (dead bridge/guard) — restart instead of
+    // serving 60-second timeouts. Unknown control state falls back to the
+    // listener check so platforms without the cookie file still work.
+    const healthy = alive && circuit !== false;
+    socksAliveStreak = healthy ? 0 : socksAliveStreak + 1;
+    const limit = alive ? MAX_CONSECUTIVE_CIRCUIT_FAILURES : MAX_CONSECUTIVE_SOCKS_FAILURES;
+    if (socksAliveStreak < limit) return;
+    logger.info(
+      `[tor-embedded] ${
+        alive ? 'Tor cannot build circuits' : 'SOCKS listener dead'
+      } via bridge ${parseBridgeAddr(bridgeLine)?.host ?? 'direct'} — rotating`,
+    );
     restarting = true;
     stopProcess();
     clearInterval(watchdog!);
     const cfg = lastStart;
-    if (cfg) {
-      skippedBridges.add(bridgeLine);
-      void startEmbeddedTor(cfg.bridges, join(cfg.dataDir, '..')).catch((e) => logger.warn('[tor-embedded] watchdog restart failed', e));
+    if (!cfg) {
+      restarting = false;
+      scheduleRestart('no configuration for watchdog restart');
+      return;
     }
-    restarting = false;
+    skippedBridges.add(bridgeLine);
+    void runRotation(cfg.bridges, join(cfg.dataDir, '..'))
+      .then((r) => {
+        if (r) restartDelayMs = 5_000;
+        else scheduleRestart('watchdog rotation produced no usable Tor');
+      })
+      .catch((e) => {
+        logger.warn('[tor-embedded] watchdog restart failed', e);
+        scheduleRestart('watchdog restart error');
+      })
+      .finally(() => {
+        restarting = false;
+      });
   }, WATCHDOG_INTERVAL_MS);
 }
 
 export async function startEmbeddedTor(bridges: string, userDataDir: string): Promise<{ socks: string } | null> {
-  if (proc && !proc.killed) return { socks: `127.0.0.1:${EMBEDDED_SOCKS_PORT}` };
+  stopping = false;
+  if (proc && !proc.killed) {
+    // The daemon may still be bootstrapping: never hand out a dead address.
+    if (activeSocks) return { socks: activeSocks };
+    try {
+      await whenEmbeddedTorReady();
+      return activeSocks ? { socks: activeSocks } : null;
+    } catch {
+      return null;
+    }
+  }
   return await runRotation(bridges, userDataDir);
 }
 
 export function stopEmbeddedTor(): void {
+  stopping = true;
+  if (restartTimer) {
+    clearTimeout(restartTimer);
+    restartTimer = undefined;
+  }
   clearInterval(watchdog!);
   stopProcess();
 }
