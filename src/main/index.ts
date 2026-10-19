@@ -26,6 +26,7 @@ import { registerEhLimitHook } from './services/eh-limits-hook';
 import { httpFetchBinary } from './services/http';
 import { setLibMirror } from './services/lib-mirror';
 import { setCustomDnsServers, parseDnsServerList } from './services/custom-dns';
+import { rememberSettingsSecrets } from './services/settings-snapshot';
 import { initCookieStore } from './services/comx-gate';
 import { DownloadManager } from './services/download-manager';
 import { GoogleAuth } from './services/google-auth';
@@ -268,6 +269,7 @@ app.whenReady().then(() => {
   });
 
   const broadcastSettingsChanged = (s: Settings): void => {
+    rememberSettingsSecrets(s);
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s);
   };
 

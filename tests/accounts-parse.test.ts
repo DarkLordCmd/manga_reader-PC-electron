@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseAccountsFromJson, accountCookieHeader, parseCookieLogin } from '../src/main/services/accounts-parse';
+import { parseAccountsFromJson, accountCookieHeader, parseCookieLogin, mergeCookieHeaders } from '../src/main/services/accounts-parse';
 
 describe('parseAccountsFromJson', () => {
   it('parses a bare cookie array', () => {
@@ -67,5 +67,21 @@ describe('accountCookieHeader', () => {
   });
   it('returns empty for null', () => {
     expect(accountCookieHeader(null)).toBe('');
+  });
+});
+
+describe('mergeCookieHeaders', () => {
+  it('keeps existing auth cookies when the login jar only has guest cookies', () => {
+    expect(mergeCookieHeaders('access_token=old; refresh_token=r', 'tor_session=guest')).toBe(
+      'access_token=old; refresh_token=r; tor_session=guest',
+    );
+  });
+  it('lets fresh login cookies replace same-name values', () => {
+    expect(mergeCookieHeaders('access_token=old; refresh_token=old', 'access_token=new; refresh_token=new')).toBe(
+      'access_token=new; refresh_token=new',
+    );
+  });
+  it('preserves = inside values and ignores malformed pairs', () => {
+    expect(mergeCookieHeaders('', 'a=x=y; broken; b=')).toBe('a=x=y; b=');
   });
 });

@@ -7,6 +7,8 @@ import type { Settings } from '@shared/settings';
 import { handleSafe, anyString, looseObject, nonNegInt } from './validate';
 import type { SettingsService } from '../services/settings';
 import { ExAccountsService, parseCookieLogin } from '../services/accounts';
+import { mergeCookieHeaders } from '../services/accounts-parse';
+import { whenEmbeddedTorReady } from '../services/tor-embedded';
 
 export interface AccountsDeps {
   settings: SettingsService;
@@ -26,18 +28,35 @@ export function registerAccounts(deps: AccountsDeps): void {
     // (senkuro.me bans datacenter/Tor ranges).
     const lower = url.toLowerCase();
     const needsTor = url.includes('.onion') || lower.includes('exhentai') || lower.includes('e-hentai') || lower.includes('nhentai');
+    // Opening the window before the bundled daemon has bootstrapped makes the
+    // first .onion navigation hang for the whole proxy timeout.
+    if (needsTor && s.builtin_tor) {
+      try {
+        await whenEmbeddedTorReady(120_000);
+      } catch {
+        /* window will surface the network error */
+      }
+    }
     const result = await runLoginWindow(url, needsTor ? effectiveTorSocks() : '');
     if (!result) return null;
-    // Persist cookies into settings depending on target
+    // Persist cookies into settings depending on target. Merge with what is
+    // already stored: a canceled/partial login must not replace a valid
+    // session with guest cookies.
     const next = { ...settings.get() };
-    if (url.includes('exhentai')) next.onion_cookies_raw = result.cookies;
-    else if (url.includes('nhentai')) {
-      if (url.includes('.onion')) next.nhentai_onion_cookies_raw = result.cookies;
-      else next.nhentai_cookies_raw = result.cookies;
+    const merge = (prev: string): string => mergeCookieHeaders(prev, result.cookies);
+    if (url.includes('nhentai')) {
+      if (url.includes('.onion')) next.nhentai_onion_cookies_raw = merge(next.nhentai_onion_cookies_raw);
+      else next.nhentai_cookies_raw = merge(next.nhentai_cookies_raw);
+    } else if (url.includes('.onion')) {
+      next.onion_cookies_raw = merge(next.onion_cookies_raw);
     } else if (url.includes('senkuro')) {
-      next.senkuro_cookies_raw = result.cookies;
+      next.senkuro_cookies_raw = merge(next.senkuro_cookies_raw);
     }
     settings.save(next);
+    // Refresh the renderer's snapshot: otherwise any later settings save
+    // (reader toggles, tag bookmarks, quick searches) would echo the stale
+    // pre-login cookie string back and overwrite the fresh session.
+    broadcastSettingsChanged(settings.get());
     return result.cookies;
   });
   handleSafe(CH.loginPassword, z.tuple([anyString, anyString]), async (_e, user: string, pass: string) => {

@@ -20,6 +20,7 @@ import { setLibMirror } from '../services/lib-mirror';
 import { setCustomDnsServers, parseDnsServerList } from '../services/custom-dns';
 import { startEmbeddedTor, stopEmbeddedTor, embeddedTorSocks } from '../services/tor-embedded';
 import { setCoverDiskMaxBytes } from '../app/state';
+import { rememberSettingsSecrets, isRendererSnapshotSecret } from '../services/settings-snapshot';
 
 /** Secret settings that are session/`.onion` cookies — the renderer's stale
  * snapshot must never blank them. Derived from SECRET_SETTINGS so the set of
@@ -119,7 +120,11 @@ export function registerSettings(deps: {
     }
   });
 
-  ipcMain.handle(CH.getSettings, () => settings.get());
+  ipcMain.handle(CH.getSettings, () => {
+    const s = settings.get();
+    rememberSettingsSecrets(s);
+    return s;
+  });
   handleSafe(CH.setSettings, z.tuple([looseObject<Settings>()]), (_e, s: Settings) => {
     setFrontingEnabled(!!s?.enable_domain_fronting);
     setTorFallbackAddr(deps.effectiveTorSocks());
@@ -141,7 +146,15 @@ export function registerSettings(deps: {
     // the single SECRET_SETTINGS list (backup.ts) so the two never drift.
     const prev = settings.get();
     for (const k of COOKIE_SECRET_FIELDS) {
-      if (String(s[k] ?? '') === '' && String(prev[k] ?? '') !== '') s[k] = prev[k];
+      const incoming = String(s[k] ?? '');
+      const previous = String(prev[k] ?? '');
+      if (incoming === '') {
+        if (previous !== '') s[k] = previous;
+        continue;
+      }
+      // The renderer echoed the snapshot we sent it, while the main process
+      // has a newer session (saved by a login window). Keep the fresh one.
+      if (incoming !== previous && isRendererSnapshotSecret(k, incoming)) s[k] = previous;
     }
     const prevSettings = settings.get();
     const before = deps.downloadsDirBase(prevSettings.downloads_dir);

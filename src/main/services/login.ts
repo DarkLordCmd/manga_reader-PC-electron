@@ -1,6 +1,6 @@
 import { BrowserWindow, session, app } from 'electron';
 import { join } from 'path';
-import { buildSocksDispatcher } from './http';
+import { requestNewTorCircuit } from './tor-embedded';
 import { denyAllPermissions } from '../security';
 import { logger } from './logger';
 
@@ -8,24 +8,42 @@ export interface LoginResult {
   cookies: string;
 }
 
-export function runLoginWindow(loginUrl: string, torSocksAddr: string): Promise<LoginResult | null> {
-  return new Promise((resolve) => {
-    const ses = session.fromPartition(`persist:onion-login-${Date.now()}`);
+/** A gateway login page (E-Hentai onion) has no redirect: success is visible
+ * only as the login form disappearing plus an auth cookie appearing. Used by
+ * the poll to close the window at the right moment — unlike the old "any
+ * cookie exists" rule it cannot fire on pre-login guest cookies. */
+export function hasAuthenticatedSession(target: string, cookies: { name: string; value: string }[], loginFormVisible: boolean): boolean {
+  if (loginFormVisible) return false;
+  const has = (name: string): boolean => cookies.some((c) => c.name === name && !!c.value);
+  if (/nhentai.*\.onion/i.test(target)) return has('access_token') || has('refresh_token');
+  if (/exhentai|e-hentai/i.test(target)) return has('onikakushi') || has('ipb_member_id');
+  if (/senkuro/i.test(target)) return has('remixsid') || has('session_id') || has('access_token');
+  return false;
+}
 
-    // Proxy all requests from this session through Tor
-    if (torSocksAddr.trim()) {
-      ses
-        .setProxy({
-          proxyRules: `socks5://${torSocksAddr.trim().replace(/^socks5h?:\/\//, '')}`,
-          proxyBypassRules: '',
-        })
-        .catch(() => {});
+export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Promise<LoginResult | null> {
+  const ses = session.fromPartition(`persist:onion-login-${Date.now()}`);
+
+  // Proxy all requests from this session through Tor. This MUST finish before
+  // the first navigation: setProxy is async, and loading a .onion before the
+  // proxy is applied either goes direct (immediate failure) or waits on the
+  // wrong route — which looked like the login page taking forever.
+  if (torSocksAddr.trim()) {
+    try {
+      await ses.setProxy({
+        proxyRules: `socks5://${torSocksAddr.trim().replace(/^socks5h?:\/\//, '')}`,
+        proxyBypassRules: '',
+      });
+    } catch {
+      /* keep going; the window will show the network error */
     }
+  }
 
+  return new Promise((resolve) => {
     const win = new BrowserWindow({
       width: 900,
       height: 700,
-      title: 'Логин — закрой окно после входа, куки заберутся автоматически',
+      title: 'Логин — окно закроется автоматически после успешного входа',
       backgroundColor: '#181818',
       autoHideMenuBar: true,
       webPreferences: {
@@ -78,16 +96,60 @@ export function runLoginWindow(loginUrl: string, torSocksAddr: string): Promise<
         .catch(() => {});
     };
 
+    // First-document watchdog: a bad Tor circuit can leave the login page
+    // blank for a minute or more. If the FIRST document has not rendered in
+    // 15 s, ask Tor for a fresh circuit and reload (max two attempts). After
+    // the form is visible we never auto-reload — that would wipe user input.
+    let firstPageReady = false;
+    let loadStartedAt = Date.now();
+    let slowRetries = 0;
+    let slowTimer: ReturnType<typeof setTimeout> | undefined;
+    const clearSlowTimer = (): void => {
+      if (slowTimer) {
+        clearTimeout(slowTimer);
+        slowTimer = undefined;
+      }
+    };
+    const armSlowTimer = (): void => {
+      clearSlowTimer();
+      if (done || firstPageReady) return;
+      slowTimer = setTimeout(async () => {
+        if (done || firstPageReady || slowRetries >= 2) return;
+        slowRetries++;
+        const waited = Math.round((Date.now() - loadStartedAt) / 1000);
+        logger.info(`[login] first document still loading after ${waited}s — new Tor circuit (retry ${slowRetries}/2)`);
+        statusEl = `Tor-цепь медленная — переключаю и загружаю заново (${slowRetries}/2)…`;
+        void injectStatus();
+        await requestNewTorCircuit();
+        if (!done && !firstPageReady) {
+          void win.webContents.loadURL(loginUrl).catch((e) => logger.info('[login] slow reload failed:', e?.message ?? e));
+        }
+        armSlowTimer();
+      }, 15_000);
+    };
+
     win.webContents.on('did-start-loading', () => {
       if (done || !win.webContents.isLoadingMainFrame()) return;
+      loadStartedAt = Date.now();
       void injectStatus();
+      armSlowTimer();
     });
     win.webContents.on('dom-ready', () => {
-      if (!done) hideStatus();
+      if (done) return;
+      if (!firstPageReady) {
+        firstPageReady = true;
+        clearSlowTimer();
+        logger.info(`[login] first document ready in ${Date.now() - loadStartedAt}ms url=${win.webContents.getURL()}`);
+      }
+      hideStatus();
+    });
+    win.webContents.on('did-finish-load', () => {
+      if (!done) logger.info(`[login] did-finish-load in ${Date.now() - loadStartedAt}ms url=${win.webContents.getURL()}`);
     });
     win.webContents.on('did-fail-load', (_e, code, desc, url, isMain) => {
       // -3 (ABORTED) is normal during OAuth redirects and user-driven nav.
       if (done || !isMain || code === -3) return;
+      logger.info(`[login] did-fail-load ${code} ${desc} after ${Date.now() - loadStartedAt}ms url=${url}`);
       statusEl = `Ошибка загрузки (net ${code} ${desc}). Tor запущен и адрес SOCKS корректен?`;
       void injectStatus();
       // One automatic retry soon after; keep the overlay visible meanwhile.
@@ -399,19 +461,25 @@ export function runLoginWindow(loginUrl: string, torSocksAddr: string): Promise<
             }, 2000);
             return;
           }
-          // E-Hentai/exhentai gateway logins happen on the target URL itself
-          // (the login page IS the catalog URL) and keep the session in a
-          // gateway-only cookie (e.g. onikakushi) — no /login URL transition,
-          // no forum auth cookies. If we are already at the target site and
-          // the jar now holds a session, the flow is done: grab it.
+          // E-Hentai/exhentai and nhentai-onion gateway logins happen on the
+          // target URL itself and have no /login redirect. Closing on "any
+          // cookie exists" grabbed pre-login guest cookies (nhentai
+          // `tor_session`), so require both: the login form is gone AND an
+          // auth-level cookie is present.
           const jar = await ses.cookies.get({});
-          if (!done && onTargetSite && jar.some((c) => c.name && c.value)) {
+          const loginFormVisible = await ws
+            .executeJavaScript(
+              `!!document.querySelector('input[type="password"],input[name="UserName"],input[name="PassWord"],input[name="username_or_email"]')`,
+            )
+            .catch(() => true);
+          if (!done && onTargetSite && hasAuthenticatedSession(loginUrl, jar, loginFormVisible)) {
             clearInterval(poll);
-            statusEl = 'Вход признан успешным — собираю куки…';
+            statusEl = 'Вход выполнен — собираю куки…';
             void injectStatus();
             setTimeout(() => {
-              if (!done) grabCookies('target-site-session-cookies');
-            }, 2000);
+              if (!done) grabCookies('authenticated-session');
+            }, 1500);
+            return;
           }
           if (seenLogin) {
             const disabled = await ws

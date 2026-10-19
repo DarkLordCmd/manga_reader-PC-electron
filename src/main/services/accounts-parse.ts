@@ -9,6 +9,25 @@ export function accountCookieHeader(a: ExAccount | null): string {
   return a.cookies.map(([k, v]) => `${k}=${v}`).join('; ');
 }
 
+/** Merge a freshly grabbed login jar over the previously stored header.
+ * New values win; cookies the login window didn't see (e.g. an access token
+ * from an earlier successful login) are preserved, so merely opening and
+ * canceling the login window can no longer clobber a valid session with
+ * guest cookies such as `tor_session`. */
+export function mergeCookieHeaders(existing: string, incoming: string): string {
+  const map = new Map<string, string>();
+  for (const part of `${existing}; ${incoming}`.split(';')) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq <= 0) continue;
+    const name = trimmed.slice(0, eq).trim();
+    if (!name) continue;
+    map.set(name, trimmed.slice(eq + 1).trim());
+  }
+  return [...map].map(([k, v]) => `${k}=${v}`).join('; ');
+}
+
 export interface ParsedCookieLogin {
   ipbMemberId: string | null;
   ipbPassHash: string | null;
