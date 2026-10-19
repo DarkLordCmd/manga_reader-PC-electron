@@ -125,7 +125,7 @@ async function loadViaWindow(
   cookieHost?: string,
 ): Promise<string> {
   const w = await ensureBrowser(proxy);
-  applySessionCookie(prepareSession(), cookie, cookieHost);
+  await seedSessionCookies(prepareSession(), cookie, cookieHost);
   return await new Promise<string>((resolve, reject) => {
     let settled = false;
     const finish = (fn: () => void): void => {
@@ -191,22 +191,43 @@ export async function fetchHtmlViaBrowser(
   return await run;
 }
 
-/** Attach user-supplied cookies to every matching request of the browsing
- * session. The hidden window keeps its own cookie jar — without this hook
- * login-only sources (nhentai onion) get the login page even when valid
- * session cookies are stored in settings. */
-function applySessionCookie(s: Electron.Session, cookie: string | undefined, host: string | undefined): void {
-  if (!cookie?.trim() || !host) return;
-  try {
-    s.webRequest.onBeforeSendHeaders({ urls: ['*://*/*'] }, (details, callback) => {
-      const headers = { ...details.requestHeaders };
-      if (cookie) headers.Cookie = cookie;
-      void host;
-      callback({ requestHeaders: headers });
-    });
-  } catch {
-    /* keep going without injected cookies */
+/** Attach user-supplied cookies to the browsing session's cookie JAR once.
+ * Seeding the jar (instead of rewriting the Cookie header on every request)
+ * is essential: the hidden window must be able to rotate session tokens and
+ * keep its own `cf_clearance` — a static header override discarded both and
+ * kept replaying expired nhentai onion tokens (401 forever).
+ * Cookies are re-seeded only when the stored string changes (new login). */
+const seededCookieByHost = new Map<string, string>();
+
+export function parseCookiePairs(cookie: string): [string, string][] {
+  const pairs: [string, string][] = [];
+  for (const part of cookie.split(';')) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq <= 0) continue;
+    const name = trimmed.slice(0, eq).trim();
+    const value = trimmed.slice(eq + 1).trim();
+    if (name) pairs.push([name, value]);
   }
+  return pairs;
+}
+
+export async function seedSessionCookies(s: Electron.Session, cookie: string | undefined, host: string | undefined): Promise<void> {
+  if (!cookie?.trim() || !host) return;
+  const key = host.toLowerCase();
+  if (seededCookieByHost.get(key) === cookie) return;
+  seededCookieByHost.set(key, cookie);
+  const url = `${key.endsWith('.onion') ? 'http' : 'https'}://${key}/`;
+  await Promise.all(
+    parseCookiePairs(cookie).map(async ([name, value]) => {
+      try {
+        await s.cookies.set({ url, name, value });
+      } catch {
+        /* invalid cookie name/value — skip it, keep the rest */
+      }
+    }),
+  );
 }
 
 /**
@@ -224,7 +245,7 @@ export async function fetchViaWindowFetch(
   // runs concurrently so page-count fan-out can hit several items at once.
   const setup = workspaceChain.then(async () => {
     const w = await ensureBrowser(opts.proxy);
-    applySessionCookie(prepareSession(), opts.cookie, opts.cookieHost);
+    await seedSessionCookies(prepareSession(), opts.cookie, opts.cookieHost);
     const origin = new URL(url).origin + '/';
     if (!w.webContents.getURL().startsWith(origin)) {
       await new Promise<void>((resolve, reject) => {
@@ -288,4 +309,5 @@ export async function shutdownBrowserFetch(): Promise<void> {
   win = null;
   ses = null;
   currentProxy = '';
+  seededCookieByHost.clear();
 }
