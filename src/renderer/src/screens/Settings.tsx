@@ -21,12 +21,15 @@ export default function Settings(): JSX.Element {
     <div className="screen">
       <div className="settings-scroll">
         <ReadingSection settings={s.settings} upd={s.upd} />
-        <CatalogSection settings={s.settings} upd={s.upd} />
         <DisplaySection settings={s.settings} upd={s.upd} />
-        <DownloadsSection settings={s.settings} upd={s.upd} />
+        <CatalogSection settings={s.settings} upd={s.upd} />
         <LibMirrorsSection settings={s.settings} upd={s.upd} />
-        <CustomDnsSection settings={s.settings} upd={s.upd} />
         <LibrarySection settings={s.settings} upd={s.upd} />
+        <DownloadsSection settings={s.settings} upd={s.upd} />
+        <PrivacySection settings={s.settings} upd={s.upd} />
+        <CustomDnsSection settings={s.settings} upd={s.upd} />
+        <NetworkSection settings={s.settings} upd={s.upd} />
+        <EhAccountsSection />
         <SyncSection
           settings={s.settings}
           upd={s.upd}
@@ -37,10 +40,7 @@ export default function Settings(): JSX.Element {
           setSyncMsg={s.setSyncMsg}
         />
         <BackupSection />
-        <NetworkSection settings={s.settings} upd={s.upd} />
-        <EhAccountsSection />
         <CoverCacheSection settings={s.settings} upd={s.upd} />
-        <PrivacySection settings={s.settings} upd={s.upd} />
         <SecuritySection />
       </div>
     </div>

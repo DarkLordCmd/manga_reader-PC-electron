@@ -8,6 +8,7 @@ import KindBadge from '../components/KindBadge';
 import StatusBadge from '../components/StatusBadge';
 import ContextMenu, { type MenuItem } from '../components/ContextMenu';
 import { buildLibraryMenuItems, STATUS_LABELS } from '../lib/library-menu';
+import { resolveAdultFlag } from '../lib/adult';
 
 const TABS: (ReadingStatus | 'all')[] = ['all', ...READING_STATUSES];
 
@@ -41,7 +42,7 @@ export default function Library(): JSX.Element {
 
   const open = async (item: LibraryItem): Promise<void> => {
     const start = Math.max(0, item.currentPage - 1);
-    const r = await window.api.openUrl(item.url, start, item.seriesId, item.coverUrl, item.kind ?? null);
+    const r = await window.api.openUrl(item.url, start, item.seriesId, item.coverUrl, item.kind ?? null, null, await resolveAdultFlag(item.url, item.category === 'r34'));
     if (r) {
       setOpened({ kind: 'online', ...r, startPage: start, coverUrl: item.coverUrl });
       setScreen('Reader');
@@ -143,6 +144,22 @@ export default function Library(): JSX.Element {
           onOpen={async () => {
             await open(selected);
             setSelected(null);
+          }}
+          onOpenChapter={async (chapterId, index) => {
+            const r = await window.api.openUrl(
+              chapterId,
+              0,
+              selected.seriesId,
+              selected.coverUrl,
+              selected.kind ?? null,
+              index,
+              await resolveAdultFlag(selected.url, selected.category === 'r34'),
+            );
+            if (r) {
+              setOpened({ kind: 'online', ...r, startPage: 0, coverUrl: selected.coverUrl });
+              setScreen('Reader');
+              setSelected(null);
+            }
           }}
           onChanged={() => {
             setSelected(null);

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CatalogCard, CatalogCursor, CatalogFilters, ChapterListItem, ExAccount } from '@shared/ipc';
+import { filterCardsByEhKinds } from '@shared/filters';
 import type { ReadingStatus } from '@shared/library';
 import type { MenuItem } from '../../components/ContextMenu';
 import { buildLibraryMenuItems } from '../../lib/library-menu';
@@ -13,8 +14,31 @@ interface CatalogMenu {
   lookup: { key: string; favorited: boolean; status: ReadingStatus | null } | null;
 }
 
-export function useCatalogSearch() {
-  const { setScreen, setOpened, settings, setSettings } = useStore();
+/** Last rendered catalog page, kept for an instant first paint after launch. */
+const CATALOG_CACHE_KEY = 'catalog.last.v1';
+/** Per-URL adult flags (Manga-shi), so badges are instant on later launches. */
+const ADULT_CACHE_KEY = 'catalog.adult.v1';
+
+function loadAdultCache(): Map<string, boolean> {
+  try {
+    const raw = localStorage.getItem(ADULT_CACHE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+    return new Map(Object.entries(parsed).slice(-800));
+  } catch {
+    return new Map();
+  }
+}
+
+function saveAdultCache(cache: Map<string, boolean>): void {
+  try {
+    const entries = [...cache.entries()].slice(-800);
+    localStorage.setItem(ADULT_CACHE_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    /* quota — cache is optional */
+  }
+}
+
+export function useCatalogSearch() {  const { setScreen, setOpened, settings, setSettings } = useStore();
   const [source, setSource] = useState(() => {
     const s = settings.last_catalog_source || 'mangadex';
     return !settings.show_r34_history && R34_SOURCES.includes(s) ? 'mangadex' : s;
@@ -87,7 +111,26 @@ export function useCatalogSearch() {
   const loadingRef = useRef(false);
   const pageRef = useRef(0);
   const sigRef = useRef('');
-  const pageCacheRef = useRef<Map<number, CatalogCard[]>>(new Map());
+  /** Page cache per query signature (source|query|filters|sort), LRU-bounded:
+   * toggling a category back and forth used to re-hit the network every time,
+   * which is seconds over Tor/onion. Now the previous result set is instant. */
+  const sigPagesRef = useRef<Map<string, Map<number, CatalogCard[]>>>(new Map());
+  const pagesForSig = (sig: string): Map<number, CatalogCard[]> => {
+    let m = sigPagesRef.current.get(sig);
+    if (m) {
+      // refresh LRU position
+      sigPagesRef.current.delete(sig);
+    } else {
+      m = new Map<number, CatalogCard[]>();
+      while (sigPagesRef.current.size >= 8) {
+        const oldest = sigPagesRef.current.keys().next().value;
+        if (oldest === undefined) break;
+        sigPagesRef.current.delete(oldest);
+      }
+    }
+    sigPagesRef.current.set(sig, m);
+    return m;
+  };
   const infiniteScroll = settings.infinite_scroll;
   const [hasMore, setHasMore] = useState(true);
 
@@ -198,7 +241,21 @@ export function useCatalogSearch() {
   // ensure_searched: auto-load the feed on open and whenever the source changes.
   // The previous in-flight search is invalidated: search() bumps searchIdRef and
   // discards any response that arrives after a newer search has started.
+  // The last rendered list is restored from localStorage first, so the first
+  // paint after a launch is instant instead of a spinner + Tor round-trip.
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CATALOG_CACHE_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as { source?: string; cards?: CatalogCard[]; ts?: number };
+        const fresh = typeof saved.ts === 'number' && Date.now() - saved.ts < 7 * 24 * 3600_000;
+        if (saved.source === source && fresh && Array.isArray(saved.cards) && saved.cards.length > 0) {
+          setCards(saved.cards);
+        }
+      }
+    } catch {
+      /* corrupt cache — ignore */
+    }
     void search(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
@@ -214,6 +271,54 @@ export function useCatalogSearch() {
 
   const exSource = source === 'exhentai' || source === 'exhentai_onion' || source === 'ehentai';
 
+  // Instant local filtering: the network round-trip through Tor/onion takes
+  // seconds, so the already-loaded list is filtered by category immediately and
+  // the authoritative result replaces it when it arrives.
+  const displayCards = useMemo(
+    () => (exSource ? filterCardsByEhKinds(cards, ehExcludedCats) : cards),
+    [cards, exSource, ehExcludedCats],
+  );
+
+  /** Manga-shi's own "18+" cover badge is an age rating it also assigns for
+   * violence-only titles, so it is not a reliable erotica signal. Resolve the
+   * flag from the title's tags instead (one lazy request per card, cached). */
+  const adultTagCache = useRef<Map<string, boolean>>(loadAdultCache());
+  const enrichMangashiAdults = useCallback(async (list: CatalogCard[]): Promise<void> => {
+    const pending = list.filter((c) => !adultTagCache.current.has(c.url));
+    if (pending.length > 0) {
+      try {
+        const resolved = await window.api.catalogAdultBatch(pending.map((c) => c.url));
+        for (const [url, adult] of Object.entries(resolved)) adultTagCache.current.set(url, adult);
+        saveAdultCache(adultTagCache.current);
+      } catch {
+        /* leave unresolved — the next cards update retries */
+      }
+    }
+    // Apply even when nothing was pending: a fresh page/prefetch replaces the
+    // card objects, and those copies need the cached flag re-applied. Return the
+    // previous array when nothing changed — a new array identity would re-trigger
+    // the effect below and spin the renderer (black window).
+    setCards((prev) => {
+      let changed = false;
+      const next = prev.map((c) => {
+        const adult = adultTagCache.current.get(c.url);
+        if (adult === undefined || c.adult === adult) return c;
+        changed = true;
+        return { ...c, adult };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
+  // Run the enrichment whenever a Manga-shi page lands (search, append, prefetch
+  // replacement). Doing it in an effect keeps it independent of which code path
+  // produced the cards.
+  useEffect(() => {
+    if (source !== 'mangashi' || cards.length === 0) return;
+    void enrichMangashiAdults(cards);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cards, source]);
+
   const search = useCallback(
     async (p: number, append = false): Promise<void> => {
       const id = ++searchIdRef.current;
@@ -224,10 +329,8 @@ export function useCatalogSearch() {
       // Cache key for the current query/filter/sort combination: a new signature
       // invalidates every prefetched page.
       const sig = `${source}|${effectiveQuery}|${JSON.stringify(filters)}|${sort}`;
-      if (sig !== sigRef.current) {
-        sigRef.current = sig;
-        pageCacheRef.current.clear();
-      }
+      sigRef.current = sig;
+      const pages = pagesForSig(sig);
       const cursorFor = (list: CatalogCard[], dir: 'next' | 'prev'): CatalogCursor | undefined => {
         if (exSource) {
           const ref = dir === 'next' ? list[list.length - 1] : list[0];
@@ -241,9 +344,9 @@ export function useCatalogSearch() {
       };
       try {
         let res: CatalogCard[];
-        const cached = append ? pageCacheRef.current.get(p) : undefined;
+        const cached = append ? pages.get(p) : undefined;
         if (cached) {
-          pageCacheRef.current.delete(p);
+          pages.delete(p);
           res = cached;
         } else {
           const dir: 'next' | 'prev' = p < page ? 'prev' : 'next';
@@ -255,6 +358,13 @@ export function useCatalogSearch() {
         const seen = new Set(prev.map((x) => x.url));
         const next = append ? [...prev, ...res.filter((c) => !seen.has(c.url))] : res;
         setCards(next);
+        if (!append && res.length > 0) {
+          try {
+            localStorage.setItem(CATALOG_CACHE_KEY, JSON.stringify({ source, cards: next.slice(0, 60), ts: Date.now() }));
+          } catch {
+            /* quota — cache is optional */
+          }
+        }
         setPage(append ? p : 0);
         // Stop infinite scroll once a page returns nothing new (end of list, or a
         // source that ignores the offset). Otherwise `page` keeps growing and the
@@ -263,12 +373,12 @@ export function useCatalogSearch() {
         setHasMore(more);
         // Prefetch the NEXT page in the background so it appends instantly when the
         // sentinel is reached — seamless, with no visible "Загрузка…" pause.
-        if (more && !pageCacheRef.current.has(p + 1)) {
+        if (more && !pages.has(p + 1)) {
           const nextCursor = cursorFor(next, 'next');
           void window.api
             .searchCatalog(source, effectiveQuery, p + 1, sort, filters, nextCursor)
             .then((cards2) => {
-              if (sigRef.current === sig) pageCacheRef.current.set(p + 1, cards2);
+              if (sigRef.current === sig) pages.set(p + 1, cards2);
             })
             .catch(() => {
               /* prefetch is best-effort */
@@ -358,7 +468,7 @@ export function useCatalogSearch() {
     scrollToTop();
     const t = setTimeout(() => {
       void search(0);
-    }, 450);
+    }, 300);
     return () => clearTimeout(t);
     // search is recreated with the fresh filters on each render — the timer
     // always resolves against the newest state.
@@ -423,7 +533,19 @@ export function useCatalogSearch() {
     setOpening(true);
     setChapterError(null);
     try {
-      const r = await window.api.openUrl(chapterId, 0, mangaId, coverUrl, picked?.kind ?? null, chapterIndex);
+      // The badge enrichment is asynchronous: a card clicked before it finishes
+      // has no `adult` yet. Resolve it here so the history/library row still
+      // lands in the correct tab.
+      let adult = picked?.adult;
+      if (adult === undefined && mangaId) {
+        try {
+          const resolved = await window.api.catalogAdultBatch([mangaId]);
+          adult = resolved[mangaId] === true;
+        } catch {
+          /* keep undefined */
+        }
+      }
+      const r = await window.api.openUrl(chapterId, 0, mangaId, coverUrl, picked?.kind ?? null, chapterIndex, adult === true);
       if (r) {
         if (source === 'mangadex' && mangaId && chapters) {
           const total = chapters.length;
@@ -512,6 +634,7 @@ export function useCatalogSearch() {
     error,
     loading,
     cards,
+    displayCards,
     statuses,
     onSelectCard,
     openCardMenu,

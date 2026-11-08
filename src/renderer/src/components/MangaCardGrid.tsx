@@ -3,6 +3,7 @@ import type { CatalogCard } from '@shared/ipc';
 import type { ReadingStatus } from '@shared/library';
 import KindBadge from './KindBadge';
 import StatusBadge from './StatusBadge';
+import CoverImg from './CoverImg';
 
 interface Props {
   cards: CatalogCard[];
@@ -10,10 +11,6 @@ interface Props {
   progress?: Record<string, [number, number]>;
   statuses?: Record<string, ReadingStatus>;
   onContextMenu?: (e: React.MouseEvent, card: CatalogCard) => void;
-}
-
-function coverSrc(url: string): string {
-  return `manga://cover/${encodeURIComponent(url)}`;
 }
 
 interface CardProps {
@@ -31,8 +28,13 @@ const MangaCard = memo(function MangaCard({ card, progressEntry, status, onSelec
   return (
     <div className="manga-card" onClick={() => onSelect(card)} onContextMenu={onContextMenu ? (e) => onContextMenu(e, card) : undefined}>
       <div className="manga-cover">
-        {card.coverUrl ? <img src={coverSrc(card.coverUrl)} alt={card.title} loading="lazy" /> : <div className="cover-placeholder" />}
+        <CoverImg url={card.coverUrl} alt={card.title} />
         {card.kind && <KindBadge kind={card.kind} />}
+        {card.adult && (
+          <span className="manga-badge adult-badge" title="18+">
+            18+
+          </span>
+        )}
         <StatusBadge status={status} />
         {progressEntry && (
           <div className="manga-progress">

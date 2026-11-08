@@ -1,27 +1,24 @@
-import Section from './Section';
+import Section, { Row } from './Section';
 import type { SettingsCommon } from './useSettings';
 
 export default function ReadingSection({ settings, upd }: SettingsCommon): JSX.Element {
   return (
-    <Section title="Reading">
-      <div className="row">
-        <label>Mode:</label>
+    <Section title="Чтение">
+      <Row label="Режим">
         <select value={settings.reading_mode} onChange={(e) => upd({ reading_mode: e.target.value as 'Scroll' | 'Book' })}>
-          <option value="Scroll">Scroll</option>
-          <option value="Book">Book</option>
+          <option value="Scroll">Лента</option>
+          <option value="Book">Книга</option>
         </select>
-      </div>
+      </Row>
       {settings.reading_mode === 'Book' && (
         <>
-          <div className="row">
-            <label>Direction:</label>
+          <Row label="Направление">
             <select value={settings.book_direction} onChange={(e) => upd({ book_direction: e.target.value as 'Ltr' | 'Rtl' })}>
-              <option value="Rtl">RTL (manga)</option>
-              <option value="Ltr">LTR</option>
+              <option value="Rtl">Справа налево (манга)</option>
+              <option value="Ltr">Слева направо</option>
             </select>
-          </div>
-          <div className="row">
-            <label>Pages per screen: {settings.pages_per_screen}</label>
+          </Row>
+          <Row label="Страниц на экран">
             <input
               type="range"
               min={1}
@@ -30,9 +27,9 @@ export default function ReadingSection({ settings, upd }: SettingsCommon): JSX.E
               value={settings.pages_per_screen}
               onChange={(e) => upd({ pages_per_screen: Number(e.target.value) })}
             />
-          </div>
-          <div className="row">
-            <label>Page margin: {settings.page_margin}</label>
+            <span className="set-value">{settings.pages_per_screen}</span>
+          </Row>
+          <Row label="Поля страницы">
             <input
               type="range"
               min={0}
@@ -41,12 +38,12 @@ export default function ReadingSection({ settings, upd }: SettingsCommon): JSX.E
               value={settings.page_margin}
               onChange={(e) => upd({ page_margin: Number(e.target.value) })}
             />
-          </div>
+            <span className="set-value">{settings.page_margin} px</span>
+          </Row>
         </>
       )}
       {settings.reading_mode === 'Scroll' && (
-        <div className="row">
-          <label>Width scale: {settings.width_scale.toFixed(2)}</label>
+        <Row label="Ширина страницы">
           <input
             type="range"
             min={0.3}
@@ -55,7 +52,8 @@ export default function ReadingSection({ settings, upd }: SettingsCommon): JSX.E
             value={settings.width_scale}
             onChange={(e) => upd({ width_scale: Number(e.target.value) })}
           />
-        </div>
+          <span className="set-value">{Math.round(settings.width_scale * 100)}%</span>
+        </Row>
       )}
     </Section>
   );

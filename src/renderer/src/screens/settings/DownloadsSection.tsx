@@ -1,14 +1,14 @@
-import Section from './Section';
+import Section, { Row } from './Section';
 import type { SettingsCommon } from './useSettings';
 
 export default function DownloadsSection({ settings, upd }: SettingsCommon): JSX.Element {
   return (
-    <Section title="Downloads">
-      <div className="row">
-        <label>Папка загрузок:</label>
-        <span className="muted" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {settings.downloads_dir ?? 'по умолчанию (userData/downloads)'}
-        </span>
+    <Section title="Загрузки">
+      <Row
+        label="Папка загрузок"
+        stack
+        note={settings.downloads_dir ? settings.downloads_dir : 'По умолчанию: userData/downloads'}
+      >
         <button
           onClick={async () => {
             const dir = await window.api.downloadsPickDir();
@@ -17,7 +17,8 @@ export default function DownloadsSection({ settings, upd }: SettingsCommon): JSX
         >
           Выбрать папку
         </button>
-      </div>
+        {settings.downloads_dir && <button onClick={() => upd({ downloads_dir: null })}>Сбросить</button>}
+      </Row>
     </Section>
   );
 }

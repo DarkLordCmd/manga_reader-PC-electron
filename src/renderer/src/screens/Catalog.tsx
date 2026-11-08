@@ -18,10 +18,10 @@ export default function Catalog(): JSX.Element {
       <div className="catalog-body">
         <div className="catalog-content" ref={s.contentRef}>
           {s.error && <div className="error-text">{s.error}</div>}
-          {s.loading && s.cards.length === 0 && <div className="muted">Поиск…</div>}
-          {s.cards.length > 0 && (
+          {s.loading && s.displayCards.length === 0 && <div className="muted">Поиск…</div>}
+          {s.displayCards.length > 0 && (
             <MangaCardGrid
-              cards={s.cards}
+              cards={s.displayCards}
               onSelect={s.onSelectCard}
               progress={s.source === 'mangadex' ? s.settings.read_progress : undefined}
               statuses={s.statuses}
@@ -29,13 +29,13 @@ export default function Catalog(): JSX.Element {
             />
           )}
 
-          {s.cards.length > 0 && s.infiniteScroll && (
+          {s.displayCards.length > 0 && s.infiniteScroll && (
             <div ref={s.sentinelRef} className="catalog-sentinel">
               {s.loading ? <span className="muted">Загрузка…</span> : null}
             </div>
           )}
 
-          {s.cards.length > 0 && !s.infiniteScroll && (
+          {s.displayCards.length > 0 && !s.infiniteScroll && (
             <div className="catalog-pager">
               <button disabled={s.page === 0 || s.loading} onClick={() => void s.search(s.page - 1)}>
                 Пред.

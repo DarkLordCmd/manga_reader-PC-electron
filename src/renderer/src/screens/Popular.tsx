@@ -5,6 +5,7 @@ import type { ReadingStatus } from '@shared/library';
 import MangaCardGrid from '../components/MangaCardGrid';
 import ContextMenu, { type MenuItem } from '../components/ContextMenu';
 import { buildLibraryMenuItems } from '../lib/library-menu';
+import { useReadingStatuses } from '../lib/use-statuses';
 
 type PopularSource = 'ehentai' | 'exhentai' | 'exhentai_onion';
 const SOURCES: { key: PopularSource; label: string }[] = [
@@ -15,6 +16,7 @@ const SOURCES: { key: PopularSource; label: string }[] = [
 
 export default function Popular(): JSX.Element {
   const { setScreen, setOpened, settings } = useStore();
+  const statuses = useReadingStatuses();
   const [source, setSource] = useState<PopularSource>(settings.show_r34_history ? 'exhentai' : 'ehentai');
   const [cards, setCards] = useState<CatalogCard[]>([]);
   const [loading, setLoading] = useState(false);
@@ -49,7 +51,7 @@ export default function Popular(): JSX.Element {
   }, [load]);
 
   const open = async (c: CatalogCard): Promise<void> => {
-    const r = await window.api.openUrl(c.url, 0, null, c.coverUrl, c.kind ?? null);
+    const r = await window.api.openUrl(c.url, 0, null, c.coverUrl, c.kind ?? null, null, c.adult === true);
     if (r) {
       setOpened({ kind: 'online', ...r, startPage: 0, coverUrl: c.coverUrl });
       setScreen('Reader');
@@ -97,7 +99,9 @@ export default function Popular(): JSX.Element {
         <div className="catalog-content">
           {error && <div className="error-text">{error}</div>}
           {loading && cards.length === 0 && <div className="muted">Загрузка…</div>}
-          {cards.length > 0 && <MangaCardGrid cards={cards} onSelect={(c) => void open(c)} onContextMenu={openCardMenu} />}
+          {cards.length > 0 && (
+            <MangaCardGrid cards={cards} statuses={statuses} onSelect={(c) => void open(c)} onContextMenu={openCardMenu} />
+          )}
           {!loading && !error && cards.length === 0 && <div className="muted">Пусто</div>}
         </div>
       </div>

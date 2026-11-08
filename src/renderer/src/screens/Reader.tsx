@@ -314,84 +314,149 @@ export default function Reader(): JSX.Element {
   return (
     <div className={`reader${hideToolbar ? ' immersive' : ''}`}>
       <div className="reader-toolbar">
-        <button onClick={openFolder}>Open</button>
-        {opened?.kind === 'local' && <button onClick={() => void refreshFolder()}>Refresh</button>}
-        <span className="reader-title">{opened?.title ?? 'Нет галереи'}</span>
-        <select
-          value={settings.reading_mode}
-          onChange={(e) => setSettings({ ...settings, reading_mode: e.target.value as 'Scroll' | 'Book' })}
-        >
-          <option value="Scroll">Scroll</option>
-          <option value="Book">Book</option>
-        </select>
-        <button onClick={() => setWidthBy(-0.05)} title="Уменьшить масштаб (−)">
-          −
+        <button className="rt-btn rt-btn-labeled" onClick={openFolder} title="Открыть папку с галереей">
+          <svg viewBox="0 0 24 24" className="rt-icon" aria-hidden="true">
+            <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7H10l2 2.5h6.5A1.5 1.5 0 0 1 20 11v6.5A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5v-9Z" />
+          </svg>
+          <span>Открыть</span>
         </button>
-        <span className="muted">{Math.round(settings.width_scale * 100)}%</span>
-        <button onClick={() => setWidthBy(0.05)} title="Увеличить масштаб (+)">
-          +
-        </button>
-        <button onClick={resetWidth} title="Сбросить масштаб (0)">
-          100%
-        </button>
-        {opened?.kind === 'online' && <button onClick={() => setShowChapters(true)}>Главы</button>}
-        {opened?.kind === 'online' && (
-          <button
-            onClick={() =>
-              void (async () => {
-                await window.api.libraryAdd({
-                  url: opened.url,
-                  title: opened.title,
-                  coverUrl: opened.coverUrl ?? null,
-                  source: opened.source,
-                  seriesId: opened.mangaId ?? opened.url,
-                });
-              })()
-            }
+        {opened?.kind === 'local' && (
+          <button className="rt-btn rt-btn-icon" onClick={() => void refreshFolder()} title="Обновить папку" aria-label="Обновить папку">
+            <svg viewBox="0 0 24 24" className="rt-icon" aria-hidden="true">
+              <path d="M19 12a7 7 0 1 1-2.1-5M19 4v4h-4" />
+            </svg>
+          </button>
+        )}
+
+        <div className="rt-heading">
+          <span className="reader-title" title={opened?.title ?? undefined}>
+            {opened?.title ?? 'Нет галереи'}
+          </span>
+          {opened?.kind === 'online' && opened.source && <span className="rt-source">{opened.source}</span>}
+        </div>
+
+        <div className="rt-group">
+          <select
+            className="rt-select"
+            value={settings.reading_mode}
+            onChange={(e) => setSettings({ ...settings, reading_mode: e.target.value as 'Scroll' | 'Book' })}
+            title="Режим чтения"
           >
-            ＋ Library
+            <option value="Scroll">Лента</option>
+            <option value="Book">Книга</option>
+          </select>
+        </div>
+
+        <div className="rt-group rt-zoom">
+          <button className="rt-btn rt-btn-step" onClick={() => setWidthBy(-0.05)} title="Уменьшить масштаб (−)">
+            −
           </button>
+          <span className="rt-value">{Math.round(settings.width_scale * 100)}%</span>
+          <button className="rt-btn rt-btn-step" onClick={() => setWidthBy(0.05)} title="Увеличить масштаб (+)">
+            +
+          </button>
+          <span className="rt-divider" />
+          <button className="rt-btn rt-btn-icon" onClick={resetWidth} title="Масштаб по умолчанию" aria-label="Масштаб по умолчанию">
+            <svg viewBox="0 0 24 24" className="rt-icon" aria-hidden="true">
+              <path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 5v4h4" />
+            </svg>
+          </button>
+        </div>
+
+        {opened?.kind === 'online' && (
+          <div className="rt-group">
+            <button className="rt-btn rt-btn-labeled rt-btn-compact" onClick={() => setShowChapters(true)} title="Список глав">
+              <svg viewBox="0 0 24 24" className="rt-icon" aria-hidden="true">
+                <path d="M5 7h14M5 12h14M5 17h9" />
+              </svg>
+              <span>Главы</span>
+            </button>
+            <button
+              className="rt-btn rt-btn-labeled rt-btn-compact"
+              title="Добавить в библиотеку"
+              onClick={() =>
+                void (async () => {
+                  await window.api.libraryAdd({
+                    url: opened.url,
+                    title: opened.title,
+                    coverUrl: opened.coverUrl ?? null,
+                    source: opened.source,
+                    seriesId: opened.mangaId ?? opened.url,
+                  });
+                })()
+              }
+            >
+              <svg viewBox="0 0 24 24" className="rt-icon" aria-hidden="true">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              <span>В библиотеку</span>
+            </button>
+            {(opened.source.includes('ExHentai') || opened.source.includes('E-Hentai')) && (
+              <button className="rt-btn rt-btn-labeled rt-btn-compact" disabled={archiveBusy} onClick={() => void openArchiveBuy()} title="Скачать архив галереи">
+                <svg viewBox="0 0 24 24" className="rt-icon" aria-hidden="true">
+                  <path d="M12 4v10.5M7.5 10.5 12 15l4.5-4.5M4.5 18.5h15" />
+                </svg>
+                <span>Архив</span>
+              </button>
+            )}
+          </div>
         )}
+
         {opened && (
-          <button onClick={() => void window.api.recordProgress(opened.url, 0, 1, 0)} title="Сбросить прогресс этой главы">
-            Сбросить
-          </button>
+          <div className="rt-group">
+            <button
+              className="rt-btn rt-btn-labeled rt-btn-compact rt-btn-quiet"
+              onClick={() => void window.api.recordProgress(opened.url, 0, 1, 0)}
+              title="Сбросить прогресс этой главы"
+            >
+              <svg viewBox="0 0 24 24" className="rt-icon" aria-hidden="true">
+                <path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 5v4h4" />
+              </svg>
+              <span>Сбросить</span>
+            </button>
+          </div>
         )}
-        {opened?.kind === 'online' && (opened.source.includes('ExHentai') || opened.source.includes('E-Hentai')) && (
-          <button disabled={archiveBusy} onClick={() => void openArchiveBuy()}>
-            ⬇ Archive
-          </button>
-        )}
+
         <div className="spacer" />
-        <input
-          className="url-input"
-          value={urlText}
-          onChange={(e) => setUrlText(e.target.value)}
-          placeholder="MangaDex / ExHentai URL или UUID"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') void openUrl();
-          }}
-          style={{ width: 210 }}
-        />
-        <button disabled={openingUrl} onClick={() => void openUrl()}>
-          URL
-        </button>
-        <span className="muted">
-          Pg {pageCount === 0 ? 0 : currentIndex + 1}/{pageCount}
-        </span>
-        <input
-          value={jumpText}
-          onChange={(e) => setJumpText(e.target.value)}
-          placeholder="#"
-          style={{ width: 44 }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') jump();
-          }}
-        />
-        <button onClick={jump}>Go</button>
+
+        <div className="rt-group rt-url">
+          <input
+            className="rt-input"
+            value={urlText}
+            onChange={(e) => setUrlText(e.target.value)}
+            placeholder="MangaDex / ExHentai URL или UUID"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void openUrl();
+            }}
+          />
+          <button className="rt-btn" disabled={openingUrl} onClick={() => void openUrl()} title="Открыть по ссылке">
+            Открыть
+          </button>
+        </div>
+
+        <div className="rt-group rt-pages">
+          <span className="rt-value rt-page-count" title="Текущая страница">
+            {pageCount === 0 ? 0 : currentIndex + 1}
+            <span className="rt-sep">/</span>
+            {pageCount}
+          </span>
+          <input
+            className="rt-input rt-jump"
+            value={jumpText}
+            onChange={(e) => setJumpText(e.target.value)}
+            placeholder="№"
+            aria-label="Номер страницы"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') jump();
+            }}
+          />
+          <button className="rt-btn" onClick={jump} title="Перейти к странице">
+            →
+          </button>
+        </div>
       </div>
 
-      {!opened && <div className="screen">Открой папку кнопкой Open или вставь URL</div>}
+      {!opened && <div className="screen">Открой папку кнопкой «Открыть» на панели сверху или вставь ссылку в поле справа</div>}
 
       {opened && (
         <div className="reader-body">

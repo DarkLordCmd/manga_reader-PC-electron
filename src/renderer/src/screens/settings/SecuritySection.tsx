@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import Section from './Section';
+import Section, { Row } from './Section';
 
 export default function SecuritySection(): JSX.Element {
   const [pinHas, setPinHas] = useState(false);
@@ -56,38 +56,45 @@ export default function SecuritySection(): JSX.Element {
   };
 
   return (
-    <Section title="Security">
-      <div className="row">
-        <label>PIN-блокировка приложения:</label>
-        <span className="muted">{pinHas ? 'включена' : 'не установлен'}</span>
-      </div>
+    <Section title="Безопасность" desc="PIN запрашивается при запуске приложения.">
+      <Row label="PIN-блокировка">
+        <span className={`set-badge${pinHas ? ' on' : ''}`}>{pinHas ? 'включена' : 'не установлена'}</span>
+      </Row>
       {pinHas && (
-        <div className="row">
-          <label>Текущий PIN:</label>
+        <Row label="Текущий PIN">
           <input
-            className="text-input"
+            className="text-input narrow"
             type="password"
             inputMode="numeric"
             maxLength={8}
             value={pinCurrent}
             onChange={(e) => setPinCurrent(e.target.value)}
           />
-        </div>
+        </Row>
       )}
-      <div className="row">
-        <label>Новый PIN (4–8 цифр):</label>
+      <Row label={pinHas ? 'Новый PIN' : 'PIN'} note="4–8 цифр">
         <input
-          className="text-input"
+          className="text-input narrow"
           type="password"
           inputMode="numeric"
           maxLength={8}
           value={pinNew}
           onChange={(e) => setPinNew(e.target.value)}
         />
-        <button onClick={() => void setNewPin()}>Установить</button>
-        {pinHas && <button onClick={() => void removePin()}>Удалить PIN</button>}
-      </div>
-      {pinMsg && <div className="row muted">{pinMsg}</div>}
+        <button className="set-primary" onClick={() => void setNewPin()}>
+          Установить
+        </button>
+        {pinHas && (
+          <button className="set-danger" onClick={() => void removePin()}>
+            Удалить PIN
+          </button>
+        )}
+      </Row>
+      {pinMsg && (
+        <Row stack>
+          <span className="set-note">{pinMsg}</span>
+        </Row>
+      )}
     </Section>
   );
 }

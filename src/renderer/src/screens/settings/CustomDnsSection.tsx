@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Section from './Section';
+import Section, { Row } from './Section';
 import type { CustomDnsStatus } from '@shared/ipc';
 import type { SettingsCommon } from './useSettings';
 
@@ -18,27 +18,26 @@ export default function CustomDnsSection({ settings, upd }: SettingsCommon): JSX
   const [dnsMsg, setDnsMsg] = useState<string | null>(null);
 
   return (
-    <Section title="DNS обхода блокировок">
-      <div className="row">
-        <label>DNS серверы:</label>
+    <Section title="DNS обхода блокировок" desc="Свои DNS-серверы или DoH-адреса вместо системных.">
+      <Row label="DNS серверы" stack note="IPv4 или DoH-URL, через запятую или пробел.">
         <input
-          style={{ flex: 1, minWidth: 220 }}
+          className="text-input wide"
           value={settings.custom_dns ?? ''}
-          placeholder="IPv4 или DoH-URL (https://…), через пробел/запятую"
+          placeholder="IPv4 или DoH-URL (https://…)"
           onChange={(e) => {
             upd({ custom_dns: e.target.value || null });
             setDnsResults(null);
           }}
         />
-      </div>
-      <div className="row">
+      </Row>
+      <Row label="Пресеты">
         <button
           onClick={() => {
             upd({ custom_dns: KNOWN_DNS_SERVERS.map((k) => k.server).join(', ') });
             setDnsResults(null);
           }}
         >
-          Вставить популярные
+          Популярные
         </button>
         <button
           onClick={() => {
@@ -49,6 +48,7 @@ export default function CustomDnsSection({ settings, upd }: SettingsCommon): JSX
           DoH (зашифрованный)
         </button>
         <button
+          className="set-primary"
           disabled={!(settings.custom_dns ?? '').trim()}
           onClick={async () => {
             setDnsMsg('Проверяю DNS…');
@@ -61,17 +61,23 @@ export default function CustomDnsSection({ settings, upd }: SettingsCommon): JSX
         >
           Проверить DNS
         </button>
-      </div>
+      </Row>
       {dnsResults && (
-        <div className="check-list">
-          {dnsResults.map((r) => (
-            <div key={r.server} className={`check-result ${r.ok ? 'ok' : 'bad'}`}>
-              {r.ok ? `✓ ${r.server} → ${r.ip} (${r.ms} мс)` : `✗ ${r.server} — не отвечает`}
-            </div>
-          ))}
-        </div>
+        <Row stack>
+          <div className="check-list">
+            {dnsResults.map((r) => (
+              <div key={r.server} className={`check-result ${r.ok ? 'ok' : 'bad'}`}>
+                {r.ok ? `✓ ${r.server} → ${r.ip} (${r.ms} мс)` : `✗ ${r.server} — не отвечает`}
+              </div>
+            ))}
+          </div>
+        </Row>
       )}
-      {dnsMsg && <div className="row muted">{dnsMsg}</div>}
+      {dnsMsg && (
+        <Row stack>
+          <span className="set-note">{dnsMsg}</span>
+        </Row>
+      )}
     </Section>
   );
 }

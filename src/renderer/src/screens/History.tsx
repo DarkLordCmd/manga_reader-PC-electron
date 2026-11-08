@@ -5,10 +5,13 @@ import type { ReadingStatus } from '@shared/library';
 import HistoryCardGrid from '../components/HistoryCardGrid';
 import ContextMenu from '../components/ContextMenu';
 import { buildLibraryMenuItems } from '../lib/library-menu';
+import { resolveAdultFlag } from '../lib/adult';
+import { useReadingStatuses } from '../lib/use-statuses';
 
 export default function History(): JSX.Element {
   const { settings, setOpened, setScreen } = useStore();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
+  const statuses = useReadingStatuses();
   const [activeTab, setActiveTab] = useState(0);
   const [menu, setMenu] = useState<{
     x: number;
@@ -44,7 +47,8 @@ export default function History(): JSX.Element {
       }
       return;
     }
-    const r = await window.api.openUrl(e.url, Math.max(0, e.current_page - 1), e.series_id, e.cover_url ?? null, e.kind ?? null);
+    const adult = await resolveAdultFlag(e.url, e.category === 'r34');
+    const r = await window.api.openUrl(e.url, Math.max(0, e.current_page - 1), e.series_id, e.cover_url ?? null, e.kind ?? null, null, adult);
     if (r) {
       setOpened({ kind: 'online', ...r, startPage: Math.max(0, e.current_page - 1), coverUrl: e.cover_url ?? null });
       setScreen('Reader');
@@ -92,6 +96,7 @@ export default function History(): JSX.Element {
       ) : (
         <HistoryCardGrid
           entries={visible}
+          statuses={statuses}
           onContinue={(e) => void onContinue(e)}
           onContextMenu={(e, entry) => void openMenu(e, entry)}
           onAddToLibrary={(e) =>
@@ -102,6 +107,7 @@ export default function History(): JSX.Element {
               source: e.source,
               seriesId: e.series_id,
               kind: e.kind ?? null,
+              adult: e.category === 'r34',
             })
           }
         />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import Section from './Section';
+import Section, { Row, SubHead } from './Section';
 import Toggle from '../../components/Toggle';
 import type { ExAccountsResult } from '@shared/ipc';
 
@@ -49,11 +49,9 @@ export default function EhAccountsSection(): JSX.Element {
   }, []);
 
   return (
-    <Section title="Аккаунты ExHentai">
-      <div className="row">
-        <label>Вход по куки (E-Hentai/ExHentai):</label>
-      </div>
-      <div className="row">
+    <Section title="Аккаунты ExHentai" desc="Активный аккаунт используется для всех запросов к ExHentai в обычном режиме.">
+      <SubHead>Вход по куки</SubHead>
+      <Row stack>
         <textarea
           className="cookie-input"
           rows={2}
@@ -61,8 +59,8 @@ export default function EhAccountsSection(): JSX.Element {
           placeholder="Вставь куки (например, из буфера обмена) и нажми «Распознать»"
           onChange={(e) => setCkText(e.target.value)}
         />
-      </div>
-      <div className="row">
+      </Row>
+      <Row>
         <button
           onClick={async () => {
             if (!ckText.trim()) return;
@@ -90,26 +88,24 @@ export default function EhAccountsSection(): JSX.Element {
             }
           }}
         >
-          📋 Из буфера
+          Из буфера
         </button>
         <Toggle className="filter-check" checked={ckVerify} onChange={setCkVerify}>
           Проверять вход
         </Toggle>
-      </div>
-      <div className="row">
-        <label>ipb_member_id</label>
-        <input className="text-input" value={ckMember} onChange={(e) => setCkMember(e.target.value)} style={{ width: 180 }} />
-      </div>
-      <div className="row">
-        <label>ipb_pass_hash</label>
-        <input className="text-input" value={ckHash} onChange={(e) => setCkHash(e.target.value)} style={{ width: 220 }} />
-      </div>
-      <div className="row">
-        <label>igneous (для ExHentai, необязательно)</label>
-        <input className="text-input" value={ckIgneous} onChange={(e) => setCkIgneous(e.target.value)} style={{ width: 220 }} />
-      </div>
-      <div className="row">
+      </Row>
+      <Row label="ipb_member_id">
+        <input className="text-input" value={ckMember} onChange={(e) => setCkMember(e.target.value)} />
+      </Row>
+      <Row label="ipb_pass_hash">
+        <input className="text-input" value={ckHash} onChange={(e) => setCkHash(e.target.value)} />
+      </Row>
+      <Row label="igneous" note="Необязательно, только для ExHentai.">
+        <input className="text-input" value={ckIgneous} onChange={(e) => setCkIgneous(e.target.value)} />
+      </Row>
+      <Row label="Вход">
         <button
+          className="set-primary"
           disabled={ckBusy}
           onClick={async () => {
             setCkBusy(true);
@@ -130,7 +126,7 @@ export default function EhAccountsSection(): JSX.Element {
             }
           }}
         >
-          🍪 Войти по куки
+          Войти по куки
         </button>
         <button
           disabled={ignBusy}
@@ -149,28 +145,29 @@ export default function EhAccountsSection(): JSX.Element {
             }
           }}
         >
-          🔄 Получить igneous (доступ к EX)
+          Получить igneous
         </button>
-      </div>
-      {(ckMsg || ignMsg) && <div className="row muted">{ckMsg ?? ignMsg}</div>}
-      <div className="row">
-        <label>Вход по логину/паролю (E-Hentai):</label>
-      </div>
-      <div className="row">
+      </Row>
+      {(ckMsg || ignMsg) && (
+        <Row stack>
+          <span className="set-note">{ckMsg ?? ignMsg}</span>
+        </Row>
+      )}
+
+      <SubHead>Логин и пароль</SubHead>
+      <Row label="E-Hentai">
         <input
-          className="text-input"
+          className="text-input short"
           placeholder="Логин"
           value={pwUser}
           onChange={(e) => setPwUser(e.target.value)}
-          style={{ width: 160 }}
         />
         <input
-          className="text-input"
+          className="text-input short"
           type="password"
           placeholder="Пароль"
           value={pwPass}
           onChange={(e) => setPwPass(e.target.value)}
-          style={{ width: 160 }}
         />
         <button
           disabled={pwBusy}
@@ -191,34 +188,48 @@ export default function EhAccountsSection(): JSX.Element {
             }
           }}
         >
-          🔑 Войти
+          Войти
         </button>
-      </div>
-      {pwMsg && <div className="row muted">{pwMsg}</div>}
-      <div className="row">
-        <label>Активный аккаунт используется для всех запросов к ExHentai (обычный режим).</label>
-      </div>
-      {exAcc.accounts.length === 0 && <div className="row muted">Нет ни одного аккаунта.</div>}
-      {exAcc.accounts.map((a) => (
-        <div className="row" key={a.id}>
-          <button
-            className={a.id === exAcc.currentId ? 'tab active' : 'tab'}
-            onClick={() => void window.api.setExAccount(a.id).then(setExAcc)}
-          >
-            {a.name}
-          </button>
-          <button
-            className="icon-btn"
-            title="Удалить аккаунт"
-            onClick={async () => {
-              setExAcc(await window.api.removeExAccount(a.id));
-            }}
-          >
-            ✕
-          </button>
-        </div>
-      ))}
-      <div className="row">
+      </Row>
+      {pwMsg && (
+        <Row stack>
+          <span className="set-note">{pwMsg}</span>
+        </Row>
+      )}
+
+      <SubHead>Сохранённые аккаунты</SubHead>
+      {exAcc.accounts.length === 0 ? (
+        <Row stack>
+          <span className="set-note">Нет ни одного аккаунта.</span>
+        </Row>
+      ) : (
+        <Row stack>
+          <div className="acct-list">
+            {exAcc.accounts.map((a) => (
+              <div className="acct-chip" key={a.id}>
+                <button
+                  className={`acct-name${a.id === exAcc.currentId ? ' active' : ''}`}
+                  onClick={() => void window.api.setExAccount(a.id).then(setExAcc)}
+                  title={a.id === exAcc.currentId ? 'Активный аккаунт' : 'Сделать активным'}
+                >
+                  {a.name}
+                </button>
+                <button
+                  className="acct-del"
+                  title="Удалить аккаунт"
+                  aria-label="Удалить аккаунт"
+                  onClick={async () => {
+                    setExAcc(await window.api.removeExAccount(a.id));
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </Row>
+      )}
+      <Row label="Пул аккаунтов">
         <button
           onClick={() =>
             void (async () => {
@@ -230,9 +241,26 @@ export default function EhAccountsSection(): JSX.Element {
             })()
           }
         >
-          📂 Импортировать пул (Share, storage.json)
+          Импортировать (Share, storage.json)
         </button>
+      </Row>
+
+      <SubHead>Новый аккаунт</SubHead>
+      <Row label="Название" note="Необязательно.">
+        <input className="text-input" value={exName} onChange={(e) => setExName(e.target.value)} />
+      </Row>
+      <Row label="ipb_member_id">
+        <input className="text-input" value={exMemberId} onChange={(e) => setExMemberId(e.target.value)} />
+      </Row>
+      <Row label="ipb_pass_hash">
+        <input className="text-input" value={exPassHash} onChange={(e) => setExPassHash(e.target.value)} />
+      </Row>
+      <Row label="igneous" note="Только для ExHentai.">
+        <input className="text-input" value={exIgneous} onChange={(e) => setExIgneous(e.target.value)} />
+      </Row>
+      <Row>
         <button
+          className="set-primary"
           onClick={async () => {
             const r = await window.api.addExAccount(exName, exMemberId, exPassHash, exIgneous);
             setExAcc(r);
@@ -243,26 +271,14 @@ export default function EhAccountsSection(): JSX.Element {
             setExIgneous('');
           }}
         >
-          ＋ Добавить аккаунт вручную
+          Добавить аккаунт
         </button>
-      </div>
-      {exNotice && <div className="row muted">{exNotice}</div>}
-      <div className="row">
-        <label>Название (необязательно)</label>
-        <input className="text-input" value={exName} onChange={(e) => setExName(e.target.value)} />
-      </div>
-      <div className="row">
-        <label>ipb_member_id</label>
-        <input className="text-input" value={exMemberId} onChange={(e) => setExMemberId(e.target.value)} />
-      </div>
-      <div className="row">
-        <label>ipb_pass_hash</label>
-        <input className="text-input" value={exPassHash} onChange={(e) => setExPassHash(e.target.value)} />
-      </div>
-      <div className="row">
-        <label>igneous (только для ExHentai)</label>
-        <input className="text-input" value={exIgneous} onChange={(e) => setExIgneous(e.target.value)} />
-      </div>
+      </Row>
+      {exNotice && (
+        <Row stack>
+          <span className="set-note">{exNotice}</span>
+        </Row>
+      )}
     </Section>
   );
 }

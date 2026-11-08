@@ -87,7 +87,7 @@ export default function ThumbnailPanel({ galleryId, pageCount, currentIndex, thu
           onClick={() => onSelect(i)}
           style={{ width: thumbSize }}
         >
-          <img src={`manga://page/${galleryId}/${i}`} alt={`${i + 1}`} loading="lazy" decoding="async" style={{ width: thumbSize }} />
+          <img src={`manga://page/${galleryId}/${i}`} alt={`${i + 1}`} loading="lazy" decoding="async" />
           <span>{i + 1}</span>
         </button>
       ))}

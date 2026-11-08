@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import Section from './Section';
+import Section, { Row } from './Section';
 import type { SettingsCommon } from './useSettings';
 
 export default function CoverCacheSection({ settings, upd }: SettingsCommon): JSX.Element {
@@ -27,11 +27,10 @@ export default function CoverCacheSection({ settings, upd }: SettingsCommon): JS
   };
 
   return (
-    <Section title="🗄️ Кэш обложек">
-      <div className="row">
-        <label>Максимальный размер (МБ):</label>
+    <Section title="Кэш обложек">
+      <Row label="Максимальный размер">
         <input
-          className="text-input"
+          className="text-input narrow"
           type="number"
           min={16}
           max={8192}
@@ -45,15 +44,14 @@ export default function CoverCacheSection({ settings, upd }: SettingsCommon): JS
             if (v !== settings.cover_cache_mb) upd({ cover_cache_mb: v });
           }}
         />
-      </div>
-      <div className="row">
-        <button onClick={() => void clearCoverCache()}>🗑 Очистить кэш обложек</button>
-        {cacheInfo && (
-          <span className="muted">
-            Занято {(cacheInfo.bytes / 1048576).toFixed(1)} МБ · {cacheInfo.files} файлов
-          </span>
-        )}
-      </div>
+        <span className="set-value">МБ</span>
+      </Row>
+      <Row
+        label="Занято"
+        note={cacheInfo ? `${(cacheInfo.bytes / 1048576).toFixed(1)} МБ · ${cacheInfo.files} файлов` : '—'}
+      >
+        <button onClick={() => void clearCoverCache()}>Очистить кэш</button>
+      </Row>
     </Section>
   );
 }

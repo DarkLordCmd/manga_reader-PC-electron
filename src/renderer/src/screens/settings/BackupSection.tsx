@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Section from './Section';
+import Section, { Row } from './Section';
 import Toggle from '../../components/Toggle';
 
 export default function BackupSection(): JSX.Element {
@@ -8,12 +8,10 @@ export default function BackupSection(): JSX.Element {
 
   return (
     <Section title="Резервная копия">
-      <div className="row">
-        <Toggle checked={includeSecrets} onChange={setIncludeSecrets}>
-          Включить секреты (куки, прокси, аккаунты)
-        </Toggle>
-      </div>
-      <div className="row">
+      <Row label="Секреты в копии" note="Куки, прокси и аккаунты источников — только для личного архива.">
+        <Toggle checked={includeSecrets} onChange={setIncludeSecrets} />
+      </Row>
+      <Row label="Файл копии">
         <button
           onClick={async () => {
             const r = await window.api.backupExport(includeSecrets);
@@ -34,8 +32,12 @@ export default function BackupSection(): JSX.Element {
         >
           Импорт
         </button>
-      </div>
-      {backupMsg && <div className="row muted">{backupMsg}</div>}
+      </Row>
+      {backupMsg && (
+        <Row stack>
+          <span className="set-note">{backupMsg}</span>
+        </Row>
+      )}
     </Section>
   );
 }

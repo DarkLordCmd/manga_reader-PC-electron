@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Section from './Section';
+import Section, { Row } from './Section';
 import type { LibMirrorStatus } from '@shared/ipc';
 import type { SettingsCommon } from './useSettings';
 
@@ -10,9 +10,8 @@ export default function LibMirrorsSection({ settings, upd }: SettingsCommon): JS
   const [libMirrorMsg, setLibMirrorMsg] = useState<string | null>(null);
 
   return (
-    <Section title="Lib зеркала">
-      <div className="row">
-        <label>Сервер изображений Lib:</label>
+    <Section title="Зеркала Lib" desc="Сервер, с которого читалка берёт изображения Lib.">
+      <Row label="Сервер изображений">
         <select
           value={settings.lib_image_server ?? ''}
           onChange={(e) => {
@@ -27,8 +26,8 @@ export default function LibMirrorsSection({ settings, upd }: SettingsCommon): JS
             </option>
           ))}
         </select>
-      </div>
-      <div className="row">
+      </Row>
+      <Row label="Доступность">
         <button
           onClick={async () => {
             setLibMirrorMsg('Проверяю зеркала…');
@@ -41,18 +40,7 @@ export default function LibMirrorsSection({ settings, upd }: SettingsCommon): JS
         >
           Проверить зеркала
         </button>
-      </div>
-      {libMirrorResults && (
-        <div className="check-list">
-          {libMirrorResults.map((r) => (
-            <div key={r.host} className={`check-result ${r.ok ? 'ok' : 'bad'}`}>
-              {r.ok ? `✓ ${r.host} (${r.ms} мс)` : `✗ ${r.host} — ${r.error}`}
-            </div>
-          ))}
-        </div>
-      )}
-      {libMirrorResults && (
-        <div className="row">
+        {libMirrorResults && (
           <button
             onClick={() => {
               const best = libMirrorResults.filter((r) => r.ok).sort((a, b) => a.ms - b.ms)[0];
@@ -66,9 +54,24 @@ export default function LibMirrorsSection({ settings, upd }: SettingsCommon): JS
           >
             Применить лучший
           </button>
-        </div>
+        )}
+      </Row>
+      {libMirrorResults && (
+        <Row stack>
+          <div className="check-list">
+            {libMirrorResults.map((r) => (
+              <div key={r.host} className={`check-result ${r.ok ? 'ok' : 'bad'}`}>
+                {r.ok ? `✓ ${r.host} (${r.ms} мс)` : `✗ ${r.host} — ${r.error}`}
+              </div>
+            ))}
+          </div>
+        </Row>
       )}
-      {libMirrorMsg && <div className="row muted">{libMirrorMsg}</div>}
+      {libMirrorMsg && (
+        <Row stack>
+          <span className="set-note">{libMirrorMsg}</span>
+        </Row>
+      )}
     </Section>
   );
 }

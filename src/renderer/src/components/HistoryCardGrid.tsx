@@ -1,15 +1,18 @@
 import type { HistoryEntry } from '@shared/types';
+import type { ReadingStatus } from '@shared/library';
 import CoverImg from './CoverImg';
 import KindBadge from './KindBadge';
+import StatusBadge from './StatusBadge';
 
 interface Props {
   entries: HistoryEntry[];
   onContinue: (e: HistoryEntry) => void;
   onAddToLibrary?: (e: HistoryEntry) => void;
   onContextMenu?: (e: React.MouseEvent, entry: HistoryEntry) => void;
+  statuses?: Record<string, ReadingStatus>;
 }
 
-export default function HistoryCardGrid({ entries, onContinue, onAddToLibrary, onContextMenu }: Props): JSX.Element {
+export default function HistoryCardGrid({ entries, onContinue, onAddToLibrary, onContextMenu, statuses }: Props): JSX.Element {
   return (
     <div className="history-grid">
       {entries.map((e) => {
@@ -30,6 +33,7 @@ export default function HistoryCardGrid({ entries, onContinue, onAddToLibrary, o
             <div className="history-cover">
               <CoverImg url={e.cover_url} />
               <KindBadge kind={e.kind} />
+              <StatusBadge status={statuses?.[e.url] ?? statuses?.[e.series_id]} />
             </div>
             <div className="history-title" title={e.title}>
               {e.title || 'Без названия'}

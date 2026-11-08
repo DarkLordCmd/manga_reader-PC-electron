@@ -6,6 +6,7 @@ import CoverImg from '../components/CoverImg';
 import KindBadge from '../components/KindBadge';
 import StatusBadge from '../components/StatusBadge';
 import { buildLibraryMenuItems, STATUS_LABELS } from '../lib/library-menu';
+import { resolveAdultFlag } from '../lib/adult';
 
 export default function Favorites(): JSX.Element {
   const { setScreen, setOpened, settings } = useStore();
@@ -24,7 +25,7 @@ export default function Favorites(): JSX.Element {
 
   const open = async (item: LibraryItem): Promise<void> => {
     const start = Math.max(0, item.currentPage - 1);
-    const r = await window.api.openUrl(item.url, start, item.seriesId, item.coverUrl, item.kind ?? null);
+    const r = await window.api.openUrl(item.url, start, item.seriesId, item.coverUrl, item.kind ?? null, null, await resolveAdultFlag(item.url, item.category === 'r34'));
     if (r) {
       setOpened({ kind: 'online', ...r, startPage: start, coverUrl: item.coverUrl });
       setScreen('Reader');

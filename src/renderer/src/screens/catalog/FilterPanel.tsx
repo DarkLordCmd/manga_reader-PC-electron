@@ -13,10 +13,8 @@ import {
   COMX_CATEGORY,
   COMX_GENRE,
 } from '@shared/filters';
-import Toggle from '../../components/Toggle';
 import { MS_AGES, MS_SORTS, MS_STATUS, MS_TYPES, RM_ORDERING, RM_STATUS, RM_TYPES } from './constants';
 import type { CatalogSearch } from './useCatalogSearch';
-
 function FilterRow({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
   return (
     <div className="filter-row">
@@ -95,7 +93,7 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
             s.resetFilters();
           }}
         >
-          Сбросить ↺
+          Сбросить
         </button>
       </div>
       {s.tagSource && (
@@ -158,23 +156,13 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
             })}
           </div>
           <div className="filter-title">Язык перевода</div>
-          <div className="filter-cats">
-            {MD_LANGS.map(([code, label]) => {
-              const active = s.mdLangs.includes(code);
-              return (
-                <Toggle
-                  key={code}
-                  className={`filter-check${active ? ' active' : ''}`}
-                  checked={active}
-                  onChange={() => {
-                    s.setMdLangs((prev) => (prev.includes(code) ? prev.filter((l) => l !== code) : [...prev, code]));
-                  }}
-                >
-                  {label}
-                </Toggle>
-              );
-            })}
-          </div>
+          <TagChecklist
+            items={MD_LANGS}
+            selected={s.mdLangs}
+            onToggle={(code) => {
+              s.setMdLangs((prev) => (prev.includes(code) ? prev.filter((l) => l !== code) : [...prev, code]));
+            }}
+          />
         </>
       )}
 

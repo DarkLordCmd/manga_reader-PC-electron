@@ -1,4 +1,4 @@
-import Section from './Section';
+import Section, { Row } from './Section';
 import Toggle from '../../components/Toggle';
 import type { SyncState } from '@shared/sync';
 import type { GoogleState, SettingsCommon } from './useSettings';
@@ -13,11 +13,12 @@ interface Props extends SettingsCommon {
 
 export default function SyncSection({ settings, upd, google, setGoogle, syncState, syncMsg, setSyncMsg }: Props): JSX.Element {
   return (
-    <Section title="Синхронизация (Google Drive)">
+    <Section title="Синхронизация (Google Drive)" desc="Библиотека и прогресс чтения в вашей папке Google Drive.">
       {!google.authed ? (
         <>
-          <div className="row">
+          <Row label="Аккаунт Google">
             <button
+              className="set-primary"
               disabled={google.configured === false}
               onClick={async () => {
                 setSyncMsg('Открываю окно входа Google…');
@@ -32,32 +33,30 @@ export default function SyncSection({ settings, upd, google, setGoogle, syncStat
             >
               Войти через Google
             </button>
-          </div>
-          {google.configured === false && <div className="row muted">Google-вход отключён: GOOGLE_CLIENT_SECRET не задан при сборке.</div>}
-          <div className="row muted">Синхронизирует библиотеку и прогресс через вашу папку Google Drive.</div>
+          </Row>
+          {google.configured === false && (
+            <Row stack>
+              <span className="set-note">Google-вход отключён: GOOGLE_CLIENT_SECRET не задан при сборке.</span>
+            </Row>
+          )}
         </>
       ) : (
         <>
-          <div className="row">
-            <label>Аккаунт:</label>
-            <span className="muted">{google.email || '—'}</span>
-          </div>
-          <div className="row">
-            <label>Последняя синхронизация:</label>
-            <span className="muted">{syncState.lastSyncAt ? new Date(syncState.lastSyncAt).toLocaleString() : 'ещё не было'}</span>
-          </div>
-          <div className="row">
-            <Toggle checked={settings.sync_enabled} onChange={(v) => upd({ sync_enabled: v })}>
-              Включить синхронизацию
-            </Toggle>
-          </div>
-          <div className="row">
-            <Toggle checked={settings.sync_auto} onChange={(v) => upd({ sync_auto: v })}>
-              Авто-синхронизация
-            </Toggle>
-          </div>
-          <div className="row">
+          <Row label="Аккаунт">
+            <span className="set-value">{google.email || '—'}</span>
+          </Row>
+          <Row label="Последняя синхронизация">
+            <span className="set-value">{syncState.lastSyncAt ? new Date(syncState.lastSyncAt).toLocaleString() : 'ещё не было'}</span>
+          </Row>
+          <Row label="Синхронизация">
+            <Toggle checked={settings.sync_enabled} onChange={(v) => upd({ sync_enabled: v })} />
+          </Row>
+          <Row label="Авто-синхронизация">
+            <Toggle checked={settings.sync_auto} onChange={(v) => upd({ sync_auto: v })} />
+          </Row>
+          <Row label="Действия">
             <button
+              className="set-primary"
               disabled={syncState.state === 'syncing'}
               onClick={async () => {
                 setSyncMsg('Синхронизирую…');
@@ -72,6 +71,7 @@ export default function SyncSection({ settings, upd, google, setGoogle, syncStat
               {syncState.state === 'syncing' ? 'Синхронизация…' : 'Синхронизировать сейчас'}
             </button>
             <button
+              className="set-danger"
               onClick={async () => {
                 await window.api.googleLogout();
                 setGoogle({ authed: false, email: null });
@@ -80,11 +80,19 @@ export default function SyncSection({ settings, upd, google, setGoogle, syncStat
             >
               Выйти
             </button>
-          </div>
+          </Row>
         </>
       )}
-      {syncState.lastError && <div className="row muted">Ошибка синка: {syncState.lastError}</div>}
-      {syncMsg && <div className="row muted">{syncMsg}</div>}
+      {syncState.lastError && (
+        <Row stack>
+          <span className="set-note">Ошибка синка: {syncState.lastError}</span>
+        </Row>
+      )}
+      {syncMsg && (
+        <Row stack>
+          <span className="set-note">{syncMsg}</span>
+        </Row>
+      )}
     </Section>
   );
 }
