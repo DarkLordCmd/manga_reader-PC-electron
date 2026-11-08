@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { createServer } from 'http';
-import { createOnlineGallery, setReadingPosition, requestPage, MAX_CONCURRENT } from '../src/main/services/online-gallery';
+import {
+  createOnlineGallery,
+  setReadingPosition,
+  requestPage,
+  loadAheadFor,
+  MAX_CONCURRENT,
+  LOAD_AHEAD,
+  EH_LOAD_AHEAD,
+} from '../src/main/services/online-gallery';
 
 describe('online gallery', () => {
   it('fetches and caches pages, honors concurrency', async () => {
@@ -33,5 +41,26 @@ describe('online gallery', () => {
     const gid = createOnlineGallery('Bad', [`http://127.0.0.1:${port}/x`]);
     await expect(requestPage(gid, 0, {})).rejects.toThrow(/HTTP 404/);
     server.close();
+  });
+});
+
+describe('read-ahead window', () => {
+  // E-Hentai meters *viewed images*, so warming 40 pages ahead burns the quota
+  // of an account that reads five. EH galleries get a short window and the
+  // reader loads the rest as the position advances.
+  it('keeps the wide window for ordinary sources', () => {
+    expect(loadAheadFor('https://mangadex.org/x')).toBe(LOAD_AHEAD);
+    expect(loadAheadFor('https://nhentai.net/g/1/')).toBe(LOAD_AHEAD);
+  });
+
+  it('narrows the window for EH hosts, clearnet and onion', () => {
+    expect(loadAheadFor('https://e-hentai.org/s/abc/1-1')).toBe(EH_LOAD_AHEAD);
+    expect(loadAheadFor('https://exhentai.org/s/abc/1-1')).toBe(EH_LOAD_AHEAD);
+    expect(loadAheadFor('http://exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion/s/abc/1-1')).toBe(EH_LOAD_AHEAD);
+  });
+
+  it('stays well below the 40-page burst', () => {
+    expect(EH_LOAD_AHEAD).toBeLessThan(LOAD_AHEAD);
+    expect(EH_LOAD_AHEAD).toBeLessThanOrEqual(20);
   });
 });

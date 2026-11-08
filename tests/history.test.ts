@@ -53,6 +53,27 @@ describe('seriesKeyForUrl (MangaNet model: host-stable identity)', () => {
   });
 });
 
+describe('HistoryManager keeps R34 rows in the R34 tab', () => {
+  const base = {
+    title: 't',
+    cover_url: null,
+    source: 'Senkuro',
+    chapter_label: null,
+    chapter_total: null,
+    category: 'r34',
+    kind: null,
+  };
+  const entry = (url: string) => ({ ...base, url, series_id: 'sk:x', chapter_index: 0, total_pages: 10 });
+
+  it('does not downgrade an r34 row when a later open omits the flag', () => {
+    const m = new HistoryManager();
+    const url = 'https://senkuro.me/manga/x/chapter/1/';
+    m.addOrUpdate(entry(url));
+    m.addOrUpdate({ ...entry(url), category: 'main' });
+    expect(m.all()[0].category).toBe('r34');
+  });
+});
+
 describe('HistoryManager keeps the furthest chapter (rewind guard)', () => {
   const base = { title: 't', cover_url: null, source: 'Senkuro', chapter_label: null, chapter_total: null, category: 'main', kind: null };
   const ch = (n: number, idx: number, url: string) => ({ ...base, url, series_id: 'sk:foo', chapter_index: idx, total_pages: 12 });
