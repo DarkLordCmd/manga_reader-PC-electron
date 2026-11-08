@@ -94,6 +94,22 @@ async function fetchEhGallery(url: string, opts: { proxy?: string; cookieHeader?
   // URL in place). So pageUrls here are /s/ links; real images are fetched
   // on demand in online-gallery.loadOne.
   mark('done');
+  logger.info(
+    '[eh-gallery] host',
+    (() => {
+      try {
+        return new URL(url).hostname;
+      } catch {
+        return url;
+      }
+    })(),
+    'proxy=',
+    !!opts.proxy,
+    'cookie=',
+    !!opts.cookieHeader,
+    'pages=',
+    pageUrls.length,
+  );
   logger.info('[eh-gallery-timing]', steps.join(' | '));
   return { title, pageUrls, coverUrl: null, sourcePages: pageUrls.map(() => null) };
 }

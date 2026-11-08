@@ -75,7 +75,7 @@ export async function searchSenkuro(
   const ordDir = ordRaw.startsWith('-') ? 'DESC' : 'DESC';
   const orderPart = `orderBy: { field: ${ordField} direction: ${ordDir} }`;
   const gql = JSON.stringify({
-    query: `query { mangas(first: 30 ${parts.join(' ')} ${orderPart}) { edges { node { id slug titles { lang content } type score cover { original { url } } } cursor } pageInfo { endCursor } } }`,
+    query: `query { mangas(first: 30 ${parts.join(' ')} ${orderPart}) { edges { node { id slug titles { lang content } type score rating labels { slug } cover { original { url } } } cursor } pageInfo { endCursor } } }`,
   });
   const headers: Record<string, string> = {
     ...senkuroHeaders(cookieHeader),
@@ -105,6 +105,15 @@ export async function searchSenkuro(
       pages: null,
       kind,
       score: typeof n?.score === 'number' ? n.score : null,
+      // `labels` come back as slugs (drama, slice_of_life, …) — turn them into
+      // readable tag chips.
+      tags: (Array.isArray(n?.labels) ? n.labels : [])
+        .map((l: any) => String(l?.slug ?? '').replace(/_/g, ' ').trim())
+        .filter(Boolean)
+        .slice(0, 40),
+      // `rating` is the site's age rating enum (SAFE/SENSITIVE/QUESTIONABLE/
+      // EROTIC) — only the explicit one is 18+.
+      adult: /^(EROTIC|PORNOGRAPHIC|ADULT)$/i.test(String(n?.rating ?? '')),
       cursor: typeof e?.cursor === 'string' ? e.cursor : null,
     };
   });

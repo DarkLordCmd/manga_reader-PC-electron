@@ -39,15 +39,59 @@ export function verifyPin(record: PinStore, pin: string): boolean {
   return legacy === record.hash;
 }
 
-const PIN_RE = /^\d{4,8}$/;
+/** 6+ digits for new PINs: a 4-digit PIN is 10k candidates, which a local
+ * attacker can burn through across restarts even with the lockout. */
+const PIN_RE = /^\d{6,8}$/;
+
+/** Lockout stages: 30 s → 5 min → 1 h. Persisted so restarting the app does not
+ * hand the attacker a fresh set of guesses. */
+const LOCK_STEPS_MS = [30_000, 300_000, 3_600_000];
+
+interface PinLock {
+  fails: number;
+  lockUntil: number;
+  stage: number;
+}
 
 export class PinService {
   private path: string;
-  private fails = 0;
-  private lockUntil = 0;
+  private lockPath: string;
+  private lock: PinLock;
 
   constructor(userDataDir: string) {
     this.path = join(userDataDir, 'pin.json');
+    this.lockPath = join(userDataDir, 'pin-lock.json');
+    this.lock = this.loadLock();
+  }
+
+  private loadLock(): PinLock {
+    try {
+      const j = JSON.parse(readFileSync(this.lockPath, 'utf-8')) as Partial<PinLock>;
+      return {
+        fails: Math.max(0, Number(j.fails) || 0),
+        lockUntil: Math.max(0, Number(j.lockUntil) || 0),
+        stage: Math.min(LOCK_STEPS_MS.length - 1, Math.max(0, Number(j.stage) || 0)),
+      };
+    } catch {
+      return { fails: 0, lockUntil: 0, stage: 0 };
+    }
+  }
+
+  private saveLock(): void {
+    try {
+      writeFileSync(this.lockPath, JSON.stringify(this.lock), { mode: 0o600 });
+    } catch {
+      /* lockout is best-effort */
+    }
+  }
+
+  private resetLock(): void {
+    this.lock = { fails: 0, lockUntil: 0, stage: 0 };
+    try {
+      rmSync(this.lockPath, { force: true });
+    } catch {
+      /* ignore */
+    }
   }
 
   private load(): PinStore | null {
@@ -64,15 +108,14 @@ export class PinService {
   }
 
   setPin(pin: string): void {
-    if (!PIN_RE.test(pin)) throw new Error('PIN должен быть 4–8 цифр');
-    writeFileSync(this.path, JSON.stringify(makePinRecord(pin, randomBytes(16).toString('hex')), null, 2));
-    this.fails = 0;
-    this.lockUntil = 0;
+    if (!PIN_RE.test(pin)) throw new Error('PIN должен быть 6–8 цифр');
+    writeFileSync(this.path, JSON.stringify(makePinRecord(pin, randomBytes(16).toString('hex')), null, 2), { mode: 0o600 });
+    this.resetLock();
   }
 
   private upgradeToScrypt(pin: string): void {
     try {
-      writeFileSync(this.path, JSON.stringify(makePinRecord(pin, randomBytes(16).toString('hex')), null, 2));
+      writeFileSync(this.path, JSON.stringify(makePinRecord(pin, randomBytes(16).toString('hex')), null, 2), { mode: 0o600 });
     } catch {
       /* ignore */
     }
@@ -86,31 +129,34 @@ export class PinService {
     } catch {
       /* ignore */
     }
+    this.resetLock();
     return true;
   }
 
   verify(pin: string): boolean {
     const rec = this.load();
     if (!rec) return true; // no pin set
-    if (Date.now() < this.lockUntil) return false;
+    if (Date.now() < this.lock.lockUntil) return false;
     const ok = verifyPin(rec, pin);
     if (ok) {
-      this.fails = 0;
-      this.lockUntil = 0;
+      this.resetLock();
       if (rec.algo !== 'scrypt') this.upgradeToScrypt(pin);
       return true;
     }
-    this.fails++;
-    if (this.fails >= 3) {
-      this.lockUntil = Date.now() + 30_000;
-      this.fails = 0;
+    this.lock.fails++;
+    if (this.lock.fails >= 3) {
+      const delay = LOCK_STEPS_MS[this.lock.stage] ?? LOCK_STEPS_MS[0];
+      this.lock.lockUntil = Date.now() + delay;
+      this.lock.fails = 0;
+      this.lock.stage = Math.min(LOCK_STEPS_MS.length - 1, this.lock.stage + 1);
     }
+    this.saveLock();
     return false;
   }
 
   failedAttempt(): { locked: boolean; retryAfterSec: number } {
-    if (Date.now() < this.lockUntil) {
-      return { locked: true, retryAfterSec: Math.max(1, Math.ceil((this.lockUntil - Date.now()) / 1000)) };
+    if (Date.now() < this.lock.lockUntil) {
+      return { locked: true, retryAfterSec: Math.max(1, Math.ceil((this.lock.lockUntil - Date.now()) / 1000)) };
     }
     return { locked: false, retryAfterSec: 0 };
   }

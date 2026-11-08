@@ -39,6 +39,10 @@ export interface CatalogCard {
   score?: number | null;
   chapterCount?: number | null;
   cursor?: string | null;
+  /** Source tags when the listing exposes them (MangaDex, E-Hentai, …). */
+  tags?: string[];
+  /** Adult-only work in a non-R34 source — shown as an 18+ badge on the cover. */
+  adult?: boolean;
 }
 
 export interface EhTagSuggestion {
@@ -60,6 +64,9 @@ export interface BridgeStatus {
   state: string;
   latencyMs?: number;
   reason?: string;
+  /** What the Tor daemon itself experienced on the last real bootstrap attempt
+   * (the TCP probe above cannot see an obfs4-level rejection). */
+  lastBootstrap?: { ok: boolean; at: number } | null;
 }
 export interface SiteStatus {
   key: string;
@@ -202,8 +209,13 @@ export interface Api {
     coverUrl?: string | null,
     kind?: string | null,
     chapterIndex?: number | null,
+    adult?: boolean,
   ): Promise<OpenResult | null>;
   fetchChapterList(mangaId: string): Promise<ChapterListItem[]>;
+  catalogTags(url: string): Promise<string[]>;
+  /** Batch adult-flag resolution for sources whose listing has no reliable age
+   * signal (Manga-shi): one IPC round-trip for a whole page of cards. */
+  catalogAdultBatch(urls: string[]): Promise<Record<string, boolean>>;
   searchCatalog(
     source: string,
     query: string,
@@ -270,6 +282,7 @@ export interface Api {
     seriesId: string;
     category?: string;
     kind?: string | null;
+    adult?: boolean;
   }): Promise<LibraryItem>;
   libraryLookup(url: string, seriesId: string): Promise<{ key: string; favorited: boolean; status: ReadingStatus | null } | null>;
   librarySetFavorite(key: string, at: number | null): Promise<void>;
@@ -324,6 +337,8 @@ export const CH = {
   clearHistory: 'history:clear',
   openUrl: 'url:open',
   fetchChapterList: 'manga:chapters',
+  catalogTags: 'catalog:tags',
+  catalogAdultBatch: 'catalog:adult-batch',
   searchCatalog: 'catalog:search',
   catalogPopular: 'catalog:popular',
   loginSite: 'login:site',

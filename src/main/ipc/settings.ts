@@ -56,7 +56,7 @@ export function registerSettings(deps: {
     return { canceled: false, path: r.filePath };
   });
 
-  ipcMain.handle(CH.backupImport, async () => {
+  handleSafe(CH.backupImport, z.tuple([]), async () => {
     const r = await dialog.showOpenDialog({
       title: 'Импорт данных',
       filters: [{ name: 'JSON', extensions: ['json'] }],
@@ -120,7 +120,7 @@ export function registerSettings(deps: {
     }
   });
 
-  ipcMain.handle(CH.getSettings, () => {
+  handleSafe(CH.getSettings, z.tuple([]), () => {
     const s = settings.get();
     rememberSettingsSecrets(s);
     return s;
@@ -186,8 +186,8 @@ export function registerSettings(deps: {
     deps.broadcastSettingsChanged(next);
   });
 
-  ipcMain.handle(CH.coverCacheInfo, () => deps.getCoverDisk().stats());
-  ipcMain.handle(CH.coverCacheClear, async () => {
+  handleSafe(CH.coverCacheInfo, z.tuple([]), () => deps.getCoverDisk().stats());
+  handleSafe(CH.coverCacheClear, z.tuple([]), async () => {
     await deps.getCoverDisk().clear();
     coverCache.clear();
   });

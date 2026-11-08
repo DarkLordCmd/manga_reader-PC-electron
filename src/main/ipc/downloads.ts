@@ -1,4 +1,4 @@
-import { dialog, ipcMain } from 'electron';
+import { dialog } from 'electron';
 import { z } from 'zod';
 import { CH } from '@shared/ipc';
 import { handleSafe, httpUrl, dlTypeToken, idString, nonNegInt } from './validate';
@@ -30,7 +30,7 @@ export function registerDownloads(deps: {
     exAccounts: deps.exAccounts,
   });
 
-  ipcMain.handle(CH.downloadsList, () => downloads.list());
+  handleSafe(CH.downloadsList, z.tuple([]), () => downloads.list());
   handleSafe(CH.downloadsAdd, z.tuple([httpUrl]), async (_e, sourceUrl) => {
     const { proxy, cookieHeader } = downloadFetchOpts(sourceUrl);
     const holder: { res: GalleryResolution | null } = { res: null };
@@ -57,7 +57,7 @@ export function registerDownloads(deps: {
     return task;
   });
 
-  ipcMain.handle(CH.downloadsCheckChapters, async () => {
+  handleSafe(CH.downloadsCheckChapters, z.tuple([]), async () => {
     const updated: string[] = [];
     for (const t of downloads.list()) {
       if (!t.mangaId || t.chapterTotal == null) continue;
@@ -85,7 +85,7 @@ export function registerDownloads(deps: {
     galleries.set(g.id, g);
     return { id: g.id, title: g.title, pageCount: g.pages.length, pages: g.pages, url: `file://${t.outDir}` };
   });
-  ipcMain.handle(CH.downloadsCheckUpdates, async () => {
+  handleSafe(CH.downloadsCheckUpdates, z.tuple([]), async () => {
     const urls = downloads
       .list()
       .filter((t) => t.state === 'completed')
@@ -136,7 +136,7 @@ export function registerDownloads(deps: {
     );
   });
 
-  ipcMain.handle(CH.downloadsPickDir, async () => {
+  handleSafe(CH.downloadsPickDir, z.tuple([]), async () => {
     const r = await dialog.showOpenDialog({ properties: ['openDirectory'] });
     if (r.canceled || r.filePaths.length === 0) return null;
     return r.filePaths[0];

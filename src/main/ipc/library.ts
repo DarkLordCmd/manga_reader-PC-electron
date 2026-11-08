@@ -17,6 +17,7 @@ const libraryEntry = z.object({
   seriesId: anyString,
   category: anyString.optional(),
   kind: z.string().nullable().optional(),
+  adult: z.boolean().optional(),
 });
 
 export function registerLibrary(deps: {
@@ -28,7 +29,7 @@ export function registerLibrary(deps: {
 }): void {
   const { library, history, settings, sync, broadcastLibrary } = deps;
 
-  ipcMain.handle(CH.getHistory, () => history.toVec());
+  handleSafe(CH.getHistory, z.tuple([]), () => history.toVec());
 
   handleSafe(CH.libraryList, z.tuple([z.custom<LibraryQuery>().optional()]), (_e, query?: LibraryQuery) => library.list(query ?? {}));
   handleSafe(CH.libraryGet, z.tuple([anyString]), (_e, key: string) => library.get(String(key)));
@@ -82,7 +83,7 @@ export function registerLibrary(deps: {
     library.deleteSeries(String(key));
     broadcastLibrary();
   });
-  ipcMain.handle(CH.libraryCounts, () => library.countByStatus());
+  handleSafe(CH.libraryCounts, z.tuple([]), () => library.countByStatus());
   handleSafe(CH.libraryStatuses, z.tuple([stringArray]), (_e, urls: string[]) =>
     library.statusesForUrls(Array.isArray(urls) ? urls.map(String) : []),
   );
@@ -107,7 +108,7 @@ export function registerLibrary(deps: {
       sync?.scheduleSync();
     },
   );
-  ipcMain.handle(CH.clearHistory, () => {
+  handleSafe(CH.clearHistory, z.tuple([]), () => {
     history.clear();
     settings.save({ ...settings.get(), viewing_history: [] });
     sync?.scheduleSync();

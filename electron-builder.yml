@@ -3,6 +3,7 @@ productName: Manga Reader
 directories:
   output: dist
   buildResources: build
+afterPack: scripts/apply-fuses.cjs
 files:
   - out/**
   - package.json
@@ -19,7 +20,25 @@ win:
   extraResources:
     - from: vendor/tor
       to: tor
-      filter: ['**/*']
+      # The source .tar.gz (22 MB), the upstream licence/readme text files and
+      # the version stamp are build-time artefacts — shipping them only bloated
+      # the installer. Binaries + geoip + torrc-defaults/pt_config stay.
+      filter:
+        - '**/*'
+        - '!**/*.tar.gz'
+        - '!**/*.txt'
+        - '!**/*.md'
+        - '!**/.tor-version'
+        # Not used by the embedded daemon: launchTor() passes its own flags and
+        # never reads torrc-defaults/pt_config, the app never calls tor-gencert,
+        # conjure bridges are not offered in the UI, and tor resolves geoip
+        # relative to CWD so it runs without them (verified in main.log).
+        - '!**/conjure-client.exe'
+        - '!**/tor-gencert.exe'
+        - '!**/geoip'
+        - '!**/geoip6'
+        - '!**/torrc-defaults'
+        - '!**/pt_config.json'
 mac:
   target: dmg
   category: public.app-category.entertainment

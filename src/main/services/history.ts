@@ -147,9 +147,15 @@ export class HistoryManager {
       }
       const next = toUpsert(update, existing.key, existing.seriesId);
       next.kind = update.kind ?? existing.kind ?? null;
+      // Never downgrade an R34 row to "main" just because a later open did not
+      // pass the adult flag (chapter-to-chapter navigation does not know it).
+      if (existing.category === 'r34') next.category = 'r34';
       if (existing.url === update.url) {
         next.currentPage = Math.max(existing.currentPage, 1);
         next.totalPages = Math.max(existing.totalPages, update.total_pages);
+        // An open without a cover (e.g. resumed from the reader) must not wipe
+        // the stored one.
+        next.coverUrl = update.cover_url ?? existing.coverUrl;
       } else {
         next.coverUrl = update.cover_url ?? existing.coverUrl;
         next.currentPage = existing.currentPage;

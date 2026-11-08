@@ -45,7 +45,7 @@ export const idString: ZodType<string> = z
   .string()
   .min(1)
   .max(1024)
-  .refine((s) => !/[\x00-\x1f]/.test(s), 'содержит управляющие символы');
+  .refine((s) => ![...s].some((c) => c.charCodeAt(0) < 32), 'содержит управляющие символы');
 /** Неотрицательное целое. */
 export const nonNegInt: ZodType<number> = z.number().int().min(0);
 /** Шаблон объектов библиотеки/каталога — своя структура проверяется в service-слое. */
@@ -55,11 +55,13 @@ export function looseObject<T>(): ZodType<T> {
 /** Шаблон массива строк. */
 export const stringArray: ZodType<string[]> = z.array(z.string()).max(10_000);
 
-/** Обёртка ipcMain.handle с валидацией аргументов до вызова обработчика. */
-export function handleSafe<T extends unknown[]>(
+/** Обёртка ipcMain.handle с валидацией аргументов до вызова обработчика.
+ * T выводится из схемы: tuple с optional-элементами (zod 4) иначе не
+ * сопоставляется с явно перечисленным типом. */
+export function handleSafe<S extends ZodType<unknown[]>>(
   channel: string,
-  schema: ZodType<T>,
-  handler: (event: IpcMainInvokeEvent, ...args: T) => unknown,
+  schema: S,
+  handler: (event: IpcMainInvokeEvent, ...args: z.output<S>) => unknown,
 ): void {
   ipcMain.handle(channel, (event, ...args: unknown[]) => {
     const parsed = schema.safeParse(args);
@@ -67,6 +69,6 @@ export function handleSafe<T extends unknown[]>(
       const detail = parsed.error.issues.map((i) => i.message).join('; ');
       throw new Error(`Недопустимые аргументы для ${channel}: ${detail}`);
     }
-    return handler(event, ...(parsed.data as T));
+    return handler(event, ...(parsed.data as z.output<S>));
   });
 }

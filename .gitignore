@@ -20,5 +20,9 @@ nh-channel-debug.html
 .repowise/
 .superpowers/
 
-# AI working notes / specs — noise in the public repo
+# AI working notes / specs - noise in the public repo
 docs/
+
+# agent tooling scaffolding (spec-kit / opencode)
+.opencode/
+.specify/

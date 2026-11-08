@@ -81,6 +81,17 @@ export async function searchRemanga(query: string, page: number, filters: Catalo
     pages: r?.count_chapters ?? null,
     kind: r?.type?.name ?? null,
     score: typeof r?.avg_rating === 'number' ? r.avg_rating : null,
+    // Remanga flags adult/forbidden titles with is_forbidden.
+    adult: r?.is_forbidden === true,
+    // Remanga search returns genres/categories with the card — surface them as
+    // tags instead of dropping them.
+    tags: [
+      ...new Set(
+        [...(Array.isArray(r?.genres) ? r.genres : []), ...(Array.isArray(r?.categories) ? r.categories : [])]
+          .map((g: any) => (typeof g?.name === 'string' ? g.name : null))
+          .filter((n: string | null): n is string => !!n),
+      ),
+    ].slice(0, 40),
   }));
 }
 

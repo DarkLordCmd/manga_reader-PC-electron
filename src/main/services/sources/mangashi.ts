@@ -61,6 +61,10 @@ export async function searchMangaShi(
     const ctText = $(el).find('i.ph-clock-clockwise').first().parent().find('span.shrink-0').first().text();
     const ctDigits = ctText.replace(/\D/g, '');
     if (ctDigits) chapterCount = Number(ctDigits);
+    // NOTE: the red "18+" badge in the card is Manga-shi's own age rating, which
+    // it also assigns for violence-only titles ("Андербоксер"). It is not a
+    // reliable "erotica" signal, so adult is resolved from the title's tags by
+    // the renderer (lazy enrichment) instead.
     results.push({
       url: full,
       title,

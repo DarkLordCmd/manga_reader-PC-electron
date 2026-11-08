@@ -1,8 +1,9 @@
 import { spawn, type ChildProcess } from 'child_process';
-import { existsSync, mkdirSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { app } from 'electron';
 import { probeBridgeLine, parseBridgeAddr } from './tor-check';
+import { markBridgeHealth } from './tor-bridge-health';
 import { logger } from './logger';
 
 /** Bundled "little-t tor" daemon so the user does not have to install or
@@ -18,7 +19,7 @@ import { logger } from './logger';
 export const EMBEDDED_SOCKS_PORT = 9153;
 export const EMBEDDED_CONTROL_PORT = 9158;
 
-const BOOT_TIMEOUT_MS = 90_000;
+const BOOT_TIMEOUT_MS = 45_000;
 const WATCHDOG_INTERVAL_MS = 20_000;
 const MAX_CONSECUTIVE_SOCKS_FAILURES = 2;
 /** Circuit checks are noisier than a dead listener (a transient network blip
@@ -35,6 +36,11 @@ let lastStart: { bridges: string; dataDir: string } | null = null;
 let watchdog: ReturnType<typeof setInterval> | undefined = undefined;
 let socksAliveStreak = 0;
 let restarting = false;
+/** Resolves the current attemptBridge() as a failure; used when the bridge is
+ * provably dead long before BOOT_TIMEOUT_MS. */
+let abortAttempt: (() => void) | null = null;
+let bridgeFailStreak = 0;
+let attemptStartedAt = 0;
 /** Set while an intentional stop/rotation is in progress, so the child's
  * `exit` event does not schedule a second, competing restart. */
 let stopping = false;
@@ -300,12 +306,26 @@ function onTorLine(buf: Buffer): void {
   for (const line of buf.toString('utf8').split('\n')) {
     const t = line.trim();
     if (!t) continue;
+    // obfs4 answers this when the bridge is down/blocked — retrying the same
+    // one only burns the bootstrap timeout.
+    if (t.includes('unable to connect') && /general SOCKS server failure|connection refused|TLS error/i.test(t)) {
+      bridgeFailStreak++;
+      if (bridgeFailStreak >= 3 && !activeSocks) {
+        logger.info('[tor-embedded] bridge unreachable, rotating early');
+        abortAttempt?.();
+        stopProcess();
+      }
+    }
     if (t.includes('Bootstrapped 100%')) {
       activeSocks = `127.0.0.1:${EMBEDDED_SOCKS_PORT}`;
       socksAliveStreak = 0;
+      bridgeFailStreak = 0;
       restartDelayMs = 5_000;
       readyResolve?.();
-      logger.info(`[tor-embedded] ready on ${activeSocks}${currentBridge ? ' via bridge ' + parseBridgeAddr(currentBridge)?.host : ''}`);
+      logger.info(
+        `[tor-embedded] ready on ${activeSocks}${currentBridge ? ' via bridge ' + parseBridgeAddr(currentBridge)?.host : ''}` +
+          (attemptStartedAt ? ` after ${((Date.now() - attemptStartedAt) / 1000).toFixed(1)} s` : ''),
+      );
     }
     logger.info('[tor-embedded]', t);
   }
@@ -314,36 +334,82 @@ function onTorLine(buf: Buffer): void {
 /** Boots the daemon with a single (given) bridge and waits for bootstrap. */
 async function attemptBridge(bridgeLine: string, binDir: string, dataDir: string): Promise<{ socks: string } | null> {
   resetReadyPromise();
+  bridgeFailStreak = 0;
+  attemptStartedAt = Date.now();
   mkdirSync(dataDir, { recursive: true });
   launchTor(bridgeLine, binDir, dataDir);
   if (!proc) return null;
-  return await new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), BOOT_TIMEOUT_MS);
+  const result = await new Promise<{ socks: string } | null>((resolve) => {
+    let settled = false;
+    const finish = (v: { socks: string } | null): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearInterval(poll);
+      abortAttempt = null;
+      resolve(v);
+    };
+    // A bridge that answers "general SOCKS server failure" will never
+    // bootstrap; aborting on the third such line turns a 90-second wait per
+    // dead bridge into ~20 seconds, so the next ranked bridge starts sooner.
+    abortAttempt = () => finish(null);
+    const timer = setTimeout(() => finish(null), BOOT_TIMEOUT_MS);
     const poll = setInterval(() => {
-      if (activeSocks) {
-        clearTimeout(timer);
-        clearInterval(poll);
-        resolve({ socks: activeSocks ?? '' });
-      } else if (!proc) {
-        clearTimeout(timer);
-        clearInterval(poll);
-        resolve(null);
-      }
+      if (activeSocks) finish({ socks: activeSocks ?? '' });
+      else if (!proc) finish(null);
     }, 500);
     readyPromise
-      .then(() => {
-        clearTimeout(timer);
-        clearInterval(poll);
-        resolve(activeSocks ? { socks: activeSocks } : null);
-      })
+      .then(() => finish(activeSocks ? { socks: activeSocks } : null))
       .catch(() => {});
   });
+  if (bridgeLine.trim()) markBridgeHealth(join(dataDir, '..'), bridgeLine, !!result);
+  return result;
 }
 
 async function bootFastRecovery(): Promise<void> {
   // Reserved for logs (intentionally no-op).
 }
 void bootFastRecovery;
+
+/** Bridge that actually bootstrapped last time, persisted across launches:
+ * starting from it skips both the latency probe and the walk through dead
+ * bridges, which is most of a cold start. */
+const PREFERRED_TTL_MS = 7 * 24 * 3600_000;
+
+function preferredBridgePath(userDataDir: string): string {
+  return join(userDataDir, 'tor-last-bridge.json');
+}
+
+function loadPreferredBridge(userDataDir: string, bridges: string): string | null {
+  try {
+    const j = JSON.parse(readFileSync(preferredBridgePath(userDataDir), 'utf-8')) as { line?: string; at?: number };
+    if (!j.line || typeof j.at !== 'number' || Date.now() - j.at > PREFERRED_TTL_MS) return null;
+    const known = bridges
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    return known.includes(j.line) ? j.line : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePreferredBridge(userDataDir: string, line: string): void {
+  if (!line.trim()) return;
+  try {
+    writeFileSync(preferredBridgePath(userDataDir), JSON.stringify({ line, at: Date.now() }));
+  } catch {
+    /* best-effort */
+  }
+}
+
+function clearPreferredBridge(userDataDir: string): void {
+  try {
+    rmSync(preferredBridgePath(userDataDir), { force: true });
+  } catch {
+    /* ignore */
+  }
+}
 
 async function runRotation(bridges: string, userDataDir: string): Promise<{ socks: string } | null> {
   const binDir = torBinaryDir();
@@ -358,6 +424,20 @@ async function runRotation(bridges: string, userDataDir: string): Promise<{ sock
   const dataRoot = join(userDataDir, 'tor-data');
   mkdirSync(dataRoot, { recursive: true });
   lastStart = { bridges, dataDir: dataRoot };
+
+  const remembered = loadPreferredBridge(userDataDir, bridges);
+  if (remembered) {
+    stopProcess();
+    logger.info(`[tor-embedded] trying remembered bridge ${parseBridgeAddr(remembered)?.host}`);
+    if (await attemptBridge(remembered, binDir, dataRoot)) {
+      savePreferredBridge(userDataDir, remembered);
+      startWatchdog(remembered, dataRoot);
+      return { socks: `127.0.0.1:${EMBEDDED_SOCKS_PORT}` };
+    }
+    logger.info('[tor-embedded] remembered bridge failed — full rotation');
+    skippedBridges.add(remembered);
+    clearPreferredBridge(userDataDir);
+  }
 
   const ranked = await rankBridges(bridges);
   if (ranked.length === 0) {
@@ -376,6 +456,7 @@ async function runRotation(bridges: string, userDataDir: string): Promise<{ sock
     logger.info(`[tor-embedded] trying bridge ${parseBridgeAddr(cand)?.host}`);
     const r = await attemptBridge(cand, binDir, dataRoot);
     if (r) {
+      savePreferredBridge(userDataDir, cand);
       startWatchdog(cand, dataRoot);
       return r;
     }

@@ -1,11 +1,10 @@
 // Hidden-window scraping channel for anti-bot walls. Electron webRequest
 // resource types are ('mainFrame'|'subFrame'|... — NOT the 'document' Chromium
 // vocabulary — see ALLOWED_RESOURCE_TYPES below.
-import { app, BrowserWindow, session } from 'electron';
-import { writeFileSync } from 'fs';
-import { join } from 'path';
+import { BrowserWindow, session } from 'electron';
 import { detectsAntiBot } from './anti-bot';
 import { denyAllPermissions } from '../security';
+import { logger } from './logger';
 
 export { detectsAntiBot };
 
@@ -83,12 +82,6 @@ async function ensureBrowser(proxy?: string): Promise<BrowserWindow> {
   }
   currentProxy = proxyKey;
   await applyProxy(s, proxyKey);
-  const preloadPath = join(app.getPath('temp'), 'gagl-stealth.js');
-  try {
-    writeFileSync(preloadPath, STEALTH_JS);
-  } catch {
-    /* fall back to no preload */
-  }
   win = new BrowserWindow({
     show: false,
     width: 1024,
@@ -99,11 +92,23 @@ async function ensureBrowser(proxy?: string): Promise<BrowserWindow> {
       images: false,
       webSecurity: true,
       nodeIntegration: false,
-      contextIsolation: false,
+      // The stealth patches must run inside the page's own JS context, so they
+      // are injected over CDP (`Page.addScriptToEvaluateOnNewDocument`) before
+      // the first navigation instead of through a preload with
+      // contextIsolation:false. That keeps the isolation model intact and
+      // removes the predictable %TEMP%\gagl-stealth.js file (and its TOCTOU
+      // window) the old approach relied on.
+      contextIsolation: true,
       sandbox: true,
-      preload: preloadPath,
     },
   });
+  try {
+    win.webContents.debugger.attach('1.3');
+    await win.webContents.debugger.sendCommand('Page.enable');
+    await win.webContents.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: STEALTH_JS });
+  } catch (e: any) {
+    logger.warn('[browser-fetch] stealth injection unavailable:', e?.message ?? e);
+  }
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event, url) => {
     let ok = false;

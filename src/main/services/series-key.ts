@@ -16,8 +16,11 @@ export function sourceLabelForUrl(url: string): string {
 }
 
 /** R34 sources (E-Hentai family + nhentai) — same rule the reading history
- * uses, so library/favorites rows land in the same tab as the history entry. */
-export function categoryForUrl(url: string): string {
+ * uses, so library/favorites rows land in the same tab as the history entry.
+ * `adult` covers 18+ works from non-R34 sources (Manga-shi, Senkuro, Remanga,
+ * MangaDex erotica): they belong to the R34 tab as well. */
+export function categoryForUrl(url: string, adult = false): string {
+  if (adult) return 'r34';
   return /nhentai|exhentai|e-hentai\.org/i.test(url) ? 'r34' : 'main';
 }
 

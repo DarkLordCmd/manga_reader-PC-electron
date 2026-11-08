@@ -6,6 +6,8 @@ export interface CatalogItem {
   kind?: string | null;
   score?: number | null;
   chapterCount?: number | null;
+  /** Adult-only work (18+ badge on the cover) for non-R34 sources. */
+  adult?: boolean;
 }
 
 export type CatalogSourceKey =

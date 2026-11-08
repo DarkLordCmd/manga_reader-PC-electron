@@ -10,6 +10,7 @@ import {
   isEhTimeoutError,
 } from './eh-sni-fallback';
 import { resolveViaCustomDns, customDnsActive } from './custom-dns';
+import { userAgentForUrl } from './user-agent';
 
 /** Tor SOCKS address used for the automatic SNI-timeout fallback on EH hosts.
  * Injected from main (settings), empty string disables the fallback. */
@@ -104,11 +105,21 @@ function socks5Connect(
   });
 }
 
+/** One Agent per proxy address: a fresh undici Agent used to be built for every
+ * request (and every page-image attempt), each with its own connector, pool and
+ * keep-alive timers that were never closed. Reusing them keeps the connection
+ * count flat during long reading sessions. */
+const socksDispatchers = new Map<string, Agent>();
+const MAX_DISPATCHERS = 8;
+
 export function buildSocksDispatcher(proxy: string): Agent {
-  const [proxyHost, proxyPort] = normalizeSocksAddr(proxy).split(':');
+  const key = normalizeSocksAddr(proxy);
+  const cached = socksDispatchers.get(key);
+  if (cached) return cached;
+  const [proxyHost, proxyPort] = key.split(':');
   const port = Number(proxyPort || 9150);
   const connector = buildConnector({ timeout: 30_000 });
-  return new Agent({
+  const agent = new Agent({
     connect: async (opts: any, callback) => {
       try {
         const destPort = Number(opts.port || (opts.protocol === 'https:' ? 443 : 80));
@@ -126,6 +137,15 @@ export function buildSocksDispatcher(proxy: string): Agent {
       }
     },
   });
+  while (socksDispatchers.size >= MAX_DISPATCHERS) {
+    const oldest = socksDispatchers.keys().next().value;
+    if (oldest === undefined) break;
+    const evicted = socksDispatchers.get(oldest);
+    socksDispatchers.delete(oldest);
+    void evicted?.close().catch(() => {});
+  }
+  socksDispatchers.set(key, agent);
+  return agent;
 }
 
 function buildDispatcherFor(url: string, proxy?: string): { dispatcher: Agent | undefined; frontHost?: string; frontIp?: string } {
@@ -163,8 +183,18 @@ function buildDispatcherFor(url: string, proxy?: string): { dispatcher: Agent | 
 }
 
 const pinnedIpCache = new Map<string, string>();
+/** Host-keyed state maps are bounded: a long session probes many mirrors and
+ * custom-DNS hosts, and these entries never expired on their own. */
+function setBounded<K, V>(map: Map<K, V>, key: K, value: V, limit = 200): void {
+  if (!map.has(key) && map.size >= limit) {
+    const oldest = map.keys().next().value;
+    if (oldest !== undefined) map.delete(oldest);
+  }
+  map.set(key, value);
+}
+
 export function rememberDirectFailureFor(host: string): void {
-  directFailedUntil.set(host, Date.now() + 10 * 60_000);
+  setBounded(directFailedUntil, host, Date.now() + 10 * 60_000);
 }
 const directFailedUntil = new Map<string, number>();
 
@@ -181,7 +211,7 @@ async function customDnsDispatcher(url: string): Promise<{ dispatcher?: Agent; p
   try {
     const p = await resolveViaCustomDns(host);
     if (!p) return { pinned: false };
-    pinnedIpCache.set(host, p);
+    setBounded(pinnedIpCache, host, p);
     return { dispatcher: buildPinnedDispatcher(host, p), pinned: true };
   } catch {
     return { pinned: false };
@@ -307,7 +337,9 @@ function buildInit(opts: HttpFetchOptions): any {
   return {
     method: opts.method ?? 'GET',
     headers: normalizeHeaders({
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      // Per-host on purpose: MangaDex's edge rejects a browser-shaped UA
+      // outright (see services/user-agent.ts), everything else wants one.
+      'User-Agent': userAgentForUrl(opts.url),
       ...(opts.headers ?? {}),
     }),
     body: opts.body,
@@ -553,9 +585,9 @@ async function withSniFallback<T>(
 }
 
 function pinnedOkFor(host: string): void {
-  // Successful pin — keep routing pinned for the TTL (10 min), so the dead
+  // Successful pin - keep routing pinned for the TTL (10 min), so the dead
   // system path isn't retried every request.
-  directFailedUntil.set(host, Date.now() + 10 * 60_000);
+  setBounded(directFailedUntil, host, Date.now() + 10 * 60_000);
 }
 
 export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise<HttpResult> {
@@ -579,7 +611,7 @@ export async function httpFetch(opts: HttpFetchOptions, proxy?: string): Promise
       const hostLower = hostnameOf(opts.url);
       if (isEhHost(hostLower) || hostLower.includes('exhentai') || hostLower.includes('e-hentai.org')) {
         const lim = parseLimitResponse(text.slice(0, 4000));
-        if (lim.kind) throw handleLimitFailure(lim.kind, lim.resetAfterSec);
+        if (lim.kind) throw handleLimitFailure(lim.kind, lim.resetAfterSec, opts.url);
       }
       // Opt-in HTTP fallback (nhentai et al.): a 4xx/5xx on the direct path
       // may mean a DNS-poisoned block page or a Cloudflare reject — let
@@ -626,7 +658,7 @@ export async function httpFetchBinary(
     const ct = res.headers.get('content-type') ?? '';
     if ((isEhHost(hostLower) || hostLower.includes('exhentai') || hostLower.includes('e-hentai.org')) && ct.includes('text/html')) {
       const lim = parseLimitResponse(buf.slice(0, 4000).toString('utf-8'));
-      if (lim.kind) throw handleLimitFailure(lim.kind, lim.resetAfterSec);
+      if (lim.kind) throw handleLimitFailure(lim.kind, lim.resetAfterSec, url);
     }
     return new Uint8Array(buf);
   });

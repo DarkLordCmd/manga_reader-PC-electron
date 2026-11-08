@@ -13,9 +13,11 @@ const api: Api = {
   getHistory: () => ipcRenderer.invoke(CH.getHistory),
   recordProgress: (url, page, total, offset) => ipcRenderer.invoke(CH.recordProgress, url, page, total, offset),
   clearHistory: () => ipcRenderer.invoke(CH.clearHistory),
-  openUrl: (url, startPage, mangaId, coverUrl, kind, chapterIndex) =>
-    ipcRenderer.invoke(CH.openUrl, url, startPage, mangaId, coverUrl, kind, chapterIndex),
+  openUrl: (url, startPage, mangaId, coverUrl, kind, chapterIndex, adult) =>
+    ipcRenderer.invoke(CH.openUrl, url, startPage, mangaId, coverUrl, kind, chapterIndex, adult),
   fetchChapterList: (mangaId) => ipcRenderer.invoke(CH.fetchChapterList, mangaId),
+  catalogTags: (url) => ipcRenderer.invoke(CH.catalogTags, url),
+  catalogAdultBatch: (urls) => ipcRenderer.invoke(CH.catalogAdultBatch, urls),
   searchCatalog: (source, query, page, sort, filters, cursor) =>
     ipcRenderer.invoke(CH.searchCatalog, source, query, page, sort, filters, cursor),
   catalogPopular: (source) => ipcRenderer.invoke(CH.catalogPopular, source),

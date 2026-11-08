@@ -397,6 +397,24 @@ export const EH_CATEGORIES: [string, number][] = [
   ['Misc', 1],
 ];
 
+/**
+ * E-Hentai `f_cats` is an *exclusion* mask: a set bit means "hide this
+ * category". These helpers mirror that semantics so the already-loaded list can
+ * be filtered locally the moment a chip is clicked, instead of waiting for the
+ * multi-second Tor/onion round-trip.
+ */
+export function ehExcludedKinds(mask: number): Set<string> {
+  const out = new Set<string>();
+  for (const [label, bit] of EH_CATEGORIES) if ((mask & bit) !== 0) out.add(label.toLowerCase());
+  return out;
+}
+
+export function filterCardsByEhKinds<T extends { kind?: string | null }>(cards: T[], mask: number): T[] {
+  const excluded = ehExcludedKinds(mask);
+  if (excluded.size === 0) return cards;
+  return cards.filter((c) => !c.kind || !excluded.has(String(c.kind).toLowerCase()));
+}
+
 export const MD_LANGS: [string, string][] = [
   ['ru', '🇷🇺 Русский'],
   ['en', '🇺🇸 Английский'],

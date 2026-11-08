@@ -1,9 +1,9 @@
-import { ipcMain } from 'electron';
-import { lookup as dnsPromiseLookup } from 'dns';
 import { z } from 'zod';
+import { app } from 'electron';
+import { lookup as dnsPromiseLookup } from 'dns';
 import { CH } from '@shared/ipc';
 import type { CatalogCursor } from '@shared/ipc';
-import { handleSafe, nonNegInt, anyString, stringArray } from './validate';
+import { handleSafe, nonNegInt, anyString, stringArray, httpUrl } from './validate';
 import type { SettingsService } from '../services/settings';
 import type { ExAccountsService } from '../services/accounts';
 import type { SimpleSiteConfig } from '../services/sources/catalog-types';
@@ -23,6 +23,9 @@ import {
 import { searchMangaDex, fetchChapterCount, fetchChapterList } from '../services/mangadex';
 import { fetchRemangaChapters, fetchSenkuroChapters } from '../services/sources';
 import { enrichNhentaiPageCounts } from '../services/sources/nhentai';
+import { logger } from '../services/logger';
+import { loadBridgeHealth, bridgeKey } from '../services/tor-bridge-health';
+import { fetchSourceTags } from '../services/source-tags';
 import { fetchEhPopular } from '../services/sources/eh';
 import { probeSocks5Handshake, probeBridgeLine, probeSite, allSiteKeys } from '../services/tor-check';
 import { embeddedTorSocks } from '../services/tor-embedded';
@@ -48,7 +51,17 @@ export function registerCatalog(deps: CatalogDeps): {
 } {
   const { settings, effectiveTorSocks, exAccounts, whenEmbeddedTorReady, refreshGroupleCache } = deps;
 
+  /** Chapter lists are re-requested every time the overlay opens; Senkuro
+   * needs 2 + N GraphQL round-trips (259 chapters = 4 requests), so repeat
+   * opens felt like a fresh download. Short TTL keeps it fresh enough while
+   * making reopen instant. */
+  const CHAPTER_CACHE_TTL_MS = 5 * 60_000;
+  const CHAPTER_CACHE_MAX = 24;
+  const chapterListCache = new Map<string, { at: number; chapters: { chapter_id: string; chapter_num: string; title: string | null }[] }>();
+
   async function fetchChapterListFor(mangaId: string): Promise<{ chapter_id: string; chapter_num: string; title: string | null }[]> {
+    const cached = chapterListCache.get(mangaId);
+    if (cached && Date.now() - cached.at < CHAPTER_CACHE_TTL_MS) return cached.chapters;
     let chapters;
     if (mangaId.includes('remanga.org')) {
       chapters = await fetchRemangaChapters(mangaId);
@@ -91,7 +104,14 @@ export function registerCatalog(deps: CatalogDeps): {
     } else {
       chapters = await fetchChapterList(mangaId);
     }
-    return chapters.map((c) => ({ chapter_id: c.chapter_id, chapter_num: c.chapter_num, title: c.title }));
+    const list = chapters.map((c) => ({ chapter_id: c.chapter_id, chapter_num: c.chapter_num, title: c.title }));
+    while (chapterListCache.size >= CHAPTER_CACHE_MAX) {
+      const oldest = chapterListCache.keys().next().value;
+      if (oldest === undefined) break;
+      chapterListCache.delete(oldest);
+    }
+    chapterListCache.set(mangaId, { at: Date.now(), chapters: list });
+    return list;
   }
 
   async function fetchChapterListSafe(
@@ -111,6 +131,34 @@ export function registerCatalog(deps: CatalogDeps): {
 
   handleSafe(CH.fetchChapterList, z.tuple([anyString]), async (_e, mangaId: string) => {
     return await fetchChapterListFor(mangaId);
+  });
+  handleSafe(CH.catalogTags, z.tuple([httpUrl]), async (_e, url: string) => {
+    try {
+      return await fetchSourceTags(url, settings.get(), { torSocks: effectiveTorSocks() });
+    } catch {
+      return [];
+    }
+  });
+  handleSafe(CH.catalogAdultBatch, z.tuple([z.array(httpUrl).max(60)]), async (_e, urls: string[]) => {
+    const s = settings.get();
+    const torSocks = effectiveTorSocks();
+    const out: Record<string, boolean> = {};
+    let cursor = 0;
+    // 10 concurrent htmx-fragment fetches: a 20-card page resolves in well
+    // under a second, so the 18+ badges no longer trickle in visibly.
+    const worker = async (): Promise<void> => {
+      while (cursor < urls.length) {
+        const url = urls[cursor++];
+        try {
+          const tags = await fetchSourceTags(url, s, { torSocks });
+          out[url] = tags.some((t) => /18\+|эротик|хентай|секс/i.test(t));
+        } catch {
+          out[url] = false;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: 10 }, () => worker()));
+    return out;
   });
   handleSafe(
     CH.searchCatalog,
@@ -168,6 +216,8 @@ export function registerCatalog(deps: CatalogDeps): {
           kind: c.kind,
           score: c.score,
           chapterCount: c.chapterCount ?? null,
+          tags: c.tags ?? [],
+          adult: c.adult === true,
         }));
       }
       if (source === 'remanga') return await searchRemanga(query, page, filters);
@@ -219,6 +269,7 @@ export function registerCatalog(deps: CatalogDeps): {
         const torForEx = s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai');
         const useTor = useOnion || torForEx;
         const exProxy = useTor ? torSocks : s.exhentai_proxy_addr.trim() || undefined;
+        const t0 = Date.now();
         const ex = await searchExHentai(
           query,
           {
@@ -234,7 +285,29 @@ export function registerCatalog(deps: CatalogDeps): {
           },
           exProxy,
         );
-        return ex.map((c) => ({ url: c.url, title: c.title, coverUrl: c.coverUrl, pages: c.pages, score: c.rating, kind: c.category }));
+        logger.info(
+          '[catalog-timing]',
+          source,
+          'page=',
+          page,
+          'cats=',
+          filters.ehExcludedCats ?? 0,
+          'rating=',
+          filters.ehMinRating ?? 0,
+          'took=',
+          Date.now() - t0,
+          'ms cards=',
+          ex.length,
+        );
+        return ex.map((c) => ({
+          url: c.url,
+          title: c.title,
+          coverUrl: c.coverUrl,
+          pages: c.pages,
+          score: c.rating,
+          kind: c.category,
+          tags: c.tags ?? [],
+        }));
       }
       if (source === 'comx') {
         const { searchComx } = await import('../services/sources/comx');
@@ -306,19 +379,20 @@ export function registerCatalog(deps: CatalogDeps): {
     const proxy = s.tor_proxied_sites.includes('nhentai') ? effectiveTorSocks() : undefined;
     return await fetchNhentaiTagSuggestions(text, { proxy });
   });
-  ipcMain.handle(CH.checkTor, async () => {
-    const s = settings.get();
+  handleSafe(CH.checkTor, z.tuple([]), async () => {
     return await probeSocks5Handshake(effectiveTorSocks());
   });
   handleSafe(CH.checkBridges, z.tuple([stringArray]), async (_e, lines: string[]) => {
-    return await Promise.all(lines.map((line) => probeBridgeLine(line)));
+    const health = loadBridgeHealth(app.getPath('userData'));
+    const probed = await Promise.all(lines.map((line) => probeBridgeLine(line)));
+    return probed.map((b) => ({ ...b, lastBootstrap: health[bridgeKey(b.line)] ?? null }));
   });
-  ipcMain.handle(CH.checkSites, async () => {
+  handleSafe(CH.checkSites, z.tuple([]), async () => {
     const s = settings.get();
     const torAddr = effectiveTorSocks();
     return await Promise.all(allSiteKeys().map((key) => probeSite(key, torAddr, s.tor_proxied_sites)));
   });
-  ipcMain.handle(CH.libMirrorsCheck, async () => {
+  handleSafe(CH.libMirrorsCheck, z.tuple([]), async () => {
     return await Promise.all(
       LIB_MIRRORS.map(async (host) => {
         // DNS gate first: a vanished record means a dead mirror server-side.
@@ -342,7 +416,7 @@ export function registerCatalog(deps: CatalogDeps): {
       }),
     );
   });
-  ipcMain.handle(CH.customDnsCheck, async () => {
+  handleSafe(CH.customDnsCheck, z.tuple([]), async () => {
     return await checkCustomDns('example.com');
   });
 

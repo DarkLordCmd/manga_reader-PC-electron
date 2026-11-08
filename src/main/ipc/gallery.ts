@@ -1,8 +1,9 @@
-import { dialog, ipcMain } from 'electron';
+import { dialog } from 'electron';
 import { z } from 'zod';
 import { CH } from '@shared/ipc';
 import { handleSafe, existingDirOrArchive, httpUrl, anyString, nonNegInt } from './validate';
 import { UnsupportedUrlError, type GalleryResolution } from '../services/resolve-gallery';
+import { categoryForUrl } from '../services/series-key';
 import type { Gallery } from '../services/gallery';
 import type { ZipGalleryInfo } from '../services/zip-gallery';
 import { logger } from '../services/logger';
@@ -94,7 +95,7 @@ export function registerGallery(deps: GalleryDeps): void {
     return { id: g.id, title: g.title, pageCount: g.pages.length, pages: g.pages, url };
   }
 
-  ipcMain.handle(CH.pickFolder, async () => {
+  handleSafe(CH.pickFolder, z.tuple([]), async () => {
     const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'openFile'] });
     if (r.canceled || r.filePaths.length === 0) return null;
     return openFolderLocal(r.filePaths[0]);
@@ -109,8 +110,9 @@ export function registerGallery(deps: GalleryDeps): void {
       z.union([z.string(), z.null()]).optional(),
       z.union([z.string(), z.null()]).optional(),
       z.number().int().nullable().optional(),
+      z.boolean().optional(),
     ]),
-    async (_e, url, startPage, mangaId, coverUrl, kind, chapterIndex) => {
+    async (_e, url, startPage, mangaId, coverUrl, kind, chapterIndex, adult) => {
       const trimmed = url.trim();
       const s = settings.get();
       const torSocks = effectiveTorSocks();
@@ -173,7 +175,8 @@ export function registerGallery(deps: GalleryDeps): void {
         chapter_total: null,
         total_pages: result.pageUrls.length,
         kind: kind ?? null,
-        category: trimmed.includes('nhentai') || trimmed.includes('exhentai') || trimmed.includes('e-hentai.org') ? 'r34' : 'main',
+        // 18+ works from non-R34 sources belong in the R34 history tab too.
+        category: adult === true || categoryForUrl(trimmed) === 'r34' ? 'r34' : 'main',
       });
       settings.save({ ...settings.get(), viewing_history: history.toVec() });
       library.autoAddIfNeeded(trimmed, seriesId);

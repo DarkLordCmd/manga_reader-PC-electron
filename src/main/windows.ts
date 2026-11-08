@@ -1,6 +1,5 @@
 import { app, BrowserWindow } from 'electron';
 import { join } from 'path';
-import { pathToFileURL } from 'url';
 import { logger } from './services/logger';
 
 export function createWindow(): void {
@@ -27,7 +26,7 @@ export function createWindow(): void {
       const devUrl = process.env['ELECTRON_RENDERER_URL'];
       const u = new URL(url);
       if (devUrl) allowed = u.origin === new URL(devUrl).origin;
-      else allowed = u.href.startsWith(pathToFileURL(join(__dirname, '../renderer')).href);
+      else allowed = u.protocol === 'app:' && u.hostname === 'renderer';
     } catch {
       allowed = false;
     }
@@ -51,7 +50,7 @@ export function createWindow(): void {
     });
     win.loadURL(process.env['ELECTRON_RENDERER_URL']);
   } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'));
+    win.loadURL('app://renderer/index.html');
   }
 }
 

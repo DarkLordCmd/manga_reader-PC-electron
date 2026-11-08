@@ -1,9 +1,13 @@
-import { protocol, net } from 'electron';
+import { app, protocol, net } from 'electron';
+import { join, normalize, sep } from 'path';
 import { detectImageMime } from './app/mime';
 import { pathToFileURL } from 'url';
 import { readZipEntry } from './services/zip-gallery';
 import { requestPage, getGalleryPages } from './services/online-gallery';
 import { parseMangaPageUrl } from './services/page-url';
+import { logger } from './services/logger';
+import { isSafeRemoteUrl } from './services/url-guard';
+import { cspFor } from './security';
 import type { Gallery } from './services/gallery';
 import type { SettingsService } from './services/settings';
 
@@ -14,7 +18,48 @@ import type { SettingsService } from './services/settings';
 // move it inside registerMangaProtocol(), which runs from app.whenReady().
 protocol.registerSchemesAsPrivileged([
   { scheme: 'manga', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  // The UI is served from here instead of file://. A de-privileged file:// page
+  // cannot load Vite's ESM assets (`crossorigin`), which forced the app to keep
+  // the permissive GrantFileProtocolExtraPrivileges fuse on. With a dedicated
+  // scheme the renderer gets a real, isolated origin and the fuse stays off.
+  { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } },
 ]);
+
+const RENDERER_HOST = 'renderer';
+
+/** Serves out/renderer over `app://renderer/…` (production builds only). */
+export function registerAppProtocol(): void {
+  const root = normalize(join(app.getAppPath(), 'out', 'renderer'));
+  const csp = cspFor(false);
+  protocol.handle('app', async (request) => {
+    let rel: string;
+    try {
+      const u = new URL(request.url);
+      if (u.hostname !== RENDERER_HOST) return new Response('Not found', { status: 404 });
+      rel = decodeURIComponent(u.pathname);
+    } catch {
+      return new Response('Not found', { status: 404 });
+    }
+    if (rel === '' || rel === '/') rel = '/index.html';
+    const target = normalize(join(root, rel));
+    // Path traversal guard: the resolved file must stay inside out/renderer.
+    if (target !== root && !target.startsWith(root + sep)) {
+      logger.warn('[app-protocol] refused out-of-root path', rel);
+      return new Response('Not found', { status: 404 });
+    }
+    try {
+      const res = await net.fetch(pathToFileURL(target).toString());
+      if (!target.endsWith('.html')) return res;
+      // custom protocols bypass webRequest.onHeadersReceived, so the document
+      // carries its own CSP header.
+      const headers = new Headers(res.headers);
+      headers.set('Content-Security-Policy', csp);
+      return new Response(res.body, { status: res.status, headers });
+    } catch {
+      return new Response('Not found', { status: 404 });
+    }
+  });
+}
 
 export function registerMangaProtocol(deps: {
   state: {
@@ -38,6 +83,12 @@ export function registerMangaProtocol(deps: {
       const encoded = parts[0];
       if (!encoded) return new Response('Not found', { status: 404 });
       const target = decodeURIComponent(encoded);
+      // The renderer decides this URL, so the main process must not become a
+      // generic fetcher for loopback/LAN services.
+      if (!isSafeRemoteUrl(target)) {
+        logger.warn('[cover] refused non-public url', target.slice(0, 120));
+        return new Response('Not found', { status: 404 });
+      }
       try {
         const s = deps.settings.get();
         // Cold start: an .onion cover requested before the bundled Tor finished
@@ -93,9 +144,14 @@ export function registerMangaProtocol(deps: {
     }
     try {
       const buf = await requestPage(gid, index, onlineHeaders.get(gid) ?? {});
-      if (!buf) return new Response('Not found', { status: 404 });
+      if (!buf) {
+        logger.warn('[page-serve] no buffer', gid.slice(0, 8), index);
+        return new Response('Not found', { status: 404 });
+      }
+      logger.debug('[page-serve] ok', gid.slice(0, 8), index, buf.length, 'bytes');
       return new Response(Uint8Array.from(buf), { headers: { 'Content-Type': detectImageMime(buf) } });
-    } catch {
+    } catch (e: any) {
+      logger.warn('[page-serve] failed', gid.slice(0, 8), index, '—', e?.message ?? e);
       return new Response('Not found', { status: 404 });
     }
   });

@@ -42,6 +42,7 @@ export interface ExSearchResult extends CatalogItem {
   rating: number | null;
   chapterTotal: number | null;
   thumbUrl: string | null;
+  tags?: string[];
 }
 
 /** Parses an E-Hentai/ExHentai listing page. Handles both the compact
@@ -63,6 +64,16 @@ export function parseExHentaiListing(html: string, base: string): ExSearchResult
     const img = $el.find('img').first();
     const cover = img.attr('data-src') || img.attr('src') || null;
     return cover ? resolve(base, cover) : null;
+  };
+
+  const parseTags = ($el: cheerio.Cheerio<any>): string[] => {
+    const out: string[] = [];
+    $el.find('.gt, .gtl').each((_j, t) => {
+      const $t = $(t);
+      const label = ($t.attr('title') || $t.text() || '').trim();
+      if (label) out.push(label);
+    });
+    return [...new Set(out)].slice(0, 24);
   };
 
   // Compact rows: `.itg.gltc > tbody > tr`, each with `.gl3c.glname > a`,
@@ -88,6 +99,7 @@ export function parseExHentaiListing(html: string, base: string): ExSearchResult
       category: $el.find('.cn').first().text().trim() || $el.find('td.glcat').first().text().trim() || null,
       rating: ratingM ? Number(ratingM[1]) : null,
       pages: pagesM ? Number(pagesM[1]) : null,
+      tags: parseTags($el),
       chapterTotal: null,
     });
   });
@@ -114,6 +126,7 @@ export function parseExHentaiListing(html: string, base: string): ExSearchResult
         category: $el.find('.cs').first().text().trim() || null,
         rating: ratingM ? Number(ratingM[1]) : null,
         pages: pagesM ? Number(pagesM[1]) : null,
+        tags: parseTags($el),
         chapterTotal: null,
       });
     });
@@ -255,7 +268,7 @@ export async function searchExHentai(
 async function ehFetchListing(
   url: string,
   base: string,
-  o: { cookieHeader: string; proxy?: string; ua: string; gdataApiBase: string },
+  o: { cookieHeader: string; proxy?: string; ua: string; gdataApiBase: string; gdataEnrich?: boolean },
 ): Promise<ExSearchResult[]> {
   const r = await httpFetch(
     {
@@ -291,20 +304,26 @@ async function ehFetchListing(
     throw new Error('ExHentai: ничего не найдено (или куки не действительны / сайт изменил вёрстку)');
   }
   try {
-    const meta = await fetchGData(
-      results.map((x) => extractGidToken(x.url)).filter((x): x is { gid: string; token: string } => !!x),
-      { apiBase: o.gdataApiBase, cookieHeader: o.cookieHeader, proxy: o.proxy, timeoutMs: o.proxy ? 120_000 : 20_000 },
-    );
-    const byGid = new Map(meta.map((m) => [m.gid, m]));
-    for (const x of results) {
-      const gid = extractGid(x.url);
-      const m = gid ? byGid.get(gid) : undefined;
-      if (!m) continue;
-      if (m.category) x.category = m.category;
-      const rc = Number(m.rating);
-      if (!isNaN(rc) && rc > 0) x.rating = rc;
-      const fc = Number(m.filecount);
-      if (!isNaN(fc) && fc > 0) x.pages = fc;
+    // Category, rating and page count are already parsed from the listing HTML
+    // (parseExHentaiListing). The gdata call is a second request through Tor to
+    // api.php and used to double the time of every filter change, so it is
+    // opt-in only.
+    if (o.gdataEnrich) {
+      const meta = await fetchGData(
+        results.map((x) => extractGidToken(x.url)).filter((x): x is { gid: string; token: string } => !!x),
+        { apiBase: o.gdataApiBase, cookieHeader: o.cookieHeader, proxy: o.proxy, timeoutMs: o.proxy ? 120_000 : 20_000 },
+      );
+      const byGid = new Map(meta.map((m) => [m.gid, m]));
+      for (const x of results) {
+        const gid = extractGid(x.url);
+        const m = gid ? byGid.get(gid) : undefined;
+        if (!m) continue;
+        if (m.category) x.category = m.category;
+        const rc = Number(m.rating);
+        if (!isNaN(rc) && rc > 0) x.rating = rc;
+        const fc = Number(m.filecount);
+        if (!isNaN(fc) && fc > 0) x.pages = fc;
+      }
     }
   } catch {
     /* best-effort */

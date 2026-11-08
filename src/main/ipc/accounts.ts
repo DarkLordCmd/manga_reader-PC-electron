@@ -1,4 +1,4 @@
-import { dialog, ipcMain } from 'electron';
+import { dialog } from 'electron';
 import { readFileSync } from 'fs';
 import { z } from 'zod';
 import { CH } from '@shared/ipc';
@@ -71,9 +71,9 @@ export function registerAccounts(deps: AccountsDeps): void {
   handleSafe(CH.cookieLogin, z.tuple([looseObject<CookieLoginInput>()]), async (_e, input: CookieLoginInput) => {
     return await exAccounts.cookieLogin(input);
   });
-  ipcMain.handle(CH.refreshIgneous, async () => await exAccounts.refreshIgneous());
+  handleSafe(CH.refreshIgneous, z.tuple([]), async () => await exAccounts.refreshIgneous());
   handleSafe(CH.parseCookieText, z.tuple([anyString]), (_e, text: string) => parseCookieLogin(text ?? ''));
-  ipcMain.handle(CH.getExAccounts, () => ({ accounts: exAccounts.accounts, currentId: exAccounts.currentId }));
+  handleSafe(CH.getExAccounts, z.tuple([]), () => ({ accounts: exAccounts.accounts, currentId: exAccounts.currentId }));
   handleSafe(CH.setExAccount, z.tuple([nonNegInt]), (_e, id: number) => {
     exAccounts.setCurrent(id);
     return { accounts: exAccounts.accounts, currentId: exAccounts.currentId };
@@ -90,7 +90,7 @@ export function registerAccounts(deps: AccountsDeps): void {
     exAccounts.remove(id);
     return { accounts: exAccounts.accounts, currentId: exAccounts.currentId };
   });
-  ipcMain.handle(CH.importExAccounts, async () => {
+  handleSafe(CH.importExAccounts, z.tuple([]), async () => {
     const r = await dialog.showOpenDialog({
       title: 'Выбери JSON, который сохранил юзерскрипт AutoLogin',
       filters: [{ name: 'JSON', extensions: ['json'] }],

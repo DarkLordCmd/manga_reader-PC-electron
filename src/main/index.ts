@@ -3,6 +3,7 @@ import { installAppCsp, installDefaultPermissions } from './security';
 import { join } from 'path';
 import { readFileSync, writeFileSync } from 'fs';
 import { SettingsService } from './services/settings';
+import { logger } from './services/logger';
 import { HistoryManager } from './services/history';
 import { openDatabase } from './services/db';
 import { LibraryService } from './services/library';
@@ -13,7 +14,7 @@ import { resolveGallery } from './services/resolve-gallery';
 import { startEmbeddedTor, stopEmbeddedTor, embeddedTorSocks, whenEmbeddedTorReady } from './services/tor-embedded';
 import { searchGrouple, GROUPLE_SITES } from './services/catalog-search';
 import type { SimpleSiteConfig } from './services/sources/catalog-types';
-import { fetchCoverBuffer } from './services/covers';
+import { fetchCoverBuffer, setCoverTorResolver } from './services/covers';
 import { runLoginWindow } from './services/login';
 import { setFrontingEnabled } from './services/domain-fronting';
 import { setTorFallbackAddr } from './services/http';
@@ -28,13 +29,14 @@ import { setLibMirror } from './services/lib-mirror';
 import { setCustomDnsServers, parseDnsServerList } from './services/custom-dns';
 import { rememberSettingsSecrets } from './services/settings-snapshot';
 import { initCookieStore } from './services/comx-gate';
+import { initPageCache } from './services/page-cache';
 import { DownloadManager } from './services/download-manager';
 import { GoogleAuth } from './services/google-auth';
 import { GoogleDrive } from './services/google-drive';
 import { SyncService } from './services/sync';
 import { CH } from '@shared/ipc';
 import { createWindow, registerLifecycle } from './windows';
-import { registerMangaProtocol } from './protocol';
+import { registerMangaProtocol, registerAppProtocol } from './protocol';
 import { registerSettings } from './ipc/settings';
 import { registerPin } from './ipc/pin';
 import { registerLibrary } from './ipc/library';
@@ -100,6 +102,23 @@ function coverMaxBytes(): number {
   return Math.max(16, Number(settings.get().cover_cache_mb) || 256) * 1024 * 1024;
 }
 
+/** Covers are the bulk of a cold catalog render (30 cards). Firing all of them
+ * at Tor at once queues everything behind one congested circuit, so the visible
+ * ones arrive last. Slots keep a steady stream ordered by request time. */
+const COVER_CONCURRENCY = 6;
+let coverActive = 0;
+const coverWaiters: (() => void)[] = [];
+async function withCoverSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (coverActive >= COVER_CONCURRENCY) await new Promise<void>((r) => coverWaiters.push(r));
+  coverActive++;
+  try {
+    return await fn();
+  } finally {
+    coverActive--;
+    coverWaiters.shift()?.();
+  }
+}
+
 function getCover(url: string): Promise<Buffer> {
   const cached = coverCache.get(url);
   if (cached) return Promise.resolve(cached);
@@ -115,7 +134,7 @@ function getCover(url: string): Promise<Buffer> {
         cacheCover(url, onDisk);
         return onDisk;
       }
-      const buf = await fetchCoverBuffer(url, settings.get(), exAccounts.currentCookieHeader());
+      const buf = await withCoverSlot(() => fetchCoverBuffer(url, settings.get(), exAccounts.currentCookieHeader()));
       cacheCover(url, buf);
       void disk.put(url, buf);
       return buf;
@@ -146,14 +165,27 @@ function broadcastNhentaiCounts(entries: { url: string; pages: number }[]): void
 }
 
 app.whenReady().then(() => {
+  // Crashes used to disappear into a closed window: log every one so a user
+  // report can be traced back to a main/renderer/child-process failure.
+  process.on('uncaughtException', (e) => logger.error('[crash] uncaughtException', e));
+  process.on('unhandledRejection', (r) => logger.error('[crash] unhandledRejection', r));
+  app.on('render-process-gone', (_e, _wc, details) =>
+    logger.error('[crash] render-process-gone', details.reason, 'exit=', details.exitCode),
+  );
+  app.on('child-process-gone', (_e, details) => logger.error('[crash] child-process-gone', details.type, details.reason));
+
   installAppCsp(process.env['ELECTRON_RENDERER_URL']);
   installDefaultPermissions(session.defaultSession);
   settings = new SettingsService(app.getPath('userData'));
+  // Covers must use the daemon that is actually running (the embedded one
+  // listens on its own port even when tor_socks_addr still says 9150).
+  setCoverTorResolver(() => effectiveTorSocks());
   setFrontingEnabled(settings.get().enable_domain_fronting);
   setTorFallbackAddr(effectiveTorSocks());
   setLibMirror(settings.get().lib_image_server ?? null);
   setCustomDnsServers(parseDnsServerList(settings.get().custom_dns ?? ''));
   initCookieStore(app.getPath('userData'));
+  initPageCache(app.getPath('userData'));
   // Bundled Tor daemon: start it as early as possible so by the time the
   // user hits an onion source the bootstrap is (usually) done.
   if (settings.get().builtin_tor) {
@@ -297,6 +329,7 @@ app.whenReady().then(() => {
     whenEmbeddedTorReady,
     embeddedTorSocks,
   });
+  registerAppProtocol();
 
   function broadcastLibrary(): void {
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.libraryChanged);

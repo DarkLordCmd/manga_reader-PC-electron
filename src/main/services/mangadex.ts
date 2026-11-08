@@ -46,7 +46,16 @@ export function parseMangaSearch(json: any): MangaCard[] {
       .filter((s: unknown): s is string => typeof s === 'string');
     const coverFile = (manga.relationships ?? []).find((r: any) => r?.type === 'cover_art')?.attributes?.fileName;
     const cover_url = typeof coverFile === 'string' ? `https://uploads.mangadex.org/covers/${id}/${coverFile}.256.jpg` : null;
-    cards.push({ manga_id: id, title, cover_url, kind, score, tags });
+    const contentRating = String(attrs.contentRating ?? '').toLowerCase();
+    cards.push({
+      manga_id: id,
+      title,
+      cover_url,
+      kind,
+      score,
+      tags,
+      adult: contentRating === 'erotica' || contentRating === 'pornographic',
+    });
   }
   return cards;
 }

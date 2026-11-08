@@ -25,8 +25,12 @@ const DEV_CSP = [
 ].join('; ');
 
 /** CSP заголовком для документа главного окна (dev/prod раздельно). */
+export function cspFor(dev: boolean): string {
+  return dev ? DEV_CSP : PROD_CSP;
+}
+
 export function installAppCsp(devUrl: string | undefined): void {
-  const policy = devUrl ? DEV_CSP : PROD_CSP;
+  const policy = cspFor(!!devUrl);
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     if (details.resourceType !== 'mainFrame') {
       callback({});
