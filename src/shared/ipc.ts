@@ -72,6 +72,8 @@ export interface SearchSuggestion {
   tag?: string | null;
   /** Publication status when the source provides it (Senkuro). */
   status?: string | null;
+  /** Age rating is 18+ (Senkuro EXPLICIT, MangaDex erotica, NHentai). */
+  age18?: boolean;
 }
 export interface NhentaiTagSuggestion {
   name: string;

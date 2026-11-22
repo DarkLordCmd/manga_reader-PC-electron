@@ -4,7 +4,7 @@ import { httpPostJson } from './http';
 import { searchMangaDex } from './mangadex';
 import { searchRemanga } from './sources/remanga';
 import { searchNhentai } from './sources/nhentai';
-import { senkuroHeaders } from './sources/senkuro';
+import { senkuroHeaders, senkuroAge18 } from './sources/senkuro';
 import { fetchEhTagSuggest } from './tags';
 import { logger } from './logger';
 
@@ -96,6 +96,7 @@ function senkuroRow(n: any): SearchSuggestion {
     coverUrl: n?.cover?.preview?.url ?? n?.cover?.original?.url ?? null,
     meta: meta || null,
     status,
+    age18: senkuroAge18(n?.mangaRating ?? n?.rating),
   };
 }
 
@@ -117,6 +118,7 @@ export async function catalogSuggest(source: string, query: string, deps: Sugges
           url: c.manga_id,
           coverUrl: c.cover_url,
           meta: [c.kind, number(c.score) != null ? `★ ${number(c.score)!.toFixed(1)}` : null].filter(Boolean).join(' · ') || null,
+          age18: c.adult === true,
         }));
       }
       case 'remanga': {
@@ -127,6 +129,7 @@ export async function catalogSuggest(source: string, query: string, deps: Sugges
           url: c.url,
           coverUrl: c.coverUrl,
           meta: [c.kind, number(c.score) != null ? `★ ${number(c.score)!.toFixed(1)}` : null].filter(Boolean).join(' · ') || null,
+          age18: c.adult === true,
         }));
       }
       case 'nhentai':
@@ -138,6 +141,7 @@ export async function catalogSuggest(source: string, query: string, deps: Sugges
           url: c.url,
           coverUrl: c.coverUrl,
           meta: [c.kind, c.pages ? `${c.pages} стр.` : null].filter(Boolean).join(' · ') || null,
+          age18: true,
         }));
       }
       case 'exhentai':

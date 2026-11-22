@@ -180,7 +180,14 @@ export default function SearchSuggest({ s }: { s: CatalogSearch }): JSX.Element 
               onClick={() => choose(it)}
             >
               {it.coverUrl ? (
-                <img className="ss-cover" src={`manga://cover/${encodeURIComponent(it.coverUrl)}`} alt="" loading="lazy" />
+                <span className="ss-cover-wrap">
+                  <img className="ss-cover" src={`manga://cover/${encodeURIComponent(it.coverUrl)}`} alt="" loading="lazy" />
+                  {it.age18 && (
+                    <span className="ss-adult" title="18+">
+                      18+
+                    </span>
+                  )}
+                </span>
               ) : (
                 <span className="ss-tag">{it.kind === 'tag' ? '#' : '?'}</span>
               )}
