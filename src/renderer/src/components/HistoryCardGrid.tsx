@@ -10,9 +10,10 @@ interface Props {
   onAddToLibrary?: (e: HistoryEntry) => void;
   onContextMenu?: (e: React.MouseEvent, entry: HistoryEntry) => void;
   statuses?: Record<string, ReadingStatus>;
+  blurAdult?: boolean;
 }
 
-export default function HistoryCardGrid({ entries, onContinue, onAddToLibrary, onContextMenu, statuses }: Props): JSX.Element {
+export default function HistoryCardGrid({ entries, onContinue, onAddToLibrary, onContextMenu, statuses, blurAdult }: Props): JSX.Element {
   return (
     <div className="history-grid">
       {entries.map((e) => {
@@ -31,7 +32,7 @@ export default function HistoryCardGrid({ entries, onContinue, onAddToLibrary, o
             onContextMenu={onContextMenu ? (ev) => onContextMenu(ev, e) : undefined}
           >
             <div className="history-cover">
-              <CoverImg url={e.cover_url} />
+              <CoverImg url={e.cover_url} className={blurAdult && e.category === 'r34' ? 'blur-adult' : undefined} />
               <KindBadge kind={e.kind} />
               <StatusBadge status={statuses?.[e.url] ?? statuses?.[e.series_id]} />
             </div>

@@ -11,6 +11,8 @@ interface Props {
   progress?: Record<string, [number, number]>;
   statuses?: Record<string, ReadingStatus>;
   onContextMenu?: (e: React.MouseEvent, card: CatalogCard) => void;
+  /** Blur covers of 18+ works (privacy setting). */
+  blurAdult?: boolean;
 }
 
 interface CardProps {
@@ -19,16 +21,17 @@ interface CardProps {
   status?: ReadingStatus;
   onSelect: (card: CatalogCard) => void;
   onContextMenu?: (e: React.MouseEvent, card: CatalogCard) => void;
+  blurAdult?: boolean;
 }
 
 /** Memoized so appending a page (a new `cards` array) does not re-render the
  * already-rendered cards — only the newly added ones mount. */
-const MangaCard = memo(function MangaCard({ card, progressEntry, status, onSelect, onContextMenu }: CardProps): JSX.Element {
+const MangaCard = memo(function MangaCard({ card, progressEntry, status, onSelect, onContextMenu, blurAdult }: CardProps): JSX.Element {
   const count = card.chapterCount != null ? `${card.chapterCount} гл.` : card.pages != null ? `${card.pages} стр.` : '';
   return (
     <div className="manga-card" onClick={() => onSelect(card)} onContextMenu={onContextMenu ? (e) => onContextMenu(e, card) : undefined}>
       <div className="manga-cover">
-        <CoverImg url={card.coverUrl} alt={card.title} />
+        <CoverImg url={card.coverUrl} alt={card.title} className={blurAdult && (card.adult || card.age18) ? 'blur-adult' : undefined} />
         {card.kind && <KindBadge kind={card.kind} />}
         {(card.adult || card.age18) && (
           <span className="manga-badge adult-badge" title="18+">
@@ -59,7 +62,7 @@ const MangaCard = memo(function MangaCard({ card, progressEntry, status, onSelec
   );
 });
 
-function MangaCardGrid({ cards, onSelect, progress, statuses, onContextMenu }: Props): JSX.Element {
+function MangaCardGrid({ cards, onSelect, progress, statuses, onContextMenu, blurAdult }: Props): JSX.Element {
   return (
     <div className="catalog-grid">
       {cards.map((c) => (
@@ -68,6 +71,7 @@ function MangaCardGrid({ cards, onSelect, progress, statuses, onContextMenu }: P
           card={c}
           progressEntry={progress?.[c.url]}
           status={statuses?.[c.url]}
+          blurAdult={blurAdult}
           onSelect={onSelect}
           onContextMenu={onContextMenu}
         />

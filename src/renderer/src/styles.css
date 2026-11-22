@@ -2455,6 +2455,8 @@ input[type='checkbox'].toggle-input {
   width: 34px;
   height: 48px;
   flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 4px;
 }
 .ss-cover-wrap .ss-cover {
   width: 100%;
@@ -2482,6 +2484,13 @@ input[type='checkbox'].toggle-input {
   border-radius: 4px;
   background: #161616;
   flex-shrink: 0;
+}
+/* Privacy: blur 18+ covers. The parent clips the scaled image so the blur does
+   not show sharp edges around the rounded corners. */
+.blur-adult {
+  filter: blur(9px) saturate(0.85);
+  transform: scale(1.08);
+  transform-origin: center;
 }
 .ss-tag {
   width: 34px;

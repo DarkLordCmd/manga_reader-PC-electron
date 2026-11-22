@@ -85,7 +85,14 @@ export default function Favorites(): JSX.Element {
             }}
           >
             <div className="history-cover">
-              {it.coverUrl ? <CoverImg url={it.coverUrl} /> : <div className="cover-placeholder" />}
+              {it.coverUrl ? (
+                <CoverImg
+                  url={it.coverUrl}
+                  className={settings.blur_adult_covers && it.category === 'r34' ? 'blur-adult' : undefined}
+                />
+              ) : (
+                <div className="cover-placeholder" />
+              )}
               <KindBadge kind={it.kind} />
               <StatusBadge status={it.status} />
             </div>

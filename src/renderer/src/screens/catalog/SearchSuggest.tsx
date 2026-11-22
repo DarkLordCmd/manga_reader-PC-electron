@@ -181,7 +181,12 @@ export default function SearchSuggest({ s }: { s: CatalogSearch }): JSX.Element 
             >
               {it.coverUrl ? (
                 <span className="ss-cover-wrap">
-                  <img className="ss-cover" src={`manga://cover/${encodeURIComponent(it.coverUrl)}`} alt="" loading="lazy" />
+                  <img
+                    className={`ss-cover${s.settings.blur_adult_covers && it.age18 ? ' blur-adult' : ''}`}
+                    src={`manga://cover/${encodeURIComponent(it.coverUrl)}`}
+                    alt=""
+                    loading="lazy"
+                  />
                   {it.age18 && (
                     <span className="ss-adult" title="18+">
                       18+

@@ -101,6 +101,7 @@ export default function History(): JSX.Element {
         <HistoryCardGrid
           entries={visible}
           statuses={statuses}
+          blurAdult={settings.blur_adult_covers}
           onContinue={(e) => void onContinue(e)}
           onContextMenu={(e, entry) => void openMenu(e, entry)}
           onAddToLibrary={(e) =>

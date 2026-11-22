@@ -101,7 +101,7 @@ export default function Popular(): JSX.Element {
           {error && <div className="error-text">{error}</div>}
           {loading && cards.length === 0 && <div className="muted">Загрузка…</div>}
           {cards.length > 0 && (
-            <MangaCardGrid cards={cards} statuses={statuses} onSelect={(c) => void open(c)} onContextMenu={openCardMenu} />
+            <MangaCardGrid cards={cards} statuses={statuses} onSelect={(c) => void open(c)} onContextMenu={openCardMenu} blurAdult={settings.blur_adult_covers} />
           )}
           {!loading && !error && cards.length === 0 && <div className="muted">Пусто</div>}
         </div>

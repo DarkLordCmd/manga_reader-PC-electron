@@ -212,7 +212,7 @@ export default function Library(): JSX.Element {
             }}
           >
             <div className="history-cover">
-              <CoverImg url={it.coverUrl} />
+              <CoverImg url={it.coverUrl} className={settings.blur_adult_covers && it.category === 'r34' ? 'blur-adult' : undefined} />
               <KindBadge kind={it.kind} />
               <StatusBadge status={it.status} />
             </div>

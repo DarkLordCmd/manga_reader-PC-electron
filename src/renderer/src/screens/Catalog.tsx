@@ -86,6 +86,7 @@ export default function Catalog(): JSX.Element {
               progress={s.source === 'mangadex' ? s.settings.read_progress : undefined}
               statuses={s.statuses}
               onContextMenu={s.openCardMenu}
+              blurAdult={s.settings.blur_adult_covers}
             />
           )}
 

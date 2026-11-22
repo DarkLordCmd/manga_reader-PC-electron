@@ -31,6 +31,8 @@ export interface Settings {
   enable_domain_fronting: boolean;
   viewing_history: HistoryEntry[];
   show_r34_history: boolean;
+  /** Blur 18+ covers in catalog/library/history/suggestions. */
+  blur_adult_covers: boolean;
   eh_tag_bookmarks: string[];
   /** Read the full-size original image from the EH viewer page (#i7) instead of
    * the 1280 px resized copy — slower and uses more traffic, but webtoons and
@@ -81,6 +83,7 @@ export function defaultSettings(): Settings {
     enable_domain_fronting: false,
     viewing_history: [],
     show_r34_history: true,
+    blur_adult_covers: false,
     eh_tag_bookmarks: [],
     eh_original_images: false,
     eh_images_direct: false,
@@ -165,6 +168,7 @@ export function parseSettings(raw: unknown): Settings {
     builtin_tor: bool(o.builtin_tor, false),
     viewing_history: history,
     show_r34_history: bool(o.show_r34_history, true),
+    blur_adult_covers: bool(o.blur_adult_covers, false),
     eh_tag_bookmarks: strArr(o.eh_tag_bookmarks),
     eh_original_images: bool(o.eh_original_images, false),
     eh_images_direct: bool(o.eh_images_direct, false),
