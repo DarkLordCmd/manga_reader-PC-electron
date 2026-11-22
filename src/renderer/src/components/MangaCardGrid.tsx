@@ -30,7 +30,7 @@ const MangaCard = memo(function MangaCard({ card, progressEntry, status, onSelec
       <div className="manga-cover">
         <CoverImg url={card.coverUrl} alt={card.title} />
         {card.kind && <KindBadge kind={card.kind} />}
-        {card.adult && (
+        {(card.adult || card.age18) && (
           <span className="manga-badge adult-badge" title="18+">
             18+
           </span>

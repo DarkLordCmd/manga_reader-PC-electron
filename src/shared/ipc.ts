@@ -41,8 +41,10 @@ export interface CatalogCard {
   cursor?: string | null;
   /** Source tags when the listing exposes them (MangaDex, E-Hentai, …). */
   tags?: string[];
-  /** Adult-only work in a non-R34 source — shown as an 18+ badge on the cover. */
+  /** R34 (hentai/smut) work — hidden while the R34 privacy toggle is off. */
   adult?: boolean;
+  /** Age rating is 18+ (may be violent action/horror, not necessarily R34). */
+  age18?: boolean;
   /** Publication status (Senkuro: Анонс/Выходит/Завершён/Заморожен/Отменён). */
   status?: string | null;
 }

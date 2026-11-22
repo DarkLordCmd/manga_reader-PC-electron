@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildSenkognitoVars, senkuroAdultFromRating } from '../src/main/services/sources/senkuro';
+import { buildSenkognitoVars, senkuroAdultFromRating, senkuroAge18 } from '../src/main/services/sources/senkuro';
 
 describe('Senkognito 18+ catalogue variables', () => {
   it('maps search, filters, pagination and default ordering', () => {
@@ -71,5 +71,15 @@ describe('Senkuro adult rating', () => {
     expect(senkuroAdultFromRating('QUESTIONABLE')).toBe(false);
     expect(senkuroAdultFromRating('SENSITIVE')).toBe(false);
     expect(senkuroAdultFromRating(null)).toBe(false);
+  });
+});
+
+describe('Senkuro age rating badge', () => {
+  it('marks EXPLICIT as 18+ regardless of R34 labels', () => {
+    expect(senkuroAge18('EXPLICIT')).toBe(true);
+    expect(senkuroAge18('explicit')).toBe(true);
+    expect(senkuroAge18('QUESTIONABLE')).toBe(false);
+    expect(senkuroAge18('SENSITIVE')).toBe(false);
+    expect(senkuroAge18(null)).toBe(false);
   });
 });

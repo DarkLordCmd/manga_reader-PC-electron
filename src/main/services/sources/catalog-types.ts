@@ -8,6 +8,8 @@ export interface CatalogItem {
   chapterCount?: number | null;
   /** Adult-only work (18+ badge on the cover) for non-R34 sources. */
   adult?: boolean;
+  /** Age rating is 18+ (Senkuro EXPLICIT) — the badge, not the R34 category. */
+  age18?: boolean;
   /** Publication status when the listing provides it (Senkuro search). */
   status?: string | null;
 }

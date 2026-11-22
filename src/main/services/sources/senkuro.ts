@@ -18,6 +18,12 @@ const SK_KIND = new Map<string, string>([
   ['RU_MANGA', 'РуМанга'],
 ]);
 
+/** Age badge (18+) is the Senkuro rating, independent of the R34 category
+ * (violent EXPLICIT action/horror is 18+ but not hentai/smut). */
+export function senkuroAge18(rating: unknown): boolean {
+  return String(rating ?? '').toUpperCase() === 'EXPLICIT';
+}
+
 const SENKURO_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 // senkuro.me domain overrides the shared website config: its own API host
@@ -261,6 +267,7 @@ export async function fetchSenkognitoMangas(
       score: typeof n?.score === 'number' ? n.score : null,
       status: SK_STATUS_LABELS.get(String(n?.status ?? '')) ?? null,
       adult: flags.has(String(n?.slug ?? '')) ? flags.get(String(n?.slug ?? '')) === true : senkuroAdultFromRating(rating),
+      age18: senkuroAge18(rating),
       tags: [],
       // Senkognito returns the page cursor at pageInfo level, not per edge:
       // repeat it on the cards so the catalog's forward-only cursor works.
@@ -349,6 +356,7 @@ export async function searchSenkuro(
       // `rating` is the site's age rating enum (SAFE/SENSITIVE/QUESTIONABLE/
       // EROTIC) — only the explicit one is 18+.
       adult: senkuroLabelsAreR34(n?.labels),
+      age18: senkuroAge18(n?.rating),
       // Publication status comes as an enum (ANNOUNCE/ONGOING/FINISHED/…);
       // the UI shows the Russian label from SENKURO_STATUS.
       status: SK_STATUS_LABELS.get(String(n?.status ?? '')) ?? null,
@@ -612,19 +620,34 @@ export async function fetchSenkuroSearchPage(query: string, proxy?: string): Pro
     proxy,
   )) as any;
   const edges: any[] = json?.data?.search?.edges ?? [];
+  // The persisted search operation returns the age rating but not labels, so
+  // resolve hentai/smut for the R34 flag in one extra batched request.
+  const slugs: string[] = edges.map((e) => String(e?.node?.slug ?? '')).filter(Boolean);
+  let flags = new Map<string, boolean>();
+  if (slugs.length > 0) {
+    try {
+      flags = await fetchSenkuroR34Flags(slugs, { proxy });
+    } catch {
+      /* badge falls back to the age rating; R34 stays unknown */
+    }
+  }
   return edges.map((e) => {
     const n = e?.node ?? {};
     const titles: any[] = n?.titles ?? [];
     const title =
       titles.find((t) => t?.lang === 'RU')?.content ?? titles.find((t) => t?.lang === 'EN')?.content ?? n?.originalName ?? 'Без названия';
+    const slug = String(n?.slug ?? '');
     return {
-      url: `https://senkuro.me/manga/${n?.slug ?? ''}/`,
+      url: `https://senkuro.me/manga/${slug}/`,
       title,
       coverUrl: n?.cover?.preview?.url ?? n?.cover?.original?.url ?? null,
       pages: null,
       kind: SK_KIND.get(String(n?.mangaType ?? '')) ?? null,
       score: typeof n?.score === 'number' ? n.score : null,
       status: SK_STATUS_LABELS.get(String(n?.mangaStatus ?? '')) ?? null,
+      // `mangaRating` is the age rating from the search operation.
+      age18: senkuroAge18(n?.mangaRating),
+      adult: flags.get(slug) === true,
     };
   });
 }
