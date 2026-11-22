@@ -85,6 +85,29 @@ describe('resolveViaCustomDns', () => {
     expect(await resolveViaCustomDns('broken.com')).toBeNull();
     expect(mockResolve).toHaveBeenCalledTimes(1);
   });
+
+  it('retries the resolver once the FAIL window expires instead of parking the host for the full TTL', async () => {
+    // Regression: a failed lookup was cached with expiresAt = now + TTL_MS, so
+    // the resolve branch was skipped for 10 minutes even after the advertised
+    // 2-minute fail window — custom DNS stayed off far longer than promised.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(0);
+      let calls = 0;
+      mockResolve.mockImplementation((_h, cb) => {
+        calls++;
+        if (calls === 1) cb(new Error('SERVFAIL'));
+        else cb(null, ['5.6.7.8']);
+      });
+      expect(await resolveViaCustomDns('flaky-retry.com')).toBeNull();
+      expect(calls).toBe(1);
+      vi.setSystemTime(2 * 60_000 + 1);
+      expect(await resolveViaCustomDns('flaky-retry.com')).toBe('5.6.7.8');
+      expect(calls).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('caches a successful resolution', async () => {
     mockResolve.mockImplementation((_h, cb) => cb(null, ['1.2.3.4']));
     await resolveViaCustomDns('example.com');

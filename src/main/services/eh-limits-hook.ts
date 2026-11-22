@@ -27,10 +27,15 @@ export function ehEmptyResponseError(url?: string): Error {
     /* keep empty */
   }
   const where = host ? ` (${host})` : '';
+  const onion = /\.onion$/i.test(host);
   const e = new Error(
-    `E-Hentai вернул пустую страницу${where}. Для ExHentai это обычно незалогиненная сессия ` +
-      '(сброшенные cookie ipb_member_id / ipb_pass_hash / igneous или выход через Tor). ' +
-      'Источник не заблокирован — обнови аккаунт или отключи Tor для источника.',
+    onion
+      ? `ExHentai (onion) вернул пустую страницу${where}. Обычно это истёкшая сессия onion-зеркала: ` +
+        'нажми «Войти» и введи логин, пароль и код с картинки (капча). Если ты только что входил — повтори запрос ' +
+        '(некоторые страницы, например топлисты, зеркало не отдаёт).'
+      : `E-Hentai вернул пустую страницу${where}. Для ExHentai это обычно незалогиненная сессия ` +
+        '(сброшенные cookie ipb_member_id / ipb_pass_hash / igneous или выход через Tor). ' +
+        'Источник не заблокирован — обнови аккаунт или отключи Tor для источника.',
   );
   (e as any).ehEmpty = true;
   return e;

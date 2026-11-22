@@ -41,7 +41,10 @@ export async function searchComx(
   const genre = (opts.genre ?? '').trim();
   let target: string;
   if (query.trim()) {
-    target = `${COMX_BASE}/search/${encodeURIComponent(query.trim())}/`;
+    // DLE pagination also applies to the search listing: without page/N every
+    // "След." request returned page 1 again.
+    const p = page > 0 ? `page/${page + 1}/` : '';
+    target = `${COMX_BASE}/search/${encodeURIComponent(query.trim())}/${p}`;
   } else if (cat && genre && cat === 'manga-2025-read') {
     // жанровые страницы сайта подтверждены только в разделе «Манга»
     const p = page > 0 ? `page/${page + 1}/` : '';
@@ -62,8 +65,8 @@ export async function searchComx(
  * hidden BrowserWindow channel (JS runs, images stay disabled in prefs).
  * Chapters are sorted ascending by their chapter ids (their ids grow).
  */
-export async function fetchComxChapters(mangaUrl: string): Promise<ChapterInfo[]> {
-  const html = await fetchHtmlViaBrowser(mangaUrl, { timeoutMs: 60_000 });
+export async function fetchComxChapters(mangaUrl: string, proxy?: string): Promise<ChapterInfo[]> {
+  const html = await fetchHtmlViaBrowser(mangaUrl, { timeoutMs: 60_000, proxy });
   const $ = cheerio.load(html);
   const out: ChapterInfo[] = [];
   const seen = new Set<string>();
@@ -79,6 +82,15 @@ export async function fetchComxChapters(mangaUrl: string): Promise<ChapterInfo[]
     out.push({ chapter_id: full, chapter_num: label, title: null, lang: 'comx' });
   });
   if (out.length === 0) throw new Error('Com-X: список глав не отрендерился (возможно, анти-бот сменил разметку)');
-  out.sort((a, b) => Number(b.chapter_id.split('/').pop()) - Number(a.chapter_id.split('/').pop()));
+  out.sort((a, b) => chapterNumber(a.chapter_id) - chapterNumber(b.chapter_id));
   return out;
+}
+
+/** Chapter number from a /reader/<news>/<number> URL. The old comparator used
+ * `Number(chapter_id.split('/').pop())`, which is `'1.html'` → NaN: the compare
+ * function returned NaN, the sort did nothing, and the list stayed descending
+ * (auto-advance then walked BACKWARDS through chapters). */
+function chapterNumber(chapterId: string): number {
+  const m = chapterId.match(/\/reader\/\d+\/(\d+)/);
+  return m ? Number(m[1]) : 0;
 }

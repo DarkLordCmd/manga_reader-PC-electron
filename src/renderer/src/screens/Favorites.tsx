@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from '../state/store';
 import type { LibraryItem } from '@shared/library';
 import ContextMenu, { type MenuItem } from '../components/ContextMenu';
@@ -7,6 +7,7 @@ import KindBadge from '../components/KindBadge';
 import StatusBadge from '../components/StatusBadge';
 import { buildLibraryMenuItems, STATUS_LABELS } from '../lib/library-menu';
 import { resolveAdultFlag } from '../lib/adult';
+import { errorText } from '../lib/errors';
 
 export default function Favorites(): JSX.Element {
   const { setScreen, setOpened, settings } = useStore();
@@ -14,21 +15,35 @@ export default function Favorites(): JSX.Element {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<'main' | 'r34'>('main');
   const [menu, setMenu] = useState<{ x: number; y: number; item: LibraryItem } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const cat = settings.show_r34_history ? category : 'main';
 
+  // Same stale-response guard as the Library screen: a slower answer for an
+  // older search must not replace the list for the current one.
+  const refreshSeq = useRef(0);
   const refresh = useCallback(() => {
     const effCat = settings.show_r34_history ? category : 'main';
-    void window.api.libraryList({ scope: 'favorites', search, sort: 'added', category: effCat }).then(setItems);
+    const seq = ++refreshSeq.current;
+    void window.api.libraryList({ scope: 'favorites', search, sort: 'added', category: effCat }).then((r) => {
+      if (seq === refreshSeq.current) setItems(r);
+    });
   }, [search, category, settings.show_r34_history]);
   useEffect(refresh, [refresh]);
   useEffect(() => window.api.onLibraryChanged(refresh), [refresh]);
 
   const open = async (item: LibraryItem): Promise<void> => {
+    setError(null);
     const start = Math.max(0, item.currentPage - 1);
-    const r = await window.api.openUrl(item.url, start, item.seriesId, item.coverUrl, item.kind ?? null, null, await resolveAdultFlag(item.url, item.category === 'r34'));
-    if (r) {
-      setOpened({ kind: 'online', ...r, startPage: start, coverUrl: item.coverUrl });
-      setScreen('Reader');
+    try {
+      const r = await window.api.openUrl(item.url, start, item.seriesId, item.coverUrl, item.kind ?? null, null, await resolveAdultFlag(item.url, item.category === 'r34'));
+      if (r) {
+        setOpened({ kind: 'online', ...r, startPage: start, coverUrl: item.coverUrl });
+        setScreen('Reader');
+      } else {
+        setError(`Не удалось открыть «${item.title}»: источник недоступен или не поддерживается`);
+      }
+    } catch (e) {
+      setError(errorText(e));
     }
   };
 
@@ -52,7 +67,12 @@ export default function Favorites(): JSX.Element {
         <div className="spacer" />
         <input className="catalog-search" placeholder="Поиск по названию…" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
-      {items.length === 0 && <div className="muted">В избранном пока пусто (правый клик по карточке в каталоге)</div>}
+      {error && <div className="error-text">{error}</div>}
+      {items.length === 0 && (
+        <div className="muted">
+          {search.trim() ? 'Ничего не найдено' : 'В избранном пока пусто (правый клик по карточке в каталоге)'}
+        </div>
+      )}
       <div className="history-grid">
         {items.map((it) => (
           <div
@@ -81,7 +101,7 @@ export default function Favorites(): JSX.Element {
                   void open(it);
                 }}
               >
-                ▶ Открыть
+                Открыть
               </button>
             </div>
             <div className="bar-label muted">

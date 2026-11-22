@@ -143,7 +143,7 @@ export function registerMangaProtocol(deps: {
       return new Response('Not found', { status: 404 });
     }
     try {
-      const buf = await requestPage(gid, index, onlineHeaders.get(gid) ?? {});
+      const buf = await requestPage(gid, index, onlineHeaders.get(gid) ?? {}, { thumb: !!parsed.thumb });
       if (!buf) {
         logger.warn('[page-serve] no buffer', gid.slice(0, 8), index);
         return new Response('Not found', { status: 404 });

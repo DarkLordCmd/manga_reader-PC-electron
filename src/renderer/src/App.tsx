@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StoreProvider, useStore } from './state/store';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
@@ -53,9 +53,31 @@ function Shell(): JSX.Element {
 
 export default function App(): JSX.Element {
   const [unlocked, setUnlocked] = useState<boolean | null>(null);
-  useEffect(() => {
-    window.api.pinHasPin().then((has) => setUnlocked(!has));
+  const [bootError, setBootError] = useState(false);
+  const checkLock = useCallback(() => {
+    setBootError(false);
+    setUnlocked(null);
+    window.api
+      .pinHasPin()
+      .then((has) => setUnlocked(!has))
+      .catch(() => setBootError(true));
   }, []);
+  useEffect(() => {
+    checkLock();
+  }, [checkLock]);
+  // An IPC failure here used to leave `unlocked === null` forever: a black
+  // window with no text and no way to retry.
+  if (bootError) {
+    return (
+      <div className="lock-screen">
+        <div className="lock-card">
+          <h3>Ошибка запуска</h3>
+          <p className="muted">Не удалось проверить PIN.</p>
+          <button onClick={checkLock}>Повторить</button>
+        </div>
+      </div>
+    );
+  }
   if (unlocked === null) return <div className="app" />;
   if (!unlocked) return <LockScreen onUnlock={() => setUnlocked(true)} />;
   return (

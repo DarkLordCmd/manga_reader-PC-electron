@@ -1,5 +1,5 @@
 import { resolveAtHome } from './mangadex';
-import { fetchRemangaChapter, fetchSenkuroChapter, mangaSeriesUrlFromChapterUrl } from './sources';
+import { fetchRemangaChapter, fetchSenkuroChapter, mangaSeriesUrlFromChapterUrl, senkuroSeriesUrlFromChapterUrl } from './sources';
 import { fetchSimpleGallery } from './simple-gallery';
 import { fetchMangaMelloChapter } from './sources';
 import * as cheerio from 'cheerio';
@@ -12,6 +12,9 @@ export const CGI_IMAGE_HOSTS = /(?:img\.com-x\.life\/comix\/|rus\.com-x\.life\/c
 // former inline openUrl routing in src/main/index.ts so behavior stays byte-identical.
 export interface GalleryResolution {
   title: string;
+  /** Chapter label when the source hands it over separately (Senkuro: the
+   * chapter node has only a number; the title is the work name). */
+  chapterLabel?: string | null;
   pageUrls: string[];
   coverUrl: string | null;
   source: string;
@@ -80,29 +83,43 @@ export async function resolveGallery(url: string, opts: { proxy?: string; cookie
     };
   }
   if (trimmed.includes('remanga.org/manga/')) {
-    const r = await fetchRemangaChapter(trimmed);
+    const r = await fetchRemangaChapter(trimmed, opts.proxy);
     return {
       title: r.title,
       pageUrls: r.pageUrls,
       coverUrl: null,
       source: 'Remanga',
       referer: 'https://remanga.org/',
+      proxy: opts.proxy,
       mangaId: seriesId,
       seriesId,
     };
   }
-  if (trimmed.includes('senkuro') && trimmed.includes('/chapter/')) {
-    const r = await fetchSenkuroChapter(trimmed, opts.cookieHeader ?? '');
-    return { title: r.title, pageUrls: r.pageUrls, coverUrl: null, source: 'Senkuro', referer: `${r.base}/`, mangaId: seriesId, seriesId };
+  if (trimmed.includes('senkuro') && /\/chapters?\//.test(trimmed)) {
+    const r = await fetchSenkuroChapter(trimmed, opts.cookieHeader ?? '', opts.proxy);
+    return {
+      title: r.title,
+      chapterLabel: r.chapterLabel,
+      pageUrls: r.pageUrls,
+      coverUrl: null,
+      source: 'Senkuro',
+      referer: `${r.base}/`,
+      proxy: opts.proxy,
+      // Series (manga) URL, not the chapter URL: the chapter list needs the
+      // manga slug, otherwise the library row breaks with "не удалось определить ветку".
+      mangaId: senkuroSeriesUrlFromChapterUrl(trimmed) ?? seriesId,
+      seriesId: senkuroSeriesUrlFromChapterUrl(trimmed) ?? seriesId,
+    };
   }
   if (trimmed.includes('mangamello')) {
-    const r = await fetchMangaMelloChapter(trimmed);
+    const r = await fetchMangaMelloChapter(trimmed, opts.proxy);
     return {
       title: r.title,
       pageUrls: r.pageUrls,
       coverUrl: null,
       source: 'MangaMello',
       referer: 'https://mangamello.com/',
+      proxy: opts.proxy,
       mangaId: seriesId,
       seriesId,
     };
@@ -124,6 +141,7 @@ export async function resolveGallery(url: string, opts: { proxy?: string; cookie
       coverUrl: null,
       source: 'Mangalib',
       referer: 'https://mangalib.me/',
+      proxy: opts.proxy,
       mangaId: seriesId,
       seriesId,
     };
@@ -146,7 +164,7 @@ export async function resolveGallery(url: string, opts: { proxy?: string; cookie
       // the com-x reader is a JS SPA — render through the hidden browser
       // channel and harvest the gallery <img>s.
       const { fetchHtmlViaBrowser } = await import('./browser-fetch');
-      const rendered = await fetchHtmlViaBrowser(trimmed, { timeoutMs: 60_000 });
+      const rendered = await fetchHtmlViaBrowser(trimmed, { timeoutMs: 60_000, proxy: opts.proxy });
       const $rd = cheerio.load(rendered);
       const pages: string[] = [];
       const seen = new Set<string>();
@@ -167,7 +185,10 @@ export async function resolveGallery(url: string, opts: { proxy?: string; cookie
         }
       }
       const title = ($rd('title').first().text().trim() || 'Com-X').slice(0, 120);
-      return { title, pageUrls: pages, coverUrl: null, source: 'Com-X', referer: trimmed, mangaId: seriesId, seriesId };
+      // An empty list used to become a "completed 0/0" download that cannot be
+      // opened; fail here so the task lands in error with a readable message.
+      if (pages.length === 0) throw new Error('Com-X: страницы главы не найдены (сайт изменил вёрстку или глава недоступна)');
+      return { title, pageUrls: pages, coverUrl: null, source: 'Com-X', referer: trimmed, proxy: opts.proxy, mangaId: seriesId, seriesId };
     }
     const g = await fetchSimpleGallery(trimmed, { proxy: opts.proxy, cookieHeader: opts.cookieHeader });
     return {

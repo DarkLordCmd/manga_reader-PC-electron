@@ -1,3 +1,4 @@
+import { errorText } from '../lib/errors';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ChapterListItem } from '@shared/ipc';
 import type { LibraryItem, ReadingStatus } from '@shared/library';
@@ -6,6 +7,7 @@ import { tagChipStyle } from '../lib/tag-colors';
 import { mangashiTitleUrl } from '../lib/adult';
 import { useStore } from '../state/store';
 import { useChapterDownloads } from '../lib/use-chapter-downloads';
+import { useBodyScrollLock } from '../lib/use-modal';
 import ChapterDownloadButton from './ChapterDownloadButton';
 
 const STATUS_LABELS: Record<ReadingStatus, string> = {
@@ -23,7 +25,9 @@ interface Props {
   item: LibraryItem;
   onClose: () => void;
   onOpen: () => void;
-  onOpenChapter: (chapterId: string, index: number) => void;
+  /** The full chapter list travels with the click: the reader needs it for the
+   * chapter panel and for auto-advance to the next chapter. */
+  onOpenChapter: (chapterId: string, index: number, chapters: ChapterListItem[]) => void;
   onChanged: () => void;
 }
 
@@ -37,7 +41,23 @@ export default function LibraryItemModal({ item, onClose, onOpen, onOpenChapter,
   const [chapterError, setChapterError] = useState<string | null>(null);
   const [workTags, setWorkTags] = useState<string[]>([]);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
   const downloads = useChapterDownloads();
+  useBodyScrollLock();
+
+  // Escape closes and focus moves into the dialog (Tab used to walk the hidden
+  // sidebar/grid behind the overlay).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    closeRef.current?.focus();
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   useEffect(() => {
     setStatus(item.status ?? '');
@@ -48,30 +68,37 @@ export default function LibraryItemModal({ item, onClose, onOpen, onOpenChapter,
 
   // Chapter list for the title behind this row. Manga-shi keeps the chapter URL
   // in `url`, so the title URL is derived from it.
+  const [chapterRetry, setChapterRetry] = useState(0);
   useEffect(() => {
     let cancelled = false;
     setChapters(null);
     setChapterError(null);
-    const source = /manga-shi\./i.test(item.url) ? mangashiTitleUrl(item.url) : item.url;
+    // The chapter list belongs to the SERIES: item.url is the chapter currently
+    // being read (…/chapter/<id>), and asking for chapters by that URL made
+    // Senkuro answer an empty `manga` ("не удалось определить ветку").
+    const source = /manga-shi\./i.test(item.url) ? mangashiTitleUrl(item.url) : item.seriesId || item.url;
     window.api
       .fetchChapterList(source)
       .then((list) => {
         if (!cancelled) setChapters(list);
       })
       .catch((e) => {
-        if (!cancelled) setChapterError(String(e?.message ?? e));
+        if (!cancelled) setChapterError(errorText(e));
       });
     return () => {
       cancelled = true;
     };
-  }, [item.key, item.url]);
+  }, [item.key, item.url, chapterRetry]);
 
   // Tags of the work itself, as the source lists them (Manga-shi exposes them
   // through schema.org JSON-LD on the title page).
   useEffect(() => {
     let cancelled = false;
     setWorkTags([]);
-    const source = /manga-shi\./i.test(item.url) ? mangashiTitleUrl(item.url) : item.url;
+    // The chapter list belongs to the SERIES: item.url is the chapter currently
+    // being read (…/chapter/<id>), and asking for chapters by that URL made
+    // Senkuro answer an empty `manga` ("не удалось определить ветку").
+    const source = /manga-shi\./i.test(item.url) ? mangashiTitleUrl(item.url) : item.seriesId || item.url;
     window.api
       .catalogTags(source)
       .then((t) => {
@@ -116,13 +143,21 @@ export default function LibraryItemModal({ item, onClose, onOpen, onOpenChapter,
   const currentUrl = normUrl(item.url);
 
   return (
-    <div className="overlay" onClick={onClose}>
+    <div
+      className="overlay"
+      // Only the backdrop closes: dragging from inside the card (note selection,
+      // rating slider, textarea resize handle) and releasing outside emitted a
+      // click on the overlay and discarded unsaved edits.
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="overlay-card library-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="overlay-head">
           <h3 className="overlay-title" title={item.title}>
             {item.title || 'Без названия'}
           </h3>
-          <button className="overlay-close" aria-label="Закрыть" title="Закрыть" onClick={onClose}>
+          <button ref={closeRef} className="overlay-close" aria-label="Закрыть" title="Закрыть" onClick={onClose}>
             ×
           </button>
         </div>
@@ -167,7 +202,14 @@ export default function LibraryItemModal({ item, onClose, onOpen, onOpenChapter,
             </div>
             <div className="chapter-list modal-chapters" ref={listRef}>
               {!chapters && !chapterError && <div className="overlay-note">Загрузка глав…</div>}
-              {chapterError && <div className="error-text">{chapterError}</div>}
+              {chapterError && (
+                <div className="chapter-error-row">
+                  <span className="error-text">{chapterError}</span>
+                  <button className="btn-ghost" onClick={() => setChapterRetry((n) => n + 1)}>
+                    Повторить
+                  </button>
+                </div>
+              )}
               {chapters &&
                 chapters.map((c, i) => {
                   const isCurrent = normUrl(c.chapter_id) === currentUrl;
@@ -177,7 +219,7 @@ export default function LibraryItemModal({ item, onClose, onOpen, onOpenChapter,
                       <button
                         className={`chapter-item${isCurrent ? ' current' : ''}`}
                         title={c.title ? `${c.chapter_num} — ${c.title}` : c.chapter_num}
-                        onClick={() => onOpenChapter(c.chapter_id, i)}
+                        onClick={() => onOpenChapter(c.chapter_id, i, chapters)}
                       >
                         <span className="chapter-num">{c.chapter_num}</span>
                         {c.title ? <span className="chapter-name">{c.title}</span> : null}
@@ -270,7 +312,7 @@ export default function LibraryItemModal({ item, onClose, onOpen, onOpenChapter,
           </button>
           <span className="actions-spacer" />
           <button className="btn-secondary" onClick={onOpen}>
-            ▶ Открыть
+            Открыть
           </button>
           <button className="btn-primary" onClick={() => void save()}>
             Сохранить

@@ -9,6 +9,7 @@ import type { SettingsService } from '../services/settings';
 import { ExAccountsService, parseCookieLogin } from '../services/accounts';
 import { mergeCookieHeaders } from '../services/accounts-parse';
 import { whenEmbeddedTorReady } from '../services/tor-embedded';
+import { verifyEhLogin } from '../services/eh-extras';
 
 export interface AccountsDeps {
   settings: SettingsService;
@@ -39,6 +40,17 @@ export function registerAccounts(deps: AccountsDeps): void {
     }
     const result = await runLoginWindow(url, needsTor ? effectiveTorSocks() : '');
     if (!result) return null;
+    // A closed/cancelled EH window leaves guest cookies (an `onikakushi` stub);
+    // saving them made every later request return an empty page. Verify the
+    // session against the site before persisting anything.
+    if (/exhentai|e-hentai/i.test(url)) {
+      const v = await verifyEhLogin(url, result.cookies, needsTor ? effectiveTorSocks() : '');
+      if (!v.ok) {
+        throw new Error(
+          `Вход в ExHentai не выполнен: ${v.reason}. Открой окно входа снова, введи логин/пароль и код с картинки (капча на onion обязательна).`,
+        );
+      }
+    }
     // Persist cookies into settings depending on target. Merge with what is
     // already stored: a canceled/partial login must not replace a valid
     // session with guest cookies.

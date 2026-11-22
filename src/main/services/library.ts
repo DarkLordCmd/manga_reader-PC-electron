@@ -39,6 +39,10 @@ export class LibraryService {
 
   private upsertEntry(entry: CatalogAddEntry): LibraryItem {
     const key = seriesKeyForUrl(entry.url) ?? entry.seriesId ?? entry.url;
+    // Keep the original timestamps: adding an old history entry to the library
+    // ("＋" in History) must not make it look like it was just read and jump it
+    // to the top of History / the "last read" sort.
+    const existing = this.repo.getIncludingDeleted(key) ?? this.repo.findByUrl(entry.url);
     const upsert: SeriesUpsert = {
       key,
       seriesId: entry.seriesId,
@@ -53,6 +57,8 @@ export class LibraryService {
       chapterLabel: null,
       chapterIndex: null,
       chapterTotal: null,
+      openedAt: existing?.openedAt,
+      createdAt: existing?.createdAt,
     };
     return this.repo.upsertHistory(upsert);
   }
@@ -115,7 +121,19 @@ export class LibraryService {
     this.repo.setTags(key, tags);
   }
   removeFromLibrary(key: string): void {
+    const item = this.repo.getIncludingDeleted(key);
     this.repo.setStatus(key, null);
+    // "Remove from library" must also drop the library-only metadata, otherwise
+    // the row becomes a ghost: hidden from Library (status null), from History
+    // (no progress) and from "clear history" (it has a note/rating) — and the
+    // next add silently resurrected the old note/rating/tags.
+    this.repo.setNote(key, '');
+    this.repo.setRating(key, null);
+    this.repo.setTags(key, []);
+    if (item && item.favoritedAt === null && item.totalPages === 0) {
+      // Nothing left that any screen shows: tombstone it (also propagates via sync).
+      this.repo.delete(key);
+    }
   }
   deleteSeries(key: string): void {
     this.repo.delete(key);

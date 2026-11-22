@@ -8,6 +8,8 @@ export interface CatalogItem {
   chapterCount?: number | null;
   /** Adult-only work (18+ badge on the cover) for non-R34 sources. */
   adult?: boolean;
+  /** Publication status when the listing provides it (Senkuro search). */
+  status?: string | null;
 }
 
 export type CatalogSourceKey =

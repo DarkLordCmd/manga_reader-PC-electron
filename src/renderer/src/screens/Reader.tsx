@@ -1,3 +1,4 @@
+import { errorText } from '../lib/errors';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { startPageFor, startScrollFor } from '@shared/settings';
 import type { ArchiveCost } from '@shared/ipc';
@@ -7,7 +8,14 @@ import ScrollView from '../components/ScrollView';
 import BookView from '../components/BookView';
 import ThumbnailPanel from '../components/ThumbnailPanel';
 import ChapterListModal from '../components/ChapterListModal';
-import { isReaderAtEnd, clampWidthScale, WIDTH_SCALE_DEFAULT } from './reader/viewMath';
+import EhInfoModal from './reader/EhInfoModal';
+import { isReaderAtEnd, clampWidthScale, WIDTH_SCALE_DEFAULT, spreadStart, spreadIndices } from './reader/viewMath';
+
+/** Last reading position per open gallery. Leaving the Reader screen unmounts
+ * the component while `opened` stays in the store: without this, coming back
+ * from History/Catalog restored the stale `opened.startPage` (the page the
+ * gallery was opened at) and the next progress flush persisted that rollback. */
+let lastPosition = { key: '', index: 0 };
 
 export default function Reader(): JSX.Element {
   const { settings, setSettings, opened, setOpened } = useStore();
@@ -21,6 +29,30 @@ export default function Reader(): JSX.Element {
   const [archive, setArchive] = useState<ArchiveCost | null>(null);
   const [archiveDltype, setArchiveDltype] = useState('org');
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [showEhInfo, setShowEhInfo] = useState(false);
+
+  // The main process orders page loading by distance from the reading position;
+  // it only learned that position from the 1.2-5 s progress flush, so a fast
+  // scroll/jump loaded pages around a stale target. Sync it on every navigation.
+  const openedRef = useRef(opened);
+  openedRef.current = opened;
+  const posSyncPendingRef = useRef(0);
+  const posSyncTimerRef = useRef<number | null>(null);
+  const syncReadingPosition = useCallback((index: number) => {
+    const o = openedRef.current;
+    if (o?.kind !== 'online') return;
+    // Called on every visible-page change: while scrolling fast that is several
+    // IPC calls per second. Coalesce to one per 400 ms (trailing) — the main
+    // process only uses it to re-center the warm-ahead window.
+    posSyncPendingRef.current = index;
+    if (posSyncTimerRef.current != null) return;
+    const send = (): void => {
+      posSyncTimerRef.current = null;
+      const o2 = openedRef.current;
+      if (o2?.kind === 'online') void window.api.setReadingPosition(o2.id, posSyncPendingRef.current);
+    };
+    posSyncTimerRef.current = window.setTimeout(send, 400);
+  }, []);
 
   const perScreen = Math.max(1, settings.pages_per_screen);
   const pageCount = opened?.pageCount ?? 0;
@@ -28,14 +60,31 @@ export default function Reader(): JSX.Element {
   const webtoon = opened?.kind === 'online' && !!opened.webtoon;
   const [hideToolbar, setHideToolbar] = useState(false);
 
+  const openedKeyRef = useRef('');
+  /** Auto-advance is only armed by real navigation (scroll/next): landing on
+   * the last page via the slider, a thumbnail or a restore must not open the
+   * next chapter one second later. */
+  const advanceArmedRef = useRef(false);
   useEffect(() => {
+    const id = opened?.id ?? '';
+    if (!opened) return;
+    if (openedKeyRef.current === id) {
+      // Same gallery re-rendered (e.g. History attached the chapter list a few
+      // seconds after "Продолжить"): keep the user's position and offset.
+      setCurrentIndex((prev) => Math.min(Math.max(0, prev), Math.max(0, pageCount - 1)));
+      return;
+    }
+    openedKeyRef.current = id;
+    advanceArmedRef.current = false;
     // New gallery: forget the previous chapter's in-page offset until the user
     // actually scrolls (offsetDirty gate in flushProgress protects the stored
     // value from being overwritten by race/restore flushes).
     offRef.current = 0;
     offsetDirtyRef.current = false;
     const last = Math.max(0, pageCount - 1);
-    const sp = opened?.startPage ?? 0;
+    // A remount of the SAME gallery keeps the last position; a fresh gallery
+    // uses the one the caller computed (history row / openUrl).
+    const sp = lastPosition.key === id ? lastPosition.index : (opened.startPage ?? 0);
     // Clamp the restored position: a gallery that shrank (rescan, shorter
     // chapter) must never show Pg outside 1..pageCount.
     const idx = Math.min(Math.max(0, Number.isFinite(sp) ? sp : 0), last);
@@ -45,13 +94,35 @@ export default function Reader(): JSX.Element {
     // progress is silently reset to the first page. Webtoons additionally
     // restore the vertical offset saved inside the page (fetched fresh, so a
     // re-open within the same session sees the latest position too).
-    const key = opened?.url ?? '';
+    const key = opened.url ?? '';
     void window.api.getSettings().then((fresh) => {
+      if (openedKeyRef.current !== id) return;
       const off = startScrollFor(key, fresh.read_scroll);
       setJumpTo(idx > 0 || off > 0 ? { index: idx, offset: off } : null);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, pageCount]);
+
+  // Remember the position for a same-session remount of the Reader screen.
+  useEffect(() => {
+    const id = opened?.id;
+    if (id) lastPosition = { key: id, index: currentIndex };
+  }, [opened?.id, currentIndex]);
+
+  const onUserScroll = useCallback(() => {
+    // Real (non-programmatic) scrolling arms the end-of-chapter auto-advance;
+    // slider/thumbnail/restore jumps do not.
+    advanceArmedRef.current = true;
+  }, []);
+
+  // Leaving the reader with immersive mode on used to keep the WHOLE window in
+  // DOM fullscreen (the catalog was then rendered as a fullscreen document).
+  useEffect(
+    () => () => {
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!showHelp) return;
@@ -69,6 +140,10 @@ export default function Reader(): JSX.Element {
   idxRef.current = currentIndex;
   const offRef = useRef(0);
   const offsetDirtyRef = useRef(false);
+  /** Set by the "Сбросить" button: the periodic/final flush must not write the
+   * current page back and undo the reset. Cleared as soon as the user actually
+   * moves (page change) — from then on progress is recorded normally. */
+  const suppressFlushRef = useRef(false);
   const onVisiblePos = useCallback((index: number, offsetPx: number): void => {
     // Atomic pair: page index and in-page offset come from the SAME scroll
     // observation, so a flush can never mix a page from one moment with an
@@ -81,6 +156,8 @@ export default function Reader(): JSX.Element {
     (immediate: boolean): void => {
       const o = opened;
       if (!o || pageCount === 0) return;
+      // A manual reset must survive the final flush when the reader closes.
+      if (suppressFlushRef.current) return;
       const page = idxRef.current + 1;
       const off = offsetDirtyRef.current ? offRef.current : undefined;
       if (!immediate && page === savedRef.current.page && o.url === savedRef.current.url && off === savedRef.current.off) return;
@@ -88,7 +165,10 @@ export default function Reader(): JSX.Element {
       // Also informs the main process so warm-ahead (load pages ~32 forward)
       // re-centers around the current position.
       if (o.kind === 'online') window.api.setReadingPosition(o.id, idxRef.current);
-      window.api.recordProgress(o.url, page, pageCount, offRef.current);
+      // Send `off` (undefined while no scroll was observed since the gallery
+      // opened) rather than offRef.current: an unconditional 0 wiped the saved
+      // in-page offset of a webtoon the user simply had not scrolled yet.
+      window.api.recordProgress(o.url, page, pageCount, off);
     },
     [opened, pageCount],
   );
@@ -109,15 +189,24 @@ export default function Reader(): JSX.Element {
   }, [opened?.url, pageCount]);
 
   const goNext = useCallback(() => {
-    const next = Math.min(currentIndex + perScreen, Math.max(0, pageCount - 1));
+    const raw = Math.min(currentIndex + perScreen, Math.max(0, pageCount - 1));
+    // Book mode: land on the next SPREAD start (cover alone, then aligned
+    // pairs), otherwise the counter/highlight drift by one page.
+    const next = settings.reading_mode === 'Book' ? spreadStart(raw, pageCount, perScreen) : raw;
+    // Deliberate forward navigation may arm the end-of-chapter auto-advance.
+    advanceArmedRef.current = true;
     setCurrentIndex(next);
+    syncReadingPosition(next);
     if (settings.reading_mode === 'Scroll') setJumpTo({ index: next, offset: 0 });
-  }, [currentIndex, perScreen, pageCount, settings.reading_mode]);
+  }, [currentIndex, perScreen, pageCount, settings.reading_mode, syncReadingPosition]);
   const goPrev = useCallback(() => {
-    const next = Math.max(0, currentIndex - perScreen);
+    const raw = Math.max(0, currentIndex - perScreen);
+    const next = settings.reading_mode === 'Book' ? spreadStart(raw, pageCount, perScreen) : raw;
+    advanceArmedRef.current = false;
     setCurrentIndex(next);
+    syncReadingPosition(next);
     if (settings.reading_mode === 'Scroll') setJumpTo({ index: next, offset: 0 });
-  }, [currentIndex, perScreen, settings.reading_mode]);
+  }, [currentIndex, perScreen, pageCount, settings.reading_mode, syncReadingPosition]);
 
   const setWidthBy = useCallback(
     (delta: number): void => {
@@ -149,12 +238,39 @@ export default function Reader(): JSX.Element {
       onZoomReset: resetWidth,
     },
     rtl,
+    // Hotkeys must not drive the reader underneath an open dialog: arrows
+    // silently paged while the chapter list was open, 'm'/'t' changed settings.
+    showHelp || showChapters || !!archive,
   );
 
-  const onVisible = useCallback((i: number) => {
-    if (Number.isInteger(i)) setCurrentIndex(i);
-  }, []);
+  // The main process orders page loading by distance from the reading position;
+  // it only learns that position from setReadingPosition (previously once per
+  // 1.2-5 s flush), so a fast scroll/jump loaded pages around a stale target.
+  const onVisible = useCallback(
+    (i: number) => {
+      if (!Number.isInteger(i)) return;
+      // Any real page change means the user moved on: stop suppressing flushes.
+      suppressFlushRef.current = false;
+      setCurrentIndex(i);
+      syncReadingPosition(i);
+    },
+    [syncReadingPosition],
+  );
   const onJumpDone = useCallback(() => setJumpTo(null), []);
+
+  // Flush the coalesced reading position when the reader unmounts, so the main
+  // process's warm-ahead window follows the last page the user saw.
+  useEffect(
+    () => () => {
+      if (posSyncTimerRef.current != null) {
+        clearTimeout(posSyncTimerRef.current);
+        posSyncTimerRef.current = null;
+        const o = openedRef.current;
+        if (o?.kind === 'online') void window.api.setReadingPosition(o.id, posSyncPendingRef.current);
+      }
+    },
+    [],
+  );
 
   // Whether the final screen of the gallery is on display. In Book mode the
   // visible spread may END on the last page while currentIndex (first page of
@@ -190,10 +306,14 @@ export default function Reader(): JSX.Element {
       advancedRef.current = false;
       return;
     }
+    // Arriving at the last page via the slider/thumbnail/jump/restore must not
+    // switch chapter: only real navigation (scroll, "next") arms this.
+    if (!advanceArmedRef.current) return;
     if (advancedRef.current) return;
     const next = list[idx + 1];
     if (!next) return;
     advancedRef.current = true;
+    advanceArmedRef.current = false;
     const mangaId = opened.mangaId;
     const coverUrl = opened.coverUrl;
     const t = setTimeout(() => {
@@ -218,9 +338,17 @@ export default function Reader(): JSX.Element {
   const jump = useMemo(
     () => (): void => {
       const n = parseInt(jumpText, 10);
-      if (!isNaN(n)) setJumpTo({ index: Math.min(Math.max(0, n - 1), Math.max(0, pageCount - 1)), offset: 0 });
+      if (isNaN(n)) return;
+      const idx = Math.min(Math.max(0, n - 1), Math.max(0, pageCount - 1));
+      // Book mode renders from currentIndex only — jumpTo is consumed by
+      // ScrollView, so setting it alone made the page-number box do nothing
+      // outside Scroll mode.
+      advanceArmedRef.current = false;
+      setCurrentIndex(idx);
+      setJumpTo({ index: idx, offset: 0 });
+      syncReadingPosition(idx);
     },
-    [jumpText, pageCount],
+    [jumpText, pageCount, syncReadingPosition],
   );
 
   const openFolder = useCallback(async () => {
@@ -242,7 +370,11 @@ export default function Reader(): JSX.Element {
     if (!url) return;
     setOpeningUrl(true);
     try {
-      const saved = startPageFor(url, settings.read_progress);
+      // Fresh settings: the renderer's read_progress snapshot can be hours old
+      // (main writes it without broadcasting), so reopening a chapter read in
+      // this session used to start at page 1 and overwrite the progress.
+      const fresh = await window.api.getSettings();
+      const saved = startPageFor(url, fresh.read_progress);
       const r = await window.api.openUrl(url, saved);
       if (r) {
         setOpened({ kind: 'online', ...r, startPage: saved });
@@ -251,27 +383,30 @@ export default function Reader(): JSX.Element {
         alert('Не удалось открыть URL');
       }
     } catch (e: any) {
-      alert(`Не удалось открыть URL: ${e?.message ?? e}`);
+      alert(`Не удалось открыть URL: ${errorText(e)}`);
     } finally {
       setOpeningUrl(false);
     }
-  }, [urlText, settings.read_progress, setOpened]);
+  }, [urlText, setOpened]);
 
   const openChapter = useCallback(
     async (chapterId: string, chapterList: import('@shared/ipc').ChapterListItem[], chapterIndex: number) => {
       const current = opened?.kind === 'online' ? opened : null;
       try {
-        const saved = startPageFor(chapterId, settings.read_progress);
+        // Fresh settings — see openUrl: the renderer snapshot is stale, so a
+        // previously-read chapter reopened at page 1 and the progress was lost.
+        const fresh = await window.api.getSettings();
+        const saved = startPageFor(chapterId, fresh.read_progress);
         const r = await window.api.openUrl(chapterId, saved, current?.mangaId ?? null, current?.coverUrl ?? null, null, chapterIndex);
         if (r) {
           setOpened({ kind: 'online', ...r, startPage: saved, coverUrl: current?.coverUrl ?? null, chapterList, chapterIndex });
           setShowChapters(false);
         }
       } catch (e: any) {
-        alert(`Не удалось открыть главу: ${e?.message ?? e}`);
+        alert(`Не удалось открыть главу: ${errorText(e)}`);
       }
     },
-    [opened, settings.read_progress, setOpened],
+    [opened, setOpened],
   );
 
   const openArchiveBuy = useCallback(async () => {
@@ -285,6 +420,8 @@ export default function Reader(): JSX.Element {
       }
       setArchiveDltype(cost.options[0]?.key ?? 'org');
       setArchive(cost);
+    } catch (e: any) {
+      alert(`Архив: ${errorText(e)}`);
     } finally {
       setArchiveBusy(false);
     }
@@ -392,6 +529,15 @@ export default function Reader(): JSX.Element {
               <span>В библиотеку</span>
             </button>
             {(opened.source.includes('ExHentai') || opened.source.includes('E-Hentai')) && (
+              <button className="rt-btn rt-btn-labeled rt-btn-compact" onClick={() => setShowEhInfo(true)} title="Инфо, торренты, H@H">
+                <svg viewBox="0 0 24 24" className="rt-icon" aria-hidden="true">
+                  <path d="M12 8v.01M11 11.5h1v6h1" />
+                  <circle cx="12" cy="12" r="8.5" />
+                </svg>
+                <span>Инфо</span>
+              </button>
+            )}
+            {(opened.source.includes('ExHentai') || opened.source.includes('E-Hentai')) && (
               <button className="rt-btn rt-btn-labeled rt-btn-compact" disabled={archiveBusy} onClick={() => void openArchiveBuy()} title="Скачать архив галереи">
                 <svg viewBox="0 0 24 24" className="rt-icon" aria-hidden="true">
                   <path d="M12 4v10.5M7.5 10.5 12 15l4.5-4.5M4.5 18.5h15" />
@@ -406,7 +552,16 @@ export default function Reader(): JSX.Element {
           <div className="rt-group">
             <button
               className="rt-btn rt-btn-labeled rt-btn-compact rt-btn-quiet"
-              onClick={() => void window.api.recordProgress(opened.url, 0, 1, 0)}
+              onClick={() => {
+                if (!opened) return;
+                // Reset means "this chapter has not been read": page 1 of N.
+                // The old call persisted 0/1 and was immediately overwritten by
+                // the periodic flush (and by the final flush on leaving), so the
+                // button looked dead in History/Library.
+                suppressFlushRef.current = true;
+                savedRef.current = { url: opened.url, page: 0, off: 0 };
+                void window.api.recordProgress(opened.url, 1, Math.max(1, pageCount), 0);
+              }}
               title="Сбросить прогресс этой главы"
             >
               <svg viewBox="0 0 24 24" className="rt-icon" aria-hidden="true">
@@ -467,8 +622,10 @@ export default function Reader(): JSX.Element {
               currentIndex={currentIndex}
               thumbSize={settings.thumb_size}
               onSelect={(i) => {
+                advanceArmedRef.current = false;
                 setCurrentIndex(i);
                 setJumpTo({ index: i, offset: 0 });
+                syncReadingPosition(i);
               }}
             />
           )}
@@ -484,6 +641,11 @@ export default function Reader(): JSX.Element {
                 onVisible={onVisible}
                 onVisiblePos={onVisiblePos}
                 onJumpDone={onJumpDone}
+                onUserScroll={() => {
+                  // Real (non-programmatic) scrolling arms the end-of-chapter
+                  // auto-advance; slider/thumbnail/restore jumps do not.
+                  advanceArmedRef.current = true;
+                }}
               />
             )}
             {settings.reading_mode === 'Book' && (
@@ -493,6 +655,7 @@ export default function Reader(): JSX.Element {
                 currentIndex={currentIndex}
                 pagesPerScreen={perScreen}
                 direction={settings.book_direction}
+                pageMargin={settings.page_margin}
                 onPrev={goPrev}
                 onNext={goNext}
               />
@@ -506,8 +669,10 @@ export default function Reader(): JSX.Element {
                 value={Math.min(currentIndex + 1, pageCount)}
                 onChange={(e) => {
                   const v = Number(e.target.value) - 1;
+                  advanceArmedRef.current = false;
                   setCurrentIndex(v);
                   setJumpTo({ index: v, offset: 0 });
+                  syncReadingPosition(v);
                 }}
               />
             )}
@@ -515,6 +680,7 @@ export default function Reader(): JSX.Element {
         </div>
       )}
 
+      {showEhInfo && opened?.kind === 'online' && <EhInfoModal url={opened.url} onClose={() => setShowEhInfo(false)} />}
       {showChapters && opened?.kind === 'online' && opened.mangaId && (
         <ChapterListModal
           mangaId={opened.mangaId}
@@ -540,7 +706,7 @@ export default function Reader(): JSX.Element {
               <li>+ / − — Zoom (Scroll)</li>
               <li>0 — Reset zoom</li>
               <li>H / F — Fullscreen (immersive)</li>
-              <li>? — Toggle this help</li>
+              <li>? — Toggle this help (Esc closes)</li>
             </ul>
           </div>
         </div>

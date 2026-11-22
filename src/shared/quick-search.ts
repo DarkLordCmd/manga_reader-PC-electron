@@ -47,6 +47,32 @@ export function moveQuickSearch(list: QuickSearch[], id: string, dir: 'up' | 'do
   return next;
 }
 
+/**
+ * Moves a preset past the nearest VISIBLE neighbour.
+ *
+ * The presets menu hides R34 sources while the privacy toggle is off, but the
+ * arrows used to swap with the neighbouring entry in the FULL list: the last
+ * visible row still had an enabled "down" arrow and clicking it reordered the
+ * hidden tail without any visible change.
+ */
+export function moveQuickSearchInView(
+  list: QuickSearch[],
+  id: string,
+  dir: 'up' | 'down',
+  isHidden: (q: QuickSearch) => boolean = () => false,
+): QuickSearch[] {
+  const i = list.findIndex((q) => q.id === id);
+  if (i < 0) return list;
+  const step = dir === 'up' ? -1 : 1;
+  for (let j = i + step; j >= 0 && j < list.length; j += step) {
+    if (isHidden(list[j])) continue;
+    const next = [...list];
+    [next[i], next[j]] = [next[j], next[i]];
+    return next;
+  }
+  return list;
+}
+
 /** Splits an E-Hentai search expression (as saved in a quick-search preset)
  * into free-text `keyword` and tag-bar `tags`. Tag tokens (namespace:tag or an
  * exclusion) go to the tag bar; exclusions keep the UI's `!` marker and quotes

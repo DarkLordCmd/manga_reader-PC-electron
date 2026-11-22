@@ -8,6 +8,9 @@ interface Props {
   currentIndex: number;
   pagesPerScreen: number;
   direction: 'Ltr' | 'Rtl';
+  /** Book-mode page margin (settings.page_margin). It used to be saved and
+   * synced but never rendered — the "Поля страницы" slider did nothing. */
+  pageMargin?: number;
   onPrev: () => void;
   onNext: () => void;
 }
@@ -19,7 +22,16 @@ interface Props {
  * — the browser then (re)fires a `click` on whichever child sat under the
  * cursor, so navigation must NOT live on onClick handlers, or a swipe that
  * ends over a tap-zone would advance twice. */
-export default function BookView({ galleryId, pageCount, currentIndex, pagesPerScreen, direction, onPrev, onNext }: Props): JSX.Element {
+export default function BookView({
+  galleryId,
+  pageCount,
+  currentIndex,
+  pagesPerScreen,
+  direction,
+  pageMargin = 12,
+  onPrev,
+  onNext,
+}: Props): JSX.Element {
   const press = useRef<{ x: number; y: number } | null>(null);
 
   const start = spreadStart(currentIndex, pageCount, pagesPerScreen);
@@ -54,7 +66,7 @@ export default function BookView({ galleryId, pageCount, currentIndex, pagesPerS
   return (
     <div className="book-view" onPointerDown={onPointerDown} onPointerUp={onPointerUp}>
       <div className="book-zone left" />
-      <div className="book-pages">
+      <div className="book-pages" style={{ padding: pageMargin, gap: Math.max(2, pageMargin) }}>
         {ordered.map((i) => (
           <PageImg key={i} galleryId={galleryId} index={i} style={single ? { maxWidth: '100%' } : undefined} />
         ))}

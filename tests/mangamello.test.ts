@@ -13,7 +13,10 @@ describe('mangamello parsers', () => {
     expect(r[0].title).toBe('Gintama');
     expect(r[0].url).toContain('/manga/77/');
     expect(r[0].coverUrl).toContain('gintama.jpg');
-    expect(r[0].pages).toBe(612);
+    // `chapter` in the API is the last chapter NUMBER, not a page count: it must
+    // land in chapterCount (the card renders `pages` as "N стр.").
+    expect(r[0].chapterCount).toBe(612);
+    expect(r[0].pages).toBeNull();
   });
   it('parses chapter pages', () => {
     const r = parseMangaMelloChapter(chapterJson);

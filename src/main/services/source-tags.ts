@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { httpFetch } from './http';
 import type { Settings } from '@shared/settings';
+import { proxyForUrl } from './proxy-policy';
 
 /**
  * Tags for sources whose *listing* does not carry them.
@@ -21,12 +22,13 @@ async function fetchHtml(
   url: string,
   settings: Settings,
   opts: { torSocks: string },
-  siteKey: string | null,
+  _siteKey: string | null,
   cookie?: string,
   hx = false,
 ): Promise<string | null> {
-  const useTor = url.includes('.onion') || (siteKey ? settings.tor_proxied_sites.includes(siteKey) : false);
-  const proxy = useTor ? opts.torSocks : undefined;
+  // Same proxy policy as the catalog/reader/covers: a title page on a source
+  // routed through Tor must not be requested directly.
+  const proxy = proxyForUrl(url, settings, opts.torSocks);
   try {
     const r = await httpFetch(
       {
@@ -69,7 +71,7 @@ async function nhentaiTags(url: string, settings: Settings, opts: { torSocks: st
   );
   if (!html) return [];
   const $ = cheerio.load(html);
-  let out = textsOf($, '.tag .name, .tags .name, a.tag .name');
+  const out = textsOf($, '.tag .name, .tags .name, a.tag .name');
   if (out.length === 0) {
     for (const el of $('[data-tags]').toArray()) {
       out.push(...String($(el).attr('data-tags') ?? '').split(','));
@@ -108,7 +110,10 @@ export async function fetchSourceTags(
 ): Promise<string[]> {
   const host = hostOf(url);
   if (!host) return [];
-  if (/nhentai\.(net|org)$/i.test(host)) return await nhentaiTags(url, settings, opts);
+  // The onion mirror's host ends in ".onion" and never matched `nhentai\.(net|org)$`,
+  // so the dedicated onion-cookie branch below was dead code: onion galleries got
+  // no tags (and therefore no 18+ badge).
+  if (/nhentai\.(net|org)$/i.test(host) || /\.onion$/i.test(host)) return await nhentaiTags(url, settings, opts);
   // Senkuro is handled from its GraphQL catalog (labels) — the title page is
   // behind a 403 for non-browser clients.
   if (/manga-shi\./i.test(host)) return await mangashiTags(url, settings, opts);

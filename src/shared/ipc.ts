@@ -43,12 +43,33 @@ export interface CatalogCard {
   tags?: string[];
   /** Adult-only work in a non-R34 source — shown as an 18+ badge on the cover. */
   adult?: boolean;
+  /** Publication status (Senkuro: Анонс/Выходит/Завершён/Заморожен/Отменён). */
+  status?: string | null;
 }
 
 export interface EhTagSuggestion {
   ns: string;
   tn: string;
   display: string;
+}
+
+/** One row of the catalog search autocomplete. `work` rows open the title,
+ * `tag` rows (E-Hentai has no work autocomplete, only its tag API) append the
+ * tag to the query. */
+export interface SearchSuggestion {
+  kind: 'work' | 'tag';
+  title: string;
+  /** Source series URL / MangaDex id used to open the title. */
+  url?: string | null;
+  coverUrl?: string | null;
+  /** "Манхва · ★ 8.45 · Онгоинг · Переводится". */
+  meta?: string | null;
+  /** Tag namespace ("female") for tag rows. */
+  subtitle?: string | null;
+  /** Full tag as `ns:tn` for tag rows. */
+  tag?: string | null;
+  /** Publication status when the source provides it (Senkuro). */
+  status?: string | null;
 }
 export interface NhentaiTagSuggestion {
   name: string;
@@ -89,6 +110,10 @@ export interface CustomDnsStatus {
 export interface CatalogFilters {
   ehExcludedCats?: number;
   ehMinRating?: number;
+  /** Only galleries on the account's watching list (f_sh=1). */
+  ehWatchedOnly?: boolean;
+  /** Show the site toplist for the last N days instead of search results. */
+  ehToplist?: number;
   mangadexTags?: string[];
   mangadexLangs?: string[];
   nhentaiTags?: string[];
@@ -109,10 +134,93 @@ export interface CatalogFilters {
   senkuroStatuses?: string[];
   senkuroTypes?: string[];
   senkuroFormats?: string[];
-  senkuroRating?: string;
+  /** Multi-select age ratings (GENERAL/SENSITIVE/QUESTIONABLE/EXPLICIT). */
+  senkuroRatings?: string[];
+  /** Original source enums (ANIME/COMIC/…). */
+  senkuroSources?: string[];
+  /** Translation status enums (IN_PROGRESS/…). */
+  senkuroTranslation?: string[];
+  /** ISO origin country codes (KR/JP/…). */
+  senkuroCountries?: string[];
+  /** Label slugs (from the label dictionary). */
+  senkuroLabels?: string[];
+  senkuroChaptersFrom?: number;
+  senkuroChaptersTo?: number;
+  senkuroYearFrom?: number;
+  senkuroYearTo?: number;
   comxCategory?: string;
   comxGenre?: string;
 }
+
+export interface EhTorrent {
+  title: string;
+  size: string;
+  seeds: number;
+  peers: number;
+  downloads: number;
+  uploader: string;
+  posted: string;
+  torrentUrl: string;
+  magnet: string;
+  outdated: boolean;
+}
+
+export interface EhComment {
+  author: string;
+  text: string;
+  uploader: boolean;
+}
+
+export interface EhGalleryInfo {
+  title: string;
+  uploader: string;
+  posted: string;
+  parent: string;
+  visible: string;
+  language: string;
+  fileSize: string;
+  length: string;
+  rating: number | null;
+  ratingCount: number | null;
+  tags: { namespace: string; key: string }[];
+  comments: EhComment[];
+}
+
+export interface EhFavoriteItem {
+  url: string;
+  title: string;
+  coverUrl: string | null;
+}
+
+/** Live progress of the Senkognito → library import. */
+export interface SenkuroImportProgress {
+  phase: 'bookmarks' | 'chapters' | 'saving';
+  done: number;
+  total: number;
+  title?: string;
+}
+
+export interface TorDiagnostics {
+  running: boolean;
+  socks: string | null;
+  bootstrap: string | null;
+  circuits: number;
+  exits: string[];
+  bridgeCount: number;
+}
+
+export interface SenkuroImportResult {
+  ok: boolean;
+  message: string;
+  imported: number;
+  byStatus: Record<string, number>;
+  /** Chapters marked as read (bounded by the app's 4000-entry read list). */
+  chaptersMarked: number;
+  /** Chapters for which a resume page was stored. */
+  resumePoints: number;
+  errors: number;
+}
+
 
 export interface ExAccount {
   id: number;
@@ -201,6 +309,10 @@ export interface Api {
   rescanFolder(path: string): Promise<OpenFolderResult | null>;
   getHistory(): Promise<HistoryEntry[]>;
   recordProgress(url: string, page: number, total: number, offset?: number): Promise<void>;
+  /** MangaDex "continue" marker (series id → chapter index). A dedicated call
+   * instead of echoing the whole settings object: the echo guard used to treat
+   * a deliberate rollback to an earlier chapter as a stale value and dropped it. */
+  setSeriesProgress(seriesId: string, index: number, total: number): Promise<void>;
   clearHistory(): Promise<void>;
   openUrl(
     url: string,
@@ -230,10 +342,36 @@ export interface Api {
   cookieLogin(input: CookieLoginInput): Promise<PasswordLoginResult>;
   refreshIgneous(): Promise<PasswordLoginResult>;
   parseCookieText(text: string): Promise<ParsedCookieLogin>;
+  /** Clears a stored session explicitly. Editing the cookie textarea cannot do
+   * this: an empty echo is restored to protect a fresh login from a stale
+   * snapshot, so there was no way to log out of a site. */
+  clearSiteCookies(field: 'onion' | 'nhentai' | 'nhentai_onion' | 'senkuro'): Promise<void>;
   setReadingPosition(id: string, index: number): Promise<void>;
   ehTagSuggest(text: string): Promise<EhTagSuggestion[]>;
+  /** Per-source search autocomplete (each source asks its own site/API). */
+  catalogSuggest(source: string, query: string): Promise<SearchSuggestion[]>;
   nhentaiTagSuggest(text: string): Promise<NhentaiTagSuggestion[]>;
   checkTor(): Promise<TorStatus>;
+  /** E-Hentai image-limit reset (the site's own "Reset Limit" action). */
+  ehResetImageLimit(): Promise<{ ok: boolean; message: string }>;
+  /** Gallery torrents popup (magnet links). */
+  ehTorrents(url: string): Promise<EhTorrent[]>;
+  /** Gallery metadata, tags and comments (read-only). */
+  ehGalleryInfo(url: string): Promise<EhGalleryInfo>;
+  /** One page of the account's EH favorites (import source). */
+  ehFavorites(page: number): Promise<{ items: EhFavoriteItem[]; hasMore: boolean }>;  /** H@H download request for a gallery (needs H@H/GP on the account). */
+  ehHathDownload(url: string, resolution: string): Promise<{ ok: boolean; message: string }>;
+  /** Full label dictionary for the Senkuro filter panel (slug + RU name). */
+  senkuroLabels(): Promise<{ slug: string; name: string }[]>;
+  /** Bundled Tor: bootstrap phase, built circuits, current exits, bridge count. */
+  torDiagnostics(): Promise<TorDiagnostics>;
+  /** Import the Senkuro/Senkognito bookmarks (statuses, progress, read chapters). */
+  senkuroImportBookmarks(opts?: { statuses?: string[]; markRead?: boolean; limit?: number }): Promise<SenkuroImportResult>;
+  /** Subscribe to import progress; returns an unsubscribe function. */
+  onSenkuroImportProgress(cb: (p: SenkuroImportProgress) => void): () => void;
+  /** New Tor circuit (NEWNYM) without restarting the daemon: the exit IP a site
+   * sees changes, which lifts per-IP rate limits (e.g. E-Hentai). */
+  newTorCircuit(): Promise<{ ok: boolean }>;
   checkBridges(lines: string[]): Promise<BridgeStatus[]>;
   checkSites(): Promise<SiteStatus[]>;
   libMirrorsCheck(): Promise<LibMirrorStatus[]>;
@@ -261,7 +399,9 @@ export interface Api {
   downloadsAddArchive(sourceUrl: string, title: string, downloadUrl: string): Promise<DownloadTask | null>;
   ehLimitsState(): Promise<EhLimitState>;
   pinHasPin(): Promise<boolean>;
-  pinSetPin(pin: string): Promise<void>;
+  /** `current` is required when a PIN already exists: the main process verifies
+   * it itself instead of trusting the settings UI. */
+  pinSetPin(pin: string, current?: string): Promise<void>;
   pinRemovePin(pin: string): Promise<boolean>;
   pinVerifyPin(pin: string): Promise<boolean>;
   pinFailedAttempt(): Promise<PinAttemptResult>;
@@ -334,6 +474,7 @@ export const CH = {
   rescanFolder: 'folder:rescan',
   getHistory: 'history:get',
   recordProgress: 'history:progress',
+  setSeriesProgress: 'history:seriesProgress',
   clearHistory: 'history:clear',
   openUrl: 'url:open',
   fetchChapterList: 'manga:chapters',
@@ -346,10 +487,22 @@ export const CH = {
   cookieLogin: 'ex:cookielogin',
   refreshIgneous: 'ex:refreshingenous',
   parseCookieText: 'ex:parsecookie',
+  clearSiteCookies: 'ex:clearcookies',
   setReadingPosition: 'reader:position',
   ehTagSuggest: 'tags:eh',
+  catalogSuggest: 'catalog:suggest',
   nhentaiTagSuggest: 'tags:nhentai',
   checkTor: 'tor:check',
+  ehResetImageLimit: 'eh:resetImageLimit',
+  ehTorrents: 'eh:torrents',
+  ehGalleryInfo: 'eh:galleryInfo',
+  ehFavorites: 'eh:favorites',
+  ehHathDownload: 'eh:hathDownload',
+  senkuroLabels: 'senkuro:labels',
+  torDiagnostics: 'tor:diagnostics',
+  senkuroImport: 'senkuro:import',
+  senkuroImportProgress: 'senkuro:import:progress',
+  newTorCircuit: 'tor:newCircuit',
   checkBridges: 'tor:bridges',
   checkSites: 'sites:check',
   libMirrorsCheck: 'libMirrors:check',

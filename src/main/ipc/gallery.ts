@@ -7,6 +7,8 @@ import { categoryForUrl } from '../services/series-key';
 import type { Gallery } from '../services/gallery';
 import type { ZipGalleryInfo } from '../services/zip-gallery';
 import { logger } from '../services/logger';
+import { touchMap } from '../app/state';
+import { proxyForUrl } from '../services/proxy-policy';
 import type { SettingsService } from '../services/settings';
 import type { HistoryManager } from '../services/history';
 import type { LibraryService } from '../services/library';
@@ -25,7 +27,7 @@ export interface GalleryDeps {
   };
   onlineHeaders: Map<string, Record<string, string>>;
   resolveGallery(url: string, opts: { proxy?: string; cookieHeader?: string }): Promise<GalleryResolution>;
-  createOnlineGallery(title: string, urls: string[], proxy?: string): string;
+  createOnlineGallery(title: string, urls: string[], proxy?: string, directImages?: boolean): string;
   setReadingPosition(gid: string, index: number): void;
   openZipGallery(zipPath: string, tmpBase: string): Promise<ZipGalleryInfo | null>;
   galleryFromFolder(dir: string): Gallery | null;
@@ -56,7 +58,7 @@ export function registerGallery(deps: GalleryDeps): void {
     if (isZipPath(path)) {
       const zi = await openZipGallery(path, ZIP_TMP);
       if (!zi) return null;
-      zipMeta.set(zi.id, { zipPath: path, entries: zi.entries });
+      touchMap(zipMeta, zi.id, { zipPath: path, entries: zi.entries }, 16);
       const url = `file://${path}`;
       history.addOrUpdate({
         url,
@@ -70,12 +72,11 @@ export function registerGallery(deps: GalleryDeps): void {
         total_pages: zi.pageCount,
         category: 'main',
       });
-      settings.save({ ...settings.get(), viewing_history: history.toVec() });
       return { id: zi.id, title: zi.title, pageCount: zi.pageCount, pages: zi.entries, url };
     }
     const g = galleryFromFolder(path);
     if (!g) return null;
-    galleries.set(g.id, g);
+    touchMap(galleries, g.id, g, 16);
     const s = settings.get();
     settings.save({ ...s, last_folder: path });
     const url = `file://${path}`;
@@ -91,7 +92,6 @@ export function registerGallery(deps: GalleryDeps): void {
       total_pages: g.pages.length,
       category: 'main',
     });
-    settings.save({ ...settings.get(), viewing_history: history.toVec() });
     return { id: g.id, title: g.title, pageCount: g.pages.length, pages: g.pages, url };
   }
 
@@ -116,23 +116,17 @@ export function registerGallery(deps: GalleryDeps): void {
       const trimmed = url.trim();
       const s = settings.get();
       const torSocks = effectiveTorSocks();
-      const useTor =
-        url.includes('.onion') ||
-        (url.includes('nhentai') && s.tor_proxied_sites.includes('nhentai')) ||
-        (url.includes('e-hentai.org') && s.tor_proxied_sites.includes('ehentai')) ||
-        (url.includes('exhentai.org') && (s.tor_proxied_sites.includes('ehentai') || s.tor_proxied_sites.includes('exhentai'))) ||
-        (url.includes('com-x.life') && s.tor_proxied_sites.includes('comx')) ||
-        (url.includes('senkuro') && s.tor_proxied_sites.includes('senkuro')) ||
-        (url.includes('manga-shi') && s.tor_proxied_sites.includes('mangashi')) ||
-        (url.includes('remanga') && s.tor_proxied_sites.includes('remanga')) ||
-        (url.includes('mangalib') && s.tor_proxied_sites.includes('mangalib'));
-      let proxy = useTor ? torSocks : undefined;
-      // Mangalib: dedicated proxy (e.g. a Belarus-exit SOCKS/HTTP) when configured.
-      if (!useTor && url.includes('mangalib') && s.mangalib_proxy_addr.trim()) proxy = s.mangalib_proxy_addr.trim();
+      // One policy for the whole app (see proxy-policy): a source routed
+      // through Tor in the catalog and for covers must not silently fall back
+      // to a direct connection in the reader. The old copy-pasted list had
+      // Grouple missing entirely and dropped the proxy for Remanga/Senkuro/
+      // MangaMello/Com-X/Mangalib before the pages were fetched — blocked
+      // networks got 30 s timeouts and page images went out with the real IP.
+      const proxy = proxyForUrl(trimmed, s, torSocks);
       // Clearnet ExHentai/E-Hentai uses the active account pool cookies and,
-      // if configured, the dedicated exhentai_proxy_addr proxy. Cookies must be
-      // routed per source — the onion jar must never leak onto clearnet
-      // requests (and vice versa).
+      // if configured, the dedicated exhentai_proxy_addr proxy (handled by the
+      // policy). Cookies must be routed per source — the onion jar must never
+      // leak onto clearnet requests (and vice versa).
       const isClearnetEx = url.includes('exhentai') || url.includes('e-hentai.org');
       const cookieHeader = url.includes('.onion')
         ? s.onion_cookies_raw
@@ -143,7 +137,6 @@ export function registerGallery(deps: GalleryDeps): void {
             : isClearnetEx
               ? exAccounts.currentCookieHeader()
               : undefined;
-      if (isClearnetEx && !url.includes('.onion') && s.exhentai_proxy_addr.trim()) proxy = s.exhentai_proxy_addr.trim();
       let result: GalleryResolution;
       try {
         result = await resolveGallery(trimmed, { proxy, cookieHeader });
@@ -154,12 +147,14 @@ export function registerGallery(deps: GalleryDeps): void {
       // If no series url was derived, fall back to the caller-provided mangaId (original behavior).
       const seriesId = result.seriesId === trimmed ? (mangaId ?? trimmed) : result.seriesId;
 
-      const gid = createOnlineGallery(result.title, result.pageUrls, result.proxy);
+      // The resolved proxy wins only when the resolver knows something the URL
+      // does not (e.g. a simple-site config); otherwise keep the policy's.
+      const gid = createOnlineGallery(result.title, result.pageUrls, result.proxy ?? proxy, s.eh_images_direct);
       const headers: Record<string, string> = {};
       if (result.referer) headers.Referer = result.referer;
       if (cookieHeader && (trimmed.includes('.onion') || trimmed.includes('exhentai') || trimmed.includes('e-hentai.org')))
         headers.Cookie = cookieHeader;
-      onlineHeaders.set(gid, headers);
+      touchMap(onlineHeaders, gid, headers, 32);
 
       history.addOrUpdate({
         url: trimmed,
@@ -167,7 +162,7 @@ export function registerGallery(deps: GalleryDeps): void {
         title: result.title,
         cover_url: coverUrl ?? result.coverUrl,
         source: result.source,
-        chapter_label: null,
+        chapter_label: result.chapterLabel ?? null,
         // Position in the chapter list — lets HistoryManager keep the series
         // "continue" row on the FURTHEST chapter, so accidentally opening an
         // old chapter no longer rewinds reading progress.
@@ -178,7 +173,6 @@ export function registerGallery(deps: GalleryDeps): void {
         // 18+ works from non-R34 sources belong in the R34 history tab too.
         category: adult === true || categoryForUrl(trimmed) === 'r34' ? 'r34' : 'main',
       });
-      settings.save({ ...settings.get(), viewing_history: history.toVec() });
       library.autoAddIfNeeded(trimmed, seriesId);
       if (startPage && startPage > 0 && startPage < result.pageUrls.length) setReadingPosition(gid, startPage);
       if (process.env.MR_DEBUG === '1') {
@@ -215,7 +209,7 @@ export function registerGallery(deps: GalleryDeps): void {
   handleSafe(CH.rescanFolder, z.tuple([existingDirOrArchive]), (_e, path) => {
     const g = galleryFromFolder(path);
     if (!g) return null;
-    galleries.set(g.id, g);
+    touchMap(galleries, g.id, g, 16);
     return { id: g.id, title: g.title, pageCount: g.pages.length, pages: g.pages, url: `file://${path}` };
   });
 }

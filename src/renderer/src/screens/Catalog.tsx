@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import ContextMenu from '../components/ContextMenu';
 import MangaCardGrid from '../components/MangaCardGrid';
 import CatalogToolbar from './catalog/CatalogToolbar';
@@ -5,9 +6,22 @@ import TagBar from './catalog/TagBar';
 import FilterPanel from './catalog/FilterPanel';
 import ChaptersOverlay from './catalog/ChaptersOverlay';
 import { useCatalogSearch } from './catalog/useCatalogSearch';
+import { errorText } from '../lib/errors';
+
+const EH_SOURCES = new Set(['ehentai', 'exhentai', 'exhentai_onion']);
+
+/** The login window ends on the site's own front page; the onion mirror serves
+ * its own captcha form there, the clearnet hosts use the forum login. */
+function ehLoginUrl(source: string): string {
+  if (source === 'exhentai_onion') return 'http://exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion/';
+  if (source === 'exhentai') return 'https://exhentai.org/';
+  return 'https://e-hentai.org/';
+}
 
 export default function Catalog(): JSX.Element {
   const s = useCatalogSearch();
+  const [ehLoginBusy, setEhLoginBusy] = useState(false);
+  const sessionProblem = !!s.error && /пустую страницу|сесси|sad panda|cookie/i.test(s.error);
 
   return (
     <div className="catalog screen">
@@ -17,8 +31,54 @@ export default function Catalog(): JSX.Element {
 
       <div className="catalog-body">
         <div className="catalog-content" ref={s.contentRef}>
-          {s.error && <div className="error-text">{s.error}</div>}
+          {s.error && (
+            <div className="catalog-error-row">
+              <span className="error-text">{s.error}</span>
+              {EH_SOURCES.has(s.source) && sessionProblem && (
+                <button
+                  className="set-primary"
+                  disabled={ehLoginBusy}
+                  onClick={async () => {
+                    setEhLoginBusy(true);
+                    try {
+                      if (s.source === 'exhentai_onion') {
+                        // The onion mirror has its own captcha login form.
+                        await window.api.loginSite(ehLoginUrl(s.source));
+                      } else {
+                        // Clearnet ExHentai: the member cookies are usually fine
+                        // and only `igneous` is stale — refresh it instead of
+                        // opening a browser window (that window is blank behind
+                        // Cloudflare/Tor on clearnet hosts).
+                        const r = await window.api.refreshIgneous();
+                        if (!r.ok) throw new Error(r.message);
+                      }
+                      await s.search(0, false);
+                    } catch (e) {
+                      alert(`Вход: ${errorText(e)}`);
+                    } finally {
+                      setEhLoginBusy(false);
+                    }
+                  }}
+                >
+                  {ehLoginBusy ? 'Вход…' : 'Войти'}
+                </button>
+              )}
+              <button
+                disabled={s.loading}
+                onClick={() => void s.search(s.displayCards.length > 0 ? s.page : 0, s.displayCards.length > 0)}
+              >
+                Повторить
+              </button>
+            </div>
+          )}
           {s.loading && s.displayCards.length === 0 && <div className="muted">Поиск…</div>}
+          {!s.loading && !s.error && s.displayCards.length === 0 && (
+            <div className="muted">
+              {s.filters.senkuroRatings?.includes('EXPLICIT') && !s.settings.show_r34_history
+                ? '18+ скрыто: включи «Контент R34» в настройках.'
+                : 'Ничего не найдено — ослабь фильтры.'}
+            </div>
+          )}
           {s.displayCards.length > 0 && (
             <MangaCardGrid
               cards={s.displayCards}

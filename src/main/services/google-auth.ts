@@ -1,9 +1,10 @@
 import { BrowserWindow, session, safeStorage } from 'electron';
 import { createServer } from 'http';
 import { randomBytes, createHash } from 'crypto';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'fs';
+import { existsSync, readFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { denyAllPermissions } from '../security';
+import { writeFileAtomic } from './atomic-write';
 import {
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
@@ -82,10 +83,9 @@ export class GoogleAuth {
       }
       return;
     }
-    mkdirSync(join(this.path, '..'), { recursive: true });
     const text = JSON.stringify(t);
     if (!safeStorage.isEncryptionAvailable()) throw new Error('Шифрование ОС недоступно — вход через Google невозможен');
-    writeFileSync(this.path, safeStorage.encryptString(text));
+    writeFileAtomic(this.path, safeStorage.encryptString(text));
   }
 
   status(): { authed: boolean; email: string | null; configured: boolean } {
@@ -175,7 +175,7 @@ export class GoogleAuth {
     const challenge = codeChallenge(verifier);
     const { code, redirectUri } = await this.captureCode(challenge);
 
-    const res = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+    const res = await fetch(GOOGLE_TOKEN_ENDPOINT, { signal: AbortSignal.timeout(15_000),
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -192,7 +192,10 @@ export class GoogleAuth {
     if (!tok.refresh_token) throw new Error('Google не выдал refresh-token (нужен prompt=consent)');
     let email = '';
     try {
-      const ui = await fetch(GOOGLE_USERINFO_ENDPOINT, { headers: { Authorization: `Bearer ${tok.access_token}` } });
+      const ui = await fetch(GOOGLE_USERINFO_ENDPOINT, {
+        headers: { Authorization: `Bearer ${tok.access_token}` },
+        signal: AbortSignal.timeout(15_000),
+      });
       if (ui.ok) email = ((await ui.json()) as { email?: string }).email ?? '';
     } catch {
       /* email необязателен */
@@ -206,7 +209,7 @@ export class GoogleAuth {
     const t = this.tokens;
     if (!t) throw new Error('Не выполнен вход в Google');
     if (!force && t.access_token && Date.now() < t.expires_at - 60_000) return t.access_token;
-    const res = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+    const res = await fetch(GOOGLE_TOKEN_ENDPOINT, { signal: AbortSignal.timeout(15_000),
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -226,7 +229,10 @@ export class GoogleAuth {
     const t = this.tokens;
     if (t?.refresh_token) {
       try {
-        await fetch(`${GOOGLE_REVOKE_ENDPOINT}?token=${encodeURIComponent(t.refresh_token)}`, { method: 'POST' });
+        await fetch(`${GOOGLE_REVOKE_ENDPOINT}?token=${encodeURIComponent(t.refresh_token)}`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(15_000),
+        });
       } catch {
         /* ignore */
       }

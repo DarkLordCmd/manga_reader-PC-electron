@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 import { useEffect, useState } from 'react';
 import Section, { Row, SubHead } from './Section';
 import Toggle from '../../components/Toggle';
@@ -23,6 +24,10 @@ export default function EhAccountsSection(): JSX.Element {
   const [ckText, setCkText] = useState('');
   const [ignMsg, setIgnMsg] = useState<string | null>(null);
   const [ignBusy, setIgnBusy] = useState(false);
+  const [limitBusy, setLimitBusy] = useState(false);
+  const [limitMsg, setLimitMsg] = useState<string | null>(null);
+  const [favBusy, setFavBusy] = useState(false);
+  const [favMsg, setFavMsg] = useState<string | null>(null);
 
   useEffect(() => {
     window.api.getExAccounts().then(setExAcc);
@@ -50,6 +55,76 @@ export default function EhAccountsSection(): JSX.Element {
 
   return (
     <Section title="Аккаунты ExHentai" desc="Активный аккаунт используется для всех запросов к ExHentai в обычном режиме.">
+      <Row
+        label="Лимит просмотра"
+        note="E-Hentai разрешает сбросить лимит изображений со своего home.php (кнопка «Reset Limit»). Здесь отправляется тот же запрос с куками активного аккаунта."
+      >
+        <button
+          disabled={limitBusy}
+          onClick={async () => {
+            setLimitBusy(true);
+            setLimitMsg(null);
+            try {
+              const r = await window.api.ehResetImageLimit();
+              setLimitMsg(r.message);
+            } catch (e) {
+              setLimitMsg(`Ошибка: ${errorText(e)}`);
+            } finally {
+              setLimitBusy(false);
+            }
+          }}
+        >
+          {limitBusy ? 'Сбрасываю…' : 'Сбросить лимит изображений'}
+        </button>
+      </Row>
+      {limitMsg && (
+        <Row stack>
+          <span className="set-note">{limitMsg}</span>
+        </Row>
+      )}
+      <SubHead>Избранное ExHentai</SubHead>
+      <Row
+        label="Импорт"
+        note="Забирает избранное с аккаунта E-Hentai/ExHentai в локальную библиотеку (до 5 страниц за раз; повторный импорт не создаёт дублей)."
+      >
+        <button
+          disabled={favBusy}
+          onClick={async () => {
+            setFavBusy(true);
+            setFavMsg(null);
+            let imported = 0;
+            try {
+              for (let page = 0; page < 5; page++) {
+                const r = await window.api.ehFavorites(page);
+                if (r.items.length === 0) break;
+                for (const it of r.items) {
+                  await window.api.libraryAddFavorite({
+                    url: it.url,
+                    title: it.title,
+                    coverUrl: it.coverUrl,
+                    source: 'ExHentai',
+                    seriesId: it.url,
+                  });
+                  imported++;
+                }
+                if (!r.hasMore) break;
+              }
+              setFavMsg(imported > 0 ? `Импортировано: ${imported}` : 'На аккаунте нет избранного (или аккаунт не залогинен).');
+            } catch (e) {
+              setFavMsg(`Ошибка: ${errorText(e)}`);
+            } finally {
+              setFavBusy(false);
+            }
+          }}
+        >
+          {favBusy ? 'Импортирую…' : 'Импортировать избранное'}
+        </button>
+      </Row>
+      {favMsg && (
+        <Row stack>
+          <span className="set-note">{favMsg}</span>
+        </Row>
+      )}
       <SubHead>Вход по куки</SubHead>
       <Row stack>
         <textarea
@@ -120,7 +195,7 @@ export default function EhAccountsSection(): JSX.Element {
               setCkMsg(r.message);
               if (r.ok) setExAcc(await window.api.getExAccounts());
             } catch (e: any) {
-              setCkMsg(`Ошибка: ${e?.message ?? e}`);
+              setCkMsg(`Ошибка: ${errorText(e)}`);
             } finally {
               setCkBusy(false);
             }
@@ -139,7 +214,7 @@ export default function EhAccountsSection(): JSX.Element {
               setIgnMsg(r.message);
               if (r.ok) setExAcc(await window.api.getExAccounts());
             } catch (e: any) {
-              setIgnMsg(`Ошибка: ${e?.message ?? e}`);
+              setIgnMsg(`Ошибка: ${errorText(e)}`);
             } finally {
               setIgnBusy(false);
             }
@@ -182,7 +257,7 @@ export default function EhAccountsSection(): JSX.Element {
                 setExAcc(await window.api.getExAccounts());
               }
             } catch (e: any) {
-              setPwMsg(`Ошибка: ${e?.message ?? e}`);
+              setPwMsg(`Ошибка: ${errorText(e)}`);
             } finally {
               setPwBusy(false);
             }

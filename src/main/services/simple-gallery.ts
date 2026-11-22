@@ -24,6 +24,50 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
  * viewer page, and the actual image URL lives in `img#img` on that page.
  * Related-galleries widgets also contain /s/ links for DIFFERENT galleries —
  * filter them by /{gid}/. */
+/** E-Hentai's Multi-Page Viewer links thumbnails to `/mpv/<gid>/<token>/#pageN`.
+ * That page is a JS app (no server-side image markup), but each thumbnail carries
+ * the original image hash in `data-orghash` when the `datatags=1` cookie is sent,
+ * and the normal viewer URL can be rebuilt as `/s/<hash10>/<gid>-<page>` — the
+ * same trick JHenTai uses in GalleryThumbnail.replacedMPVHref(). */
+export function ehThumbnailPageUrl(opts: {
+  href: string;
+  base: string;
+  hash: string | null;
+  /** 1-based gallery-wide page number (fallback when the href has no #pageN). */
+  pageNumber: number;
+  galleryId: string | null;
+}): string | null {
+  let u: URL;
+  try {
+    u = new URL(opts.href, opts.base);
+  } catch {
+    return null;
+  }
+  if (u.pathname.includes('/s/')) return u.toString();
+  const mpv = u.pathname.match(/\/mpv\/(\d+)\//);
+  if (!mpv) return null;
+  const gid = mpv[1];
+  if (opts.galleryId && gid !== opts.galleryId) return null;
+  if (!opts.hash || opts.hash.length < 10) return null;
+  const frag = u.hash.match(/page(\d+)/i);
+  const num = frag ? Number(frag[1]) : opts.pageNumber;
+  if (!Number.isInteger(num) || num < 1) return null;
+  return `${u.origin}/s/${opts.hash.slice(0, 10)}/${gid}-${num}`;
+}
+
+/** E-Hentai expects these in every request: `nw=1` suppresses the "new" banner,
+ * `datatags=1` makes the gallery markup carry `data-orghash` (needed for MPV). */
+function withEhCookies(cookieHeader: string | undefined): string {
+  const parts = (cookieHeader ?? '')
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const names = new Set(parts.map((p) => p.split('=')[0]));
+  if (!names.has('datatags')) parts.push('datatags=1');
+  if (!names.has('nw')) parts.push('nw=1');
+  return parts.join('; ');
+}
+
 async function fetchEhGallery(url: string, opts: { proxy?: string; cookieHeader?: string; timeoutMs?: number }): Promise<SimpleGallery> {
   const t0 = Date.now();
   const steps: string[] = [];
@@ -34,7 +78,7 @@ async function fetchEhGallery(url: string, opts: { proxy?: string; cookieHeader?
   const belongsToGallery = (href: string): boolean => !uid || href.includes(`/${uid}-`) || href.includes(`/${uid}/`);
   const base = {
     proxy: opts.proxy,
-    cookieHeader: opts.cookieHeader,
+    cookieHeader: withEhCookies(opts.cookieHeader),
     timeoutMs: opts.timeoutMs ?? (opts.proxy ? 120_000 : 30_000),
   };
   const fetchPage = async (target: string): Promise<string> =>
@@ -45,44 +89,84 @@ async function fetchEhGallery(url: string, opts: { proxy?: string; cookieHeader?
   if (err) throw new Error(err);
   const title = $init('h1#gn').first().text().trim() || $init('title').first().text().trim() || 'E-Hentai Gallery';
 
-  const pageUrls: string[] = [];
+  // Thumbnail listings are paginated (?p=N, 20 per page). Results are stored PER
+  // LISTING PAGE and flattened in page order at the end: fetching the pages
+  // concurrently used to append them in completion order, which scrambled the
+  // reading order of galleries longer than one page.
+  const perPage: string[][] = [];
   const seen = new Set<string>();
-  const collect = (html: string): void => {
+  let mpvWithoutHash = false;
+  const collect = (html: string, listingIndex: number): void => {
     const $ = cheerio.load(html);
-    $('a[href*="/s/"]').each((_i, el) => {
+    const anchors = $('#gdt a').length > 0 ? $('#gdt a').toArray() : $('a[href*="/s/"]').toArray();
+    const out: string[] = perPage[listingIndex] ?? [];
+    anchors.forEach((el, i) => {
       const href = $(el).attr('href') ?? '';
-      if (!belongsToGallery(href)) return;
+      if (!href) return;
+      const hash = $(el).find('[data-orghash]').attr('data-orghash') ?? $(el).attr('data-orghash') ?? null;
+      if (/\/mpv\//.test(href)) {
+        const rebuilt = ehThumbnailPageUrl({
+          href,
+          base: url,
+          hash,
+          pageNumber: listingIndex * stride + i + 1,
+          galleryId: uid ?? null,
+        });
+        if (!rebuilt) {
+          mpvWithoutHash = true;
+          return;
+        }
+        if (seen.has(rebuilt)) return;
+        seen.add(rebuilt);
+        out.push(rebuilt);
+        return;
+      }
+      if (!href.includes('/s/') || !belongsToGallery(href)) return;
       const full = resolveRelative(url, href);
       if (!full || seen.has(full)) return;
       seen.add(full);
-      pageUrls.push(full);
+      out.push(full);
     });
+    perPage[listingIndex] = out;
   };
-  collect($init.html());
+  collect($init.html(), 0);
 
-  // Listing page count from the summary ("Showing 1 - 20 of 151 images"),
-  // then concurrent fetch of the remaining pages (4 per batch) — sequential
-  // crawling through Tor was minutes for big galleries.
+  // How many thumbnails one listing page holds (EH default 20, but the site's
+  // thumbnail-size setting can change it) and how many listing pages exist.
+  // The pager links (?p=N) are authoritative; "Showing X - Y of Z" is a fallback.
+  const firstPageThumbs = $init('#gdt a').length;
+  const stride = firstPageThumbs > 0 ? firstPageThumbs : 20;
+  const pagerPages = [...$init.html().matchAll(/[?&]p=(\d+)/g)].map((m) => Number(m[1]));
+  const maxPager = pagerPages.length > 0 ? Math.max(...pagerPages) : 0;
   const sm = $init.html().match(/Showing\s+\d+\s*-\s*\d+\s+of\s+(\d+)/i);
-  const listingTotal = sm ? Math.max(1, Math.ceil(Number(sm[1]) / 20)) : 1;
+  const listingTotal = maxPager > 0 ? maxPager + 1 : sm ? Math.max(1, Math.ceil(Number(sm[1]) / stride)) : 1;
   const listingUrls: string[] = [];
   for (let p = 1; p < listingTotal && p <= 60; p++) {
     listingUrls.push(`${url}${url.includes('?') ? '&' : '?'}p=${p}`);
   }
   const CONC = 4;
   for (let i = 0; i < listingUrls.length; i += CONC) {
+    const batch = listingUrls.slice(i, i + CONC);
     await Promise.all(
-      listingUrls.slice(i, i + CONC).map(async (u) => {
+      batch.map(async (u, k) => {
         try {
-          collect(await fetchPage(u));
+          // Gallery listing page number: listingUrls[0] is ?p=1 → index i + k + 1.
+          collect(await fetchPage(u), i + k + 1);
         } catch (e) {
           logger.warn('[eh-gallery] listing page fetch failed', u, e);
         }
       }),
     );
-    mark(`listing batch ${i / CONC + 1}/${Math.ceil(listingUrls.length / CONC)} (total ${pageUrls.length})`);
+    mark(`listing batch ${i / CONC + 1}/${Math.ceil(listingUrls.length / CONC)}`);
   }
+  const pageUrls = perPage.flat().filter(Boolean);
   if (pageUrls.length === 0) {
+    if (mpvWithoutHash) {
+      throw new Error(
+        'Галерея открыта в Multi-Page Viewer, а хеши страниц не пришли (сайт не отдал data-orghash). ' +
+          'В настройках E-Hentai смени стиль галереи на «Default» (Front Page → Multi-Page Viewer) и открой заново.',
+      );
+    }
     throw new Error(
       'На странице галереи не найдено ни одной ссылки /s/ — вероятно, ExHentai отдал страницу без активной сессии (проверь куки) или галерея недоступна.',
     );

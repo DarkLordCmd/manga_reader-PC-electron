@@ -46,9 +46,13 @@ export function isSafeRemoteUrl(raw: string): boolean {
     return false;
   }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
-  const host = u.hostname.toLowerCase();
+  // A trailing dot ("localhost." / "foo.local.") is the same host to the
+  // resolver but was a different string to the old check.
+  const host = u.hostname.toLowerCase().replace(/\.+$/, '');
   if (!host) return false;
   if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return false;
+  // Numeric/obfuscated loopback spellings the URL parser keeps as-is.
+  if (host === '0.0.0.0' || host === '[::]' || host === '::') return false;
   if (host.startsWith('[') || host.includes(':')) return !isPrivateIpv6(host);
   return !isPrivateIpv4(host);
 }

@@ -1,7 +1,13 @@
-import { addQuickSearch, moveQuickSearch, parseEhQueryToTags, removeQuickSearch } from '@shared/quick-search';
+import { addQuickSearch, moveQuickSearchInView, parseEhQueryToTags, removeQuickSearch } from '@shared/quick-search';
 import type { CatalogSearch } from './useCatalogSearch';
 
 export default function QuickSearchPresets({ s }: { s: CatalogSearch }): JSX.Element {
+  const visibleIds = new Set(s.visibleQuickSearches.map((q) => q.id));
+  const move = (id: string, dir: 'up' | 'down'): void =>
+    s.setSettings({
+      ...s.settings,
+      quick_searches: moveQuickSearchInView(s.settings.quick_searches, id, dir, (q) => !visibleIds.has(q.id)),
+    });
   return (
     <div className="quick-search">
       <button className="tab" onClick={() => s.setQsOpen((v) => !v)}>
@@ -28,18 +34,10 @@ export default function QuickSearchPresets({ s }: { s: CatalogSearch }): JSX.Ele
               >
                 {q.name}
               </button>
-              <button
-                className="qs-icon"
-                disabled={i === 0}
-                onClick={() => s.setSettings({ ...s.settings, quick_searches: moveQuickSearch(s.settings.quick_searches, q.id, 'up') })}
-              >
+              <button className="qs-icon" disabled={i === 0} onClick={() => move(q.id, 'up')}>
                 ↑
               </button>
-              <button
-                className="qs-icon"
-                disabled={i === s.settings.quick_searches.length - 1}
-                onClick={() => s.setSettings({ ...s.settings, quick_searches: moveQuickSearch(s.settings.quick_searches, q.id, 'down') })}
-              >
+              <button className="qs-icon" disabled={i === s.visibleQuickSearches.length - 1} onClick={() => move(q.id, 'down')}>
                 ↓
               </button>
               <button

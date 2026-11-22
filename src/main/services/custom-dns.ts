@@ -167,7 +167,10 @@ export async function resolveViaCustomDns(host: string): Promise<string | null> 
       if (ips.length > 0) break;
     }
     if (ips.length === 0) {
-      entry = { ips: [], expiresAt: now + TTL_MS, failUntil: now + FAIL_MS };
+      // expiresAt must match the fail window: with the normal TTL, the cache
+      // lookup above skipped the resolve branch for 10 minutes and returned
+      // null even though the advertised "fail fast" window was only 2 minutes.
+      entry = { ips: [], expiresAt: now + FAIL_MS, failUntil: now + FAIL_MS };
       cache.set(host, entry);
       return null;
     }

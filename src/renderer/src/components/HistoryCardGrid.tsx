@@ -16,7 +16,7 @@ export default function HistoryCardGrid({ entries, onContinue, onAddToLibrary, o
   return (
     <div className="history-grid">
       {entries.map((e) => {
-        const btnLabel = e.current_page > 1 ? '▶ Продолжить' : '▶ Открыть';
+        const btnLabel = e.current_page > 1 ? 'Продолжить' : 'Открыть';
         const chapterFrac = e.total_pages > 0 ? Math.min(1, e.current_page / e.total_pages) : 0;
         const seriesFrac =
           e.chapter_index != null && e.chapter_total != null && e.chapter_total > 0

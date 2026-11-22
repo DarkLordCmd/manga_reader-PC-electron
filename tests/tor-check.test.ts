@@ -10,6 +10,14 @@ describe('parseBridgeAddr', () => {
   it('parses bare ip:port', () => {
     expect(parseBridgeAddr('192.0.2.1:443')).toEqual({ host: '192.0.2.1', port: 443 });
   });
+  it('parses bracketed IPv6 bridge addresses', () => {
+    // Regression: only a leading "[" was stripped, so "[2001:db8::1]:443"
+    // produced host "2001:db8::1]" -> the TCP probe failed and every IPv6
+    // bridge was dropped; with only IPv6 bridges configured the app started
+    // Tor DIRECT and ignored the bridges.
+    expect(parseBridgeAddr('obfs4 [2001:db8::1]:443 ABCD cert=abc')).toEqual({ host: '2001:db8::1', port: 443 });
+    expect(parseBridgeAddr('[2001:db8::1]:443')).toEqual({ host: '2001:db8::1', port: 443 });
+  });
   it('returns null for garbage', () => {
     expect(parseBridgeAddr('not a bridge')).toBeNull();
   });

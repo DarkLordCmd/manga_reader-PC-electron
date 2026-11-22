@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { thumbWindow } from '../screens/reader/thumbWindow';
 
 interface Props {
@@ -14,10 +14,78 @@ const WINDOW_HALF = 40;
 // drift only affects the placeholder spacers, not the current-button snapping.
 const ROW = (thumbSize: number): number => thumbSize * 1.4 + 14;
 
+/** Thumbnail with the same retry behaviour as a reader page. Before this a
+ * transient 404 (Tor still bootstrapping, E-Hentai limit) left an empty frame
+ * forever while the same page loaded fine in the main view. */
+function ThumbImg({ galleryId, index }: { galleryId: string; index: number }): JSX.Element {
+  const [attempt, setAttempt] = useState(0);
+  const timer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current != null) clearTimeout(timer.current);
+    },
+    [],
+  );
+  if (attempt > 4) return <div className="thumb-img-error" aria-hidden="true" />;
+  return (
+    <img
+      key={attempt}
+      src={`manga://page/${galleryId}/${index}?thumb=1${attempt ? `&r=${attempt}` : ''}`}
+      alt={`${index + 1}`}
+      loading="lazy"
+      decoding="async"
+      onError={() => {
+        if (timer.current != null) clearTimeout(timer.current);
+        timer.current = window.setTimeout(() => setAttempt((a) => a + 1), 900);
+      }}
+    />
+  );
+}
+
+/** Memoized thumb row: the panel re-renders on every reader page change, and
+ * rebuilding ~80 rows + image components each time added a visible hitch to
+ * scrolling. Only the two rows whose `current` flag changes actually re-render. */
+const ThumbButton = memo(function ThumbButton({
+  galleryId,
+  index,
+  isCurrent,
+  thumbSize,
+  onSelect,
+  registerRef,
+}: {
+  galleryId: string;
+  index: number;
+  isCurrent: boolean;
+  thumbSize: number;
+  onSelect: (index: number) => void;
+  registerRef: (index: number, el: HTMLButtonElement | null) => void;
+}): JSX.Element {
+  return (
+    <button
+      ref={(el) => registerRef(index, el)}
+      className={`thumb${isCurrent ? ' current' : ''}`}
+      onClick={() => onSelect(index)}
+      style={{ width: thumbSize }}
+    >
+      <ThumbImg galleryId={galleryId} index={index} />
+      <span>{index + 1}</span>
+    </button>
+  );
+});
+
 export default function ThumbnailPanel({ galleryId, pageCount, currentIndex, thumbSize, onSelect }: Props): JSX.Element {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [anchor, setAnchor] = useState(0);
+  // Stable identities for the memoized rows: an inline arrow for onSelect/refs
+  // changes every render and would defeat the memo above.
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const select = useCallback((i: number) => onSelectRef.current(i), []);
+  const registerRef = useCallback((i: number, el: HTMLButtonElement | null) => {
+    if (el) refs.current[i] = el;
+    else delete refs.current[i];
+  }, []);
   const clampIdx = Math.min(Math.max(0, currentIndex), Math.max(0, pageCount - 1));
   const clampIdxRef = useRef(clampIdx);
   clampIdxRef.current = clampIdx;
@@ -78,18 +146,15 @@ export default function ThumbnailPanel({ galleryId, pageCount, currentIndex, thu
     <div className="thumb-panel" ref={panelRef} onScroll={onScroll}>
       {w.topPad > 0 && <div aria-hidden style={{ flex: '0 0 auto', height: w.topPad }} />}
       {items.map((i) => (
-        <button
+        <ThumbButton
           key={i}
-          ref={(el) => {
-            refs.current[i] = el;
-          }}
-          className={`thumb${i === currentIndex ? ' current' : ''}`}
-          onClick={() => onSelect(i)}
-          style={{ width: thumbSize }}
-        >
-          <img src={`manga://page/${galleryId}/${i}`} alt={`${i + 1}`} loading="lazy" decoding="async" />
-          <span>{i + 1}</span>
-        </button>
+          galleryId={galleryId}
+          index={i}
+          isCurrent={i === currentIndex}
+          thumbSize={thumbSize}
+          onSelect={select}
+          registerRef={registerRef}
+        />
       ))}
       {w.bottomPad > 0 && <div aria-hidden style={{ flex: '0 0 auto', height: w.bottomPad }} />}
     </div>

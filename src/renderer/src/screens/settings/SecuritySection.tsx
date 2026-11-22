@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 import { useEffect, useState } from 'react';
 import Section, { Row } from './Section';
 
@@ -8,41 +9,60 @@ export default function SecuritySection(): JSX.Element {
   const [pinMsg, setPinMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    window.api.pinHasPin().then(setPinHas);
+    window.api
+      .pinHasPin()
+      .then(setPinHas)
+      .catch(() => setPinHas(false));
   }, []);
+
+  /** Re-read the authoritative state after any failure: the old flow removed
+   * the current PIN BEFORE trying to install the new one, so an invalid new PIN
+   * left the app without a lock while the badge still said "включена". */
+  const refreshHasPin = async (): Promise<void> => {
+    try {
+      setPinHas(await window.api.pinHasPin());
+    } catch {
+      /* keep the current state */
+    }
+  };
 
   const setNewPin = async (): Promise<void> => {
     setPinMsg(null);
     try {
-      if (!/^\d{4,8}$/.test(pinNew)) {
-        setPinMsg('PIN должен быть 4–8 цифр');
+      // The backend accepts only 6-8 digits (PinService.PIN_RE). The UI used to
+      // allow 4-8, remove the old PIN, and then fail on setPin.
+      if (!/^\d{6,8}$/.test(pinNew)) {
+        setPinMsg('PIN должен быть 6–8 цифр');
         return;
       }
       if (pinHas) {
-        if (!/^\d{4,8}$/.test(pinCurrent)) {
-          setPinMsg('Введи текущий PIN (4–8 цифр)');
+        if (!pinCurrent.trim()) {
+          setPinMsg('Введи текущий PIN');
           return;
         }
-        const removed = await window.api.pinRemovePin(pinCurrent);
-        if (!removed) {
+        const ok = await window.api.pinVerifyPin(pinCurrent);
+        if (!ok) {
           setPinMsg('Неверный текущий PIN');
           return;
         }
       }
-      await window.api.pinSetPin(pinNew);
+      // setPin overwrites pin.json atomically — no delete-then-create window,
+      // and the main process re-checks the current PIN itself.
+      await window.api.pinSetPin(pinNew, pinHas ? pinCurrent : undefined);
       setPinHas(true);
       setPinMsg('PIN установлен');
       setPinCurrent('');
       setPinNew('');
     } catch (e: any) {
-      setPinMsg(`Ошибка: ${e?.message ?? e}`);
+      setPinMsg(`Ошибка: ${errorText(e)}`);
+      await refreshHasPin();
     }
   };
 
   const removePin = async (): Promise<void> => {
     setPinMsg(null);
-    if (!/^\d{4,8}$/.test(pinCurrent)) {
-      setPinMsg('Введи текущий PIN (4–8 цифр)');
+    if (!pinCurrent.trim()) {
+      setPinMsg('Введи текущий PIN');
       return;
     }
     const ok = await window.api.pinRemovePin(pinCurrent);
@@ -52,6 +72,7 @@ export default function SecuritySection(): JSX.Element {
       setPinCurrent('');
     } else {
       setPinMsg('Неверный текущий PIN');
+      await refreshHasPin();
     }
   };
 
@@ -72,7 +93,7 @@ export default function SecuritySection(): JSX.Element {
           />
         </Row>
       )}
-      <Row label={pinHas ? 'Новый PIN' : 'PIN'} note="4–8 цифр">
+      <Row label={pinHas ? 'Новый PIN' : 'PIN'} note="6–8 цифр (цифры)">
         <input
           className="text-input narrow"
           type="password"

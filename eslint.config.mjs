@@ -29,7 +29,17 @@ export default tseslint.config(
         URL: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
+        // Node built-ins used by the build hooks / CDP helper.
+        require: 'readonly',
+        module: 'readonly',
+        exports: 'readonly',
+        __dirname: 'readonly',
+        WebSocket: 'readonly',
       },
+    },
+    rules: {
+      // These are plain Node scripts, not TypeScript modules.
+      '@typescript-eslint/no-require-imports': 'off',
     },
   },
   {

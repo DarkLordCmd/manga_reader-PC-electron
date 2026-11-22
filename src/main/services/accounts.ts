@@ -1,9 +1,10 @@
 import { app } from 'electron';
 import { join } from 'path';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { parseAccountsFromJson, accountCookieHeader, parseCookieLogin, type ExAccount } from './accounts-parse';
 import { httpFetch } from './http';
 import { isEncrypted, encryptSecret, decryptSecret } from './secret-box';
+import { writeFileAtomic } from './atomic-write';
 
 export type { ExAccount } from './accounts-parse';
 export { parseCookieLogin } from './accounts-parse';
@@ -47,7 +48,9 @@ export function saveManualAccounts(userDataDir: string, accounts: ExAccount[]): 
   try {
     const plain = JSON.stringify(stored, null, 2);
     const enc = encryptSecret(plain);
-    writeFileSync(manualAccountsPath(userDataDir), enc !== null ? enc : plain);
+    // Atomic: a truncated eh_accounts.json reads back as "no accounts" and the
+    // next save would persist that emptiness, losing every stored session.
+    writeFileAtomic(manualAccountsPath(userDataDir), enc !== null ? enc : plain, { mode: 0o600 });
   } catch {
     /* ignore */
   }
@@ -106,6 +109,18 @@ export class ExAccountsService {
     const acc = this.accounts.find((a) => a.id === id);
     if (acc) this.currentId = id;
     return acc ?? null;
+  }
+
+  /** Next account in the pool (cycling). Used to sidestep a per-account rate
+   * limit on clearnet ExHentai: a different account is not affected by the ban
+   * of the previous one, while changing the Tor exit is useless there. */
+  rotate(): ExAccount | null {
+    if (this.accounts.length < 2) return null;
+    const idx = this.accounts.findIndex((a) => a.id === this.currentId);
+    const next = this.accounts[(idx + 1) % this.accounts.length];
+    if (!next || next.id === this.currentId) return null;
+    this.currentId = next.id;
+    return next;
   }
 
   addManual(name: string, memberId: string, passHash: string, igneous: string): ExAccount {

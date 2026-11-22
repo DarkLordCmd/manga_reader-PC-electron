@@ -1,6 +1,8 @@
 import * as cheerio from 'cheerio';
-import { httpFetch, httpPostJson } from '../http';
+import { httpFetch, httpPostJson, warmTorCircuits } from '../http';
 import { ehBlockedMessage } from '../eh-limits-hook';
+import { rotateTorExit } from '../tor-embedded';
+import { logger } from '../logger';
 import { type CatalogItem, resolve, UA, TOR_UA } from './catalog-types';
 import { assertLayout } from '../layout-watcher';
 
@@ -33,6 +35,16 @@ export function ehErrorFromResponse(status: number, text: string): string | null
   }
   if (text.includes('Page load has been aborted due to a fatal error')) {
     return 'Внутренняя ошибка сервера E-Hentai. Попробуй ещё раз позже.';
+  }
+  // JHenTai distinguishes a removed gallery from a generic 404: the page body
+  // carries an explanation. A bare "Not Found" (wrong URL) must not be reported
+  // as a deleted gallery.
+  if (status === 404 || /gallery not found|this gallery has been (removed|deleted|expunged)|gallery is unavailable/i.test(text)) {
+    if (!/gallery|deleted|removed|expunged|unavailable/i.test(text)) {
+      return 'E-Hentai: страница не найдена (404) — проверь адрес/фильтр.';
+    }
+    const hint = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180);
+    return `Галерея удалена, скрыта или недоступна${hint ? `: ${hint}` : ''}`;
   }
   return null;
 }
@@ -211,6 +223,8 @@ export function buildEhSearchParams(opts: {
   excludedCats?: number;
   minRating?: number;
   inlineSet?: boolean;
+  /** EH "Watched" only (f_sh=1). */
+  watchedOnly?: boolean;
   cursor?: { dir: 'next' | 'prev'; gid: string };
 }): string[] {
   const params: string[] = [];
@@ -218,6 +232,7 @@ export function buildEhSearchParams(opts: {
   const cats = opts.excludedCats ?? 0;
   if (cats > 0) params.push(`f_cats=${cats}`);
   if (opts.minRating && opts.minRating > 0) params.push(`f_srdd=${opts.minRating}`);
+  if (opts.watchedOnly) params.push('f_sh=1');
   if (opts.inlineSet) params.push('inline_set=dm_t');
   if (opts.cursor) params.push(`${opts.cursor.dir}=${opts.cursor.gid}`);
   return params;
@@ -234,6 +249,9 @@ export async function searchExHentai(
     forceTor?: boolean;
     excludedCats?: number;
     minRating?: number;
+    watchedOnly?: boolean;
+    /** Toplist period in days (7/31/365) — switches the page to toplist.php. */
+    toplist?: number;
     domainOverride?: string;
     cursor?: { dir: 'next' | 'prev'; gid: string };
   },
@@ -252,10 +270,23 @@ export async function searchExHentai(
     query,
     excludedCats: opts.excludedCats ?? 0,
     minRating: opts.minRating,
+    watchedOnly: opts.watchedOnly,
     inlineSet: !!opts.domainOverride,
     cursor: opts.cursor,
   });
-  const url = params.length ? `${base}/?${params.join('&')}` : `${base}/`;
+  // Toplist is a separate page with the same card markup; the query/filters do
+  // not apply there, so it replaces (not extends) the search URL. Only
+  // e-hentai.org serves toplists (exhentai.org answers 404) and the onion mirror
+  // answers an empty body — which used to be misread as "session expired".
+  // Real ids: 11 all-time, 12 past year, 13 past month, 15 yesterday.
+  const TOPLIST_IDS = new Set([11, 12, 13, 15]);
+  const toplist = opts.toplist && TOPLIST_IDS.has(opts.toplist) && !opts.useOnion ? opts.toplist : 0;
+  const url =
+    toplist > 0
+      ? `https://e-hentai.org/toplist.php?tl=${toplist}&p=${Math.max(0, opts.page ?? 0)}`
+      : params.length
+        ? `${base}/?${params.join('&')}`
+        : `${base}/`;
 
   return await ehFetchListing(url, base, {
     cookieHeader: opts.cookieHeader,
@@ -265,30 +296,251 @@ export async function searchExHentai(
   });
 }
 
+/** E-Hentai bans an IP for "excessive request rate" when listing requests come
+ * in bursts; through Tor the exit IP is shared and trips it even faster. All
+ * listing fetches are serialized with a minimum gap, and a rate-limit answer
+ * starts a cooldown during which we do not touch the site at all (otherwise the
+ * user's immediate retries only extend the ban). */
+const EH_LISTING_MIN_GAP_MS = 3000;
+const EH_RATE_LIMIT_COOLDOWN_MS = 120_000;
+let ehListingChain: Promise<unknown> = Promise.resolve();
+let ehLastListingAt = 0;
+let ehCooldownUntil = 0;
+
+/** E-Hentai's ban page states the exact remaining time:
+ * "The ban expires in 13 minutes and 50 seconds" (also hours / seconds). */
+export function parseEhBanSeconds(text: string): number | null {
+  const m = text.match(/ban expires in ([^.<]+)/i);
+  if (!m) return null;
+  const seg = m[1].toLowerCase();
+  let sec = 0;
+  const h = seg.match(/(\d+)\s*hour/);
+  if (h) sec += Number(h[1]) * 3600;
+  const mi = seg.match(/(\d+)\s*minute/);
+  if (mi) sec += Number(mi[1]) * 60;
+  const s = seg.match(/(\d+)\s*second/);
+  if (s) sec += Number(s[1]);
+  return sec > 0 ? sec : null;
+}
+
+function humanWait(sec: number): string {
+  if (sec >= 3600) return `${Math.floor(sec / 3600)} ч ${Math.round((sec % 3600) / 60)} мин`;
+  if (sec >= 60) return `${Math.floor(sec / 60)} мин ${sec % 60} с`.replace(' 0 с', '');
+  return `${sec} с`;
+}
+
+export function ehListingCooldownLeftSec(): number {
+  return Math.max(0, Math.ceil((ehCooldownUntil - Date.now()) / 1000));
+}
+
+/** A manual exit change makes the old ban irrelevant (it followed the previous
+ * IP), so drop the cooldown and let the user retry immediately. */
+export function resetEhCooldown(): void {
+  ehCooldownUntil = 0;
+  lastRotateRoundAt = 0;
+}
+
+/** Thrown when E-Hentai answers with a rate-limit/ban page. Typed so the IPC
+ * layer can react (switch the account for clearnet) instead of pattern-matching
+ * a message. */
+export class EhRateLimitError extends Error {}
+
+function ehRateLimitError(): EhRateLimitError {
+  const left = ehListingCooldownLeftSec();
+  return new EhRateLimitError(
+    left > 0
+      ? `ExHentai временно заблокировал IP за частые запросы. Подожди ещё ${left} с — автоматические повторы остановлены.`
+      : 'Сайт временно заблокировал IP за слишком частые запросы (excessive request rate). Подожди минуту-другую и попробуй снова.',
+  );
+}
+
+function ehPaced<T>(fn: () => Promise<T>): Promise<T> {
+  const run = ehListingChain.then(async () => {
+    if (Date.now() < ehCooldownUntil) throw ehRateLimitError();
+    // Jitter: a perfectly regular 2-second cadence is itself a fingerprint that
+    // some ant-bot limiters look for.
+    const wait = EH_LISTING_MIN_GAP_MS + Math.floor(Math.random() * 900) - (Date.now() - ehLastListingAt);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    if (Date.now() < ehCooldownUntil) throw ehRateLimitError();
+    ehLastListingAt = Date.now();
+    return fn();
+  });
+  ehListingChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+/** A rate-limit ban is per EXIT IP. Tor's NEWNYM alone often reuses the same
+ * exit for the same destination, so `rotateTorExit` also blacklists the banned
+ * relay (SETCONF ExcludeNodes) and waits for a genuinely different exit. One
+ * rotation ROUND (up to two exits) is allowed per cooldown window — a permanent
+ * ban must not turn into an endless circuit-hopping loop. */
+let lastRotateRoundAt = 0;
+function canRotateRound(): boolean {
+  if (Date.now() - lastRotateRoundAt < EH_RATE_LIMIT_COOLDOWN_MS) return false;
+  lastRotateRoundAt = Date.now();
+  return true;
+}
+
+/** Listing results are cached: paging back, re-opening a filter combination or
+ * a retry after a ban then costs no request at all. A stale entry is also served
+ * when the site answers with a ban, so browsing does not dead-end. */
+const EH_LISTING_CACHE_TTL_MS_DEFAULT = 5 * 60_000;
+let ehListingCacheTtlMs = EH_LISTING_CACHE_TTL_MS_DEFAULT;
+
+/** Configurable from settings: 0 disables the listing cache (every request goes
+ * to the site), larger values mean fewer requests and more stale results. */
+export function setEhListingCacheTtlMs(ms: number): void {
+  ehListingCacheTtlMs = Math.max(0, Math.min(240 * 60_000, ms));
+}
+const EH_LISTING_CACHE_MAX = 80;
+const ehListingCache = new Map<string, { at: number; items: ExSearchResult[] }>();
+/** One background refresh per listing URL at a time. */
+const ehRevalidating = new Set<string>();
+/** Serve very old cache at once, but not forever: past this age the request
+ * waits for the network (the listing may be days old and the pager stale). */
+const EH_LISTING_STALE_MAX_MS = 24 * 60 * 60_000;
+
+export type EhListingCacheDecision = 'fresh' | 'revalidate' | 'fetch';
+
+/** Pure cache policy, exported for tests.
+ * fresh — within TTL, no request at all;
+ * revalidate — stale but young enough: return it now and refresh in background;
+ * fetch — no cache, cache disabled, or the entry is too old. */
+export function ehListingCacheDecision(
+  ageMs: number | null,
+  ttlMs: number,
+  staleMaxMs: number = EH_LISTING_STALE_MAX_MS,
+): EhListingCacheDecision {
+  if (ageMs == null || ttlMs <= 0) return 'fetch';
+  if (ageMs < ttlMs) return 'fresh';
+  if (ageMs < staleMaxMs) return 'revalidate';
+  return 'fetch';
+}
+
+function cacheListing(url: string, items: ExSearchResult[]): void {
+  while (ehListingCache.size >= EH_LISTING_CACHE_MAX) {
+    const oldest = ehListingCache.keys().next().value;
+    if (oldest === undefined) break;
+    ehListingCache.delete(oldest);
+  }
+  ehListingCache.set(url, { at: Date.now(), items });
+}
+
 async function ehFetchListing(
   url: string,
   base: string,
   o: { cookieHeader: string; proxy?: string; ua: string; gdataApiBase: string; gdataEnrich?: boolean },
 ): Promise<ExSearchResult[]> {
-  const r = await httpFetch(
-    {
-      url,
-      headers: {
-        'User-Agent': o.ua,
-        Referer: `${base}/`,
-        Accept: 'text/html,application/xhtml+xml',
-        ...(o.cookieHeader ? { Cookie: o.cookieHeader } : {}),
-      },
-      timeoutMs: o.proxy ? 120_000 : 30_000,
-      frontOnEmpty: true,
-    },
-    o.proxy,
-  );
+  const cached = ehListingCache.get(url);
+  const age = cached ? Date.now() - cached.at : null;
+  const decision = ehListingCacheDecision(age, ehListingCacheTtlMs);
+  if (decision === 'fresh' && cached) return cached.items;
 
-  if (looksRateLimited(r.status, r.text))
-    throw new Error(
-      'Сайт временно заблокировал IP за слишком частые запросы (excessive request rate). Подожди минуту-другую и попробуй снова.',
+  // Stale-while-revalidate: a page/filter combination the user already visited
+  // is shown INSTANTLY, while a single background request refreshes it for the
+  // next visit. Re-opening a catalog page after the 5-minute TTL used to block
+  // for 2-3 s (an onion listing request) before the same cards appeared.
+  if (decision === 'revalidate' && cached) {
+    if (!ehRevalidating.has(url)) {
+      ehRevalidating.add(url);
+      void ehFetchListingNow(url, base, o, cached)
+        .catch((e) => logger.info('[eh] background listing refresh failed', (e as Error)?.message ?? e))
+        .finally(() => ehRevalidating.delete(url));
+    }
+    return cached.items;
+  }
+
+  return ehFetchListingNow(url, base, o, cached);
+}
+
+async function ehFetchListingNow(
+  url: string,
+  base: string,
+  o: { cookieHeader: string; proxy?: string; ua: string; gdataApiBase: string; gdataEnrich?: boolean },
+  cached: { at: number; items: ExSearchResult[] } | undefined,
+): Promise<ExSearchResult[]> {
+  const attempt = () =>
+    ehPaced(() =>
+      httpFetch(
+        {
+          url,
+          headers: {
+            'User-Agent': o.ua,
+            Referer: `${base}/`,
+            Accept: 'text/html,application/xhtml+xml',
+            ...(o.cookieHeader ? { Cookie: o.cookieHeader } : {}),
+          },
+          timeoutMs: o.proxy ? 120_000 : 30_000,
+          frontOnEmpty: true,
+        },
+        o.proxy,
+      ),
     );
+
+  let r: Awaited<ReturnType<typeof attempt>>;
+  try {
+    r = await attempt();
+  } catch (e) {
+    // Network/cooldown failure: a listing the user saw minutes ago is still far
+    // more useful than an error screen.
+    if (cached) {
+      logger.warn('[eh] listing failed — serving the cached copy');
+      return cached.items;
+    }
+    throw e;
+  }
+
+  if (looksRateLimited(r.status, r.text)) {
+    const banSec = parseEhBanSeconds(r.text);
+    // Onion mirror: the ban follows the ACCOUNT/session, not the Tor exit — the
+    // hidden service never sees our exit IP. Proof: the same onion URL answers
+    // normally without the session cookie and with a ban page when it is sent.
+    // Rotating exits there only wastes NEWNYM (and Tor rate-limits it), so report
+    // the exact time and let the user switch the account or wait.
+    if (/\.onion\b/i.test(url)) {
+      const waitSec = Math.max(60, Math.min(banSec ?? EH_RATE_LIMIT_COOLDOWN_MS / 1000, 30 * 60));
+      ehCooldownUntil = Date.now() + waitSec * 1000;
+      if (cached) {
+        logger.warn('[eh] onion session rate limited — serving the cached copy');
+        return cached.items;
+      }
+      throw new EhRateLimitError(
+        `ExHentai: бан привязан к аккаунту (сессии), а не к Tor-выходу — осталось ${humanWait(waitSec)}. ` +
+          'Смена цепи не поможет: войди другим аккаунтом (Настройки → «Войти в ExHentai (onion)») или подожди.',
+      );
+    }
+    let rotated = false;
+    if (canRotateRound()) {
+      // Clearnet exhentai/e-hentai: the limit is per IP, so hop across exits.
+      for (let n = 0; n < 3 && looksRateLimited(r.status, r.text); n++) {
+        const res = await rotateTorExit().catch(() => ({ changed: false, exit: null }));
+        if (!res.changed) break;
+        rotated = true;
+        logger.info(`[eh] rate limited — rotated exit to ${res.exit ?? 'a new one'}, retrying`);
+        // Tor tears the old circuits down first; give it time to build a fresh
+        // one before the retry, otherwise the retry fails with a network error.
+        await new Promise((res2) => setTimeout(res2, 2500));
+        r = await attempt();
+        if (o.proxy) warmTorCircuits(o.proxy, ['e-hentai.org', 'ehgt.org']);
+      }
+    }
+    if (looksRateLimited(r.status, r.text)) {
+      const waitSec = Math.max(60, Math.min(parseEhBanSeconds(r.text) ?? EH_RATE_LIMIT_COOLDOWN_MS / 1000, 30 * 60));
+      ehCooldownUntil = Date.now() + waitSec * 1000;
+      if (cached) {
+        logger.warn('[eh] rate limited — serving the cached copy');
+        return cached.items;
+      }
+      throw new EhRateLimitError(
+        rotated
+          ? `ExHentai: бан IP (${humanWait(waitSec)}) — выходной узел Tor сменён, но новый узел тоже забанен. Смени аккаунт в настройках или подожди.`
+          : `ExHentai: сайт забанил IP за частые запросы — ${humanWait(waitSec)}. Подожди или смени цепь Tor в настройках.`,
+      );
+    }
+  }
   const ehErr = ehErrorFromResponse(r.status, r.text);
   if (ehErr) throw new Error(`ExHentai: ${ehErr}`);
   if (r.status >= 400) throw new Error(`ExHentai: HTTP ${r.status}`);
@@ -328,7 +580,54 @@ async function ehFetchListing(
   } catch {
     /* best-effort */
   }
+  cacheListing(url, results);
   return results;
+}
+
+/** E-Hentai allows resetting the image-view limit from the home page: the site
+ * itself renders a "Reset Limit" button that POSTs `reset_imagelimit`. JHenTai
+ * does exactly this (EHRequest.requestResetImageLimit). The request still goes
+ * through the same pacing/ban detection as every other EH call. */
+export async function resetEhImageLimit(opts: {
+  cookieHeader: string;
+  proxy?: string;
+  base?: string;
+}): Promise<{ ok: boolean; message: string }> {
+  const base = opts.base ?? 'https://e-hentai.org';
+  const body = new URLSearchParams({ reset_imagelimit: 'Reset Limit' }).toString();
+  const r = await ehPaced(() =>
+    httpFetch(
+      {
+        url: `${base}/home.php`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': opts.proxy ? TOR_UA : UA,
+          Referer: `${base}/home.php`,
+          ...(opts.cookieHeader ? { Cookie: opts.cookieHeader } : {}),
+        },
+        body,
+        timeoutMs: opts.proxy ? 120_000 : 30_000,
+      },
+      opts.proxy,
+    ),
+  );
+  if (looksRateLimited(r.status, r.text)) {
+    const banSec = parseEhBanSeconds(r.text);
+    if (banSec) ehCooldownUntil = Date.now() + Math.min(banSec, 30 * 60) * 1000;
+    throw new EhRateLimitError('ExHentai: сброс лимита недоступен — сейчас действует бан. Повтори после истечения бана.');
+  }
+  const ehErr = ehErrorFromResponse(r.status, r.text);
+  if (ehErr) throw new Error(`ExHentai: ${ehErr}`);
+  if (r.status >= 400) throw new Error(`ExHentai: HTTP ${r.status} при сбросе лимита`);
+  const text = r.text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  const stillLimited = /exceeded your image/i.test(text);
+  return {
+    ok: !stillLimited,
+    message: stillLimited
+      ? 'Сайт не сбросил лимит (возможно, сброс уже использован в этом месяце).'
+      : `Запрос на сброс отправлен. Ответ сайта: ${text.slice(0, 160) || '—'}`,
+  };
 }
 
 export async function fetchEhPopular(

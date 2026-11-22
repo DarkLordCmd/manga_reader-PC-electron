@@ -98,9 +98,23 @@ export class SqliteSeriesRepository extends BaseSeriesRepository {
         .prepare(
           `
         UPDATE series SET series_id = @series_id, url = @url, title = @title,
-          cover_url = @cover_url, source = @source, category = @category, kind = @kind,
+          cover_url = @cover_url, source = @source,
+          -- A catalog action ("В избранное"/status) carries no adult flag, so it
+          -- must not drag an R34 row into Main (history.ts already guards this).
+          category = CASE WHEN category = 'r34' AND @category <> 'r34' THEN 'r34' ELSE @category END,
+          kind = @kind,
           current_page = @current_page, total_pages = @total_pages,
-          chapter_label = @chapter_label, chapter_index = @chapter_index, chapter_total = @chapter_total,
+          chapter_label = COALESCE(@chapter_label, chapter_label),
+          chapter_index = COALESCE(@chapter_index, chapter_index),
+          chapter_total = COALESCE(@chapter_total, chapter_total),
+          -- Reviving a tombstoned row starts a FRESH history entry: library-only
+          -- fields must not come back with it ("deleted" items reappeared in
+          -- Favorites with their old note/rating and could never be removed).
+          status = CASE WHEN deleted_at IS NOT NULL THEN NULL ELSE status END,
+          note = CASE WHEN deleted_at IS NOT NULL THEN '' ELSE note END,
+          rating = CASE WHEN deleted_at IS NOT NULL THEN NULL ELSE rating END,
+          tags = CASE WHEN deleted_at IS NOT NULL THEN '[]' ELSE tags END,
+          favorited_at = CASE WHEN deleted_at IS NOT NULL THEN NULL ELSE favorited_at END,
           opened_at = @opened_at, updated_at = @updated_at, deleted_at = NULL
         WHERE key = @key
       `,
@@ -174,6 +188,9 @@ export class SqliteSeriesRepository extends BaseSeriesRepository {
   setStatus(key: string, status: ReadingStatus | null): void {
     this.patch(key, 'status', status);
   }
+  setCategory(key: string, category: string): void {
+    this.patch(key, 'category', category);
+  }
   setFavorite(key: string, at: number | null): void {
     this.db.prepare('UPDATE series SET favorited_at = ?, updated_at = ? WHERE key = ?').run(at, Date.now(), key);
   }
@@ -185,6 +202,15 @@ export class SqliteSeriesRepository extends BaseSeriesRepository {
   }
   setTags(key: string, tags: string[]): void {
     this.patch(key, 'tags', JSON.stringify(tags));
+  }
+  setTitle(key: string, title: string, chapterLabel?: string | null): void {
+    if (chapterLabel === undefined) {
+      this.db.prepare('UPDATE series SET title = ?, updated_at = ? WHERE key = ?').run(title, Date.now(), key);
+    } else {
+      this.db
+        .prepare('UPDATE series SET title = ?, chapter_label = COALESCE(?, chapter_label), updated_at = ? WHERE key = ?')
+        .run(title, chapterLabel, Date.now(), key);
+    }
   }
 
   delete(key: string): void {
@@ -198,7 +224,17 @@ export class SqliteSeriesRepository extends BaseSeriesRepository {
 
   clearHistory(): void {
     const now = Date.now();
-    this.db.prepare('UPDATE series SET deleted_at = ?, updated_at = ? WHERE status IS NULL AND deleted_at IS NULL').run(now, now);
+    // History-only rows are the ones that carry nothing but reading progress.
+    // A row that is in Favorites (or has a note/rating/tags) belongs to the
+    // library: tombstoning it here deleted the user's favorite when they
+    // cleared their viewing history.
+    this.db
+      .prepare(
+        `UPDATE series SET deleted_at = ?, updated_at = ?
+         WHERE deleted_at IS NULL AND status IS NULL AND favorited_at IS NULL
+           AND note = '' AND rating IS NULL AND tags = '[]'`,
+      )
+      .run(now, now);
   }
 
   importItems(items: LibraryItem[]): { added: number; updated: number } {

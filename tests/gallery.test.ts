@@ -24,6 +24,15 @@ describe('listPageFiles', () => {
     writeFileSync(join(dir, 'sub', '1.jpg'), 'x');
     expect(listPageFiles(dir)).toEqual([]);
   });
+
+  it('accepts every format the ZIP reader and the downloader accept (incl. avif)', () => {
+    // Regression: folders skipped .avif pages while zip archives and finished
+    // downloads kept them, so a folder of AVIF pages rendered as "empty".
+    for (const f of ['1.avif', '2.AVIF', '3.png', '4.jpeg', '5.bmp', '6.gif', '7.webp']) {
+      writeFileSync(join(dir, f), 'x');
+    }
+    expect(listPageFiles(dir)).toHaveLength(7);
+  });
 });
 
 describe('galleryFromFolder', () => {

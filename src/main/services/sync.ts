@@ -49,6 +49,23 @@ export class SyncService {
     }, DEBOUNCE_MS);
   }
 
+  /** Called after a successful Google login: publish the account and start a
+   * first sync right away instead of waiting for an unrelated library change. */
+  onLogin(): void {
+    this.set({ email: this.deps.authStatus().email, lastError: null });
+    this.scheduleSync();
+  }
+
+  /** Called on logout: drop the pending sync and the "not logged in" error that
+   * otherwise stayed in the UI (and was re-raised by every library change). */
+  resetAfterLogout(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.set({ state: 'idle', email: null, lastError: null });
+  }
+
   async syncNow(): Promise<SyncState> {
     if (this.inFlight) return this.inFlight;
     this.set({ state: 'syncing', lastError: null });

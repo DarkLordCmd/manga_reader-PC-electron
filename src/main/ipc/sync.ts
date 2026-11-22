@@ -21,10 +21,12 @@ export function registerSync(deps: { googleAuth: GoogleAuthLike; sync: SyncServi
   handleSafe(CH.googleAuthStatus, z.tuple([]), () => googleAuth.status());
   handleSafe(CH.googleLogin, z.tuple([]), async () => {
     const r = await googleAuth.login();
+    sync.onLogin();
     return googleAuth.status();
   });
   handleSafe(CH.googleLogout, z.tuple([]), async () => {
     await googleAuth.logout();
+    sync.resetAfterLogout();
   });
   handleSafe(CH.syncNow, z.tuple([]), () => sync.syncNow());
   handleSafe(CH.syncGetState, z.tuple([]), () => sync.getState());

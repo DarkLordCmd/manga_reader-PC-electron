@@ -102,7 +102,9 @@ function toItem(m: ApiManga): CatalogItem {
     url: itemUrl(m.slug_url),
     title,
     coverUrl: cover,
-    pages: Number.isFinite(Number(m.chap_count)) && m.chap_count != null ? Number(m.chap_count) : null,
+    // chap_count is the number of CHAPTERS: the card renders `pages` as "N стр.".
+    pages: null,
+    chapterCount: chap,
     score: typeof m.rate_avg === 'number' && m.rate_avg > 0 ? Number(m.rate_avg.toFixed(1)) : null,
     kind: m.type?.label ?? null,
   };
@@ -175,7 +177,11 @@ function chapterLabel(c: MangalibChapterRef): string {
 
 /** Reader URL used as chapter_id throughout the app: `https://mangalib.me/<slug>/read/v<V>/c<C>`. */
 export function mangalibChapterUrl(slugUrl: string, c: MangalibChapterRef): string {
-  return `${MANGALIB_BASE}/${slugUrl}/read/v${c.volume}/c${c.number}`;
+  // number_secondary keeps "10" and "10.5" apart — without it both chapters got
+  // the SAME chapter_id (duplicate React keys, both marked read together, and
+  // opening 10.5 served chapter 10's pages).
+  const num = c.numberSecondary ? `${c.number}.${c.numberSecondary}` : `${c.number}`;
+  return `${MANGALIB_BASE}/${slugUrl}/read/v${c.volume}/c${num}`;
 }
 
 /** Parses an app chapter URL back into (slug, volume, number). */

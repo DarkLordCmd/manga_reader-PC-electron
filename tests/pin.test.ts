@@ -138,4 +138,31 @@ describe('pin', () => {
     expect(reloaded.algo).toBe('scrypt');
     expect(new PinService(dir).verify('4321')).toBe(true);
   });
+
+  it('fails closed when pin.json is damaged (no silent unlock)', () => {
+    // Regression: JSON.parse failure was indistinguishable from "no PIN set",
+    // so truncating pin.json removed the lock instead of keeping it.
+    const s = new PinService(dir);
+    s.setPin('123456');
+    writeFileSync(join(dir, 'pin.json'), '{"salt":"s","has');
+    const damaged = new PinService(dir);
+    expect(damaged.hasPin()).toBe(true);
+    expect(damaged.verify('123456')).toBe(false);
+    expect(damaged.verify('000000')).toBe(false);
+  });
+
+  it('fails closed when the PIN record has no hash/salt', () => {
+    writeFileSync(join(dir, 'pin.json'), JSON.stringify({ v: 2, algo: 'scrypt' }));
+    const s = new PinService(dir);
+    expect(s.hasPin()).toBe(true);
+    expect(s.verify('123456')).toBe(false);
+  });
+
+  it('setPin repairs a damaged PIN file', () => {
+    writeFileSync(join(dir, 'pin.json'), 'not json at all');
+    const s = new PinService(dir);
+    s.setPin('654321');
+    expect(s.hasPin()).toBe(true);
+    expect(new PinService(dir).verify('654321')).toBe(true);
+  });
 });

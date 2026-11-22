@@ -6,6 +6,19 @@ import { CoverDiskCache } from '../services/cover-cache';
 
 export const galleries = new Map<string, Gallery>();
 
+/** LRU helpers for the per-gallery id maps below. Every opened chapter used to
+ * leave its Cookie/Referer headers, Gallery object or zip index in memory
+ * forever — tens of MB after a few hundred chapters in a long session. */
+export function touchMap<K, V>(map: Map<K, V>, key: K, value: V, limit: number): void {
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > limit) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
+
 export const onlineHeaders = new Map<string, Record<string, string>>();
 // In-memory cover cache is bounded by entry count (an LRU — the oldest entry
 // is dropped past the cap) so long catalog sessions don't grow it unbounded;

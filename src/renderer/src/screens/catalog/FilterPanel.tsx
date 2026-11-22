@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   EH_CATEGORIES,
   MANGASHI_TAGS,
@@ -9,6 +10,10 @@ import {
   SENKURO_TYPE,
   SENKURO_FORMAT,
   SENKURO_RATING,
+  SENKURO_TRANSLATION,
+  SENKURO_SOURCE,
+  SENKURO_COUNTRY,
+  SENKURO_CHAPTER_PRESETS,
   SENKURO_ORDERING,
   COMX_CATEGORY,
   COMX_GENRE,
@@ -82,11 +87,76 @@ function TagChecklist({
   );
 }
 
+function FilterSection({
+  title,
+  count,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  count?: number;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <section className={`fsec${open ? ' open' : ''}${count != null && count > 0 ? ' has-active' : ''}`}>
+      <button type="button" className="fsec-head" onClick={onToggle} aria-expanded={open}>
+        <span className="fsec-title">{title}</span>
+        {count != null && count > 0 ? <span className="fsec-badge">{count}</span> : null}
+        <span className="fsec-chevron" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      {open && <div className="fsec-body">{children}</div>}
+    </section>
+  );
+}
+
+function SubLabel({ children }: { children: React.ReactNode }): JSX.Element {
+  return <div className="fsec-label">{children}</div>;
+}
+
 export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
+  const [labelQuery, setLabelQuery] = useState('');
+  const [labelsOpen, setLabelsOpen] = useState(false);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    status: true,
+    kind: true,
+    rating: true,
+    range: false,
+    origin: false,
+    labels: false,
+  });
+  const toggleSection = (key: string): void => setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
+  const q = labelQuery.trim().toLowerCase();
+  const filteredLabels = q
+    ? s.skLabelList.filter((l) => l.name.toLowerCase().includes(q) || l.slug.includes(q)).slice(0, 300)
+    : s.skLabelList;
+  const toggleIn = (setter: (fn: (prev: string[]) => string[]) => void) => (v: string) =>
+    setter((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+  const skActiveCount =
+    s.skStatus.length +
+    s.skTranslation.length +
+    s.skType.length +
+    s.skFormat.length +
+    s.skRatings.length +
+    s.skSources.length +
+    s.skCountries.length +
+    s.skLabels.length +
+    (s.skChaptersFrom ? 1 : 0) +
+    (s.skChaptersTo ? 1 : 0) +
+    (s.skYearFrom ? 1 : 0) +
+    (s.skYearTo ? 1 : 0);
+  const selectedLabels = s.skLabelList.filter((l) => s.skLabels.includes(l.slug));
   return (
     <div className="filter-panel">
       <div className="filter-panel-head">
-        <div className="filter-title-lg">Фильтры</div>
+        <div className="filter-title-lg">
+          Фильтры
+          {s.source === 'senkuro' && skActiveCount > 0 && <span className="fsec-badge">{skActiveCount}</span>}
+        </div>
         <button
           className="filter-reset"
           onClick={() => {
@@ -96,6 +166,7 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
           Сбросить
         </button>
       </div>
+      <div className="filter-panel-body">
       {s.tagSource && (
         <>
           <div className="filter-title">Категории</div>
@@ -126,6 +197,22 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
             <option value="4">4+</option>
             <option value="5">5</option>
           </select>
+          <label className="filter-check">
+            <input type="checkbox" checked={s.ehWatchedOnly} onChange={(e) => s.setEhWatchedOnly(e.target.checked)} />
+            Только из «Watched»
+          </label>
+          {s.source !== 'exhentai_onion' && (
+            <>
+              <div className="filter-title">Топлист</div>
+              <select className="filter-select" value={String(s.ehToplist)} onChange={(e) => s.setEhToplist(Number(e.target.value))}>
+                <option value="0">Выкл.</option>
+                <option value="11">Галереи за всё время</option>
+                <option value="12">Галереи за год</option>
+                <option value="13">Галереи за месяц</option>
+                <option value="15">Галереи за вчера</option>
+              </select>
+            </>
+          )}
         </>
       )}
 
@@ -302,27 +389,155 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
           <FilterRow label="Сортировка">
             <SelectFilter options={SENKURO_ORDERING} value={s.skOrdering} onChange={s.setSkOrdering} />
           </FilterRow>
-          <div className="filter-title">Статус</div>
-          <TagChecklist
-            items={SENKURO_STATUS}
-            selected={s.skStatus}
-            onToggle={(v) => s.setSkStatus((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))}
-          />
-          <div className="filter-title">Тип</div>
-          <TagChecklist
-            items={SENKURO_TYPE}
-            selected={s.skType}
-            onToggle={(v) => s.setSkType((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))}
-          />
-          <div className="filter-title">Формат выпуска</div>
-          <TagChecklist
-            items={SENKURO_FORMAT}
-            selected={s.skFormat}
-            onToggle={(v) => s.setSkFormat((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))}
-          />
-          <FilterRow label="Возрастной рейтинг">
-            <SelectFilter options={SENKURO_RATING} value={s.skRating} onChange={s.setSkRating} />
-          </FilterRow>
+
+          <FilterSection
+            title="Статус"
+            count={s.skStatus.length + s.skTranslation.length}
+            open={openSections.status}
+            onToggle={() => toggleSection('status')}
+          >
+            <SubLabel>Тайтл</SubLabel>
+            <TagChecklist items={SENKURO_STATUS} selected={s.skStatus} onToggle={toggleIn(s.setSkStatus)} />
+            <SubLabel>Перевод</SubLabel>
+            <TagChecklist items={SENKURO_TRANSLATION} selected={s.skTranslation} onToggle={toggleIn(s.setSkTranslation)} />
+          </FilterSection>
+
+          <FilterSection
+            title="Тип и формат"
+            count={s.skType.length + s.skFormat.length}
+            open={openSections.kind}
+            onToggle={() => toggleSection('kind')}
+          >
+            <SubLabel>Тип</SubLabel>
+            <TagChecklist items={SENKURO_TYPE} selected={s.skType} onToggle={toggleIn(s.setSkType)} />
+            <SubLabel>Формат</SubLabel>
+            <TagChecklist items={SENKURO_FORMAT} selected={s.skFormat} onToggle={toggleIn(s.setSkFormat)} />
+          </FilterSection>
+
+          <FilterSection
+            title="Возрастной рейтинг"
+            count={s.skRatings.length}
+            open={openSections.rating}
+            onToggle={() => toggleSection('rating')}
+          >
+            <TagChecklist items={SENKURO_RATING} selected={s.skRatings} onToggle={toggleIn(s.setSkRatings)} />
+          </FilterSection>
+
+          <FilterSection
+            title="Главы и год"
+            count={
+              (s.skChaptersFrom ? 1 : 0) + (s.skChaptersTo ? 1 : 0) + (s.skYearFrom ? 1 : 0) + (s.skYearTo ? 1 : 0)
+            }
+            open={openSections.range}
+            onToggle={() => toggleSection('range')}
+          >
+            <SubLabel>Количество глав</SubLabel>
+            <div className="filter-range">
+              <input
+                className="filter-input"
+                type="number"
+                min={0}
+                placeholder="от"
+                value={s.skChaptersFrom || ''}
+                onChange={(e) => s.setSkChaptersFrom(Number(e.target.value) || 0)}
+              />
+              <span className="filter-range-sep">—</span>
+              <input
+                className="filter-input"
+                type="number"
+                min={0}
+                placeholder="до"
+                value={s.skChaptersTo || ''}
+                onChange={(e) => s.setSkChaptersTo(Number(e.target.value) || 0)}
+              />
+            </div>
+            <div className="tag-checklist compact">
+              {SENKURO_CHAPTER_PRESETS.map(([from, to, label]) => {
+                const active = s.skChaptersFrom === from && s.skChaptersTo === to;
+                return (
+                  <button
+                    key={label}
+                    className={`tag-check${active ? ' active' : ''}`}
+                    onClick={() => {
+                      s.setSkChaptersFrom(active ? 0 : from);
+                      s.setSkChaptersTo(active ? 0 : to);
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            <SubLabel>Год релиза</SubLabel>
+            <div className="filter-range">
+              <input
+                className="filter-input"
+                type="number"
+                min={0}
+                max={2100}
+                placeholder="от"
+                value={s.skYearFrom || ''}
+                onChange={(e) => s.setSkYearFrom(Number(e.target.value) || 0)}
+              />
+              <span className="filter-range-sep">—</span>
+              <input
+                className="filter-input"
+                type="number"
+                min={0}
+                max={2100}
+                placeholder="до"
+                value={s.skYearTo || ''}
+                onChange={(e) => s.setSkYearTo(Number(e.target.value) || 0)}
+              />
+            </div>
+          </FilterSection>
+
+          <FilterSection
+            title="Первоисточник"
+            count={s.skSources.length}
+            open={openSections.origin}
+            onToggle={() => toggleSection('origin')}
+          >
+            <TagChecklist items={SENKURO_SOURCE} selected={s.skSources} onToggle={toggleIn(s.setSkSources)} />
+          </FilterSection>
+
+          <FilterSection
+            title="Страна"
+            count={s.skCountries.length}
+            open={openSections.country}
+            onToggle={() => toggleSection('country')}
+          >
+            <TagChecklist items={SENKURO_COUNTRY} selected={s.skCountries} onToggle={toggleIn(s.setSkCountries)} />
+          </FilterSection>
+
+          <FilterSection
+            title="Лейблы"
+            count={s.skLabels.length}
+            open={openSections.labels}
+            onToggle={() => toggleSection('labels')}
+          >
+            <button type="button" className="label-picker-btn" onClick={() => setLabelsOpen(true)}>
+              Выбрать лейблы…
+            </button>
+            {selectedLabels.length > 0 ? (
+              <div className="label-chips">
+                {selectedLabels.slice(0, 8).map((l) => (
+                  <button
+                    key={l.slug}
+                    type="button"
+                    className="tag-check active"
+                    title="Убрать"
+                    onClick={() => toggleIn(s.setSkLabels)(l.slug)}
+                  >
+                    {l.name} ×
+                  </button>
+                ))}
+                {selectedLabels.length > 8 && <span className="filter-note">+{selectedLabels.length - 8}</span>}
+              </div>
+            ) : (
+              <div className="filter-note">Ничего не выбрано</div>
+            )}
+          </FilterSection>
         </>
       )}
 
@@ -339,6 +554,49 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
             </>
           )}
         </>
+      )}
+      </div>
+      {labelsOpen && (
+        <div className="overlay" onClick={() => setLabelsOpen(false)}>
+          <div className="overlay-card label-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <div className="label-modal-head">
+              <strong>Лейблы</strong>
+              <span className="filter-note">
+                {s.skLabels.length > 0 ? `выбрано: ${s.skLabels.length}` : `${s.skLabelList.length} доступно`}
+              </span>
+              <button className="overlay-close" aria-label="Закрыть" onClick={() => setLabelsOpen(false)}>
+                ×
+              </button>
+            </div>
+            <input
+              className="filter-input full"
+              placeholder="Поиск лейблов…"
+              value={labelQuery}
+              onChange={(e) => setLabelQuery(e.target.value)}
+              autoFocus
+            />
+            <div className="label-modal-list">
+              {filteredLabels.length === 0 ? (
+                <div className="filter-note">Ничего не найдено</div>
+              ) : (
+                filteredLabels.map((l) => (
+                  <label key={l.slug} className="label-pick">
+                    <input type="checkbox" checked={s.skLabels.includes(l.slug)} onChange={() => toggleIn(s.setSkLabels)(l.slug)} />
+                    <span>{l.name}</span>
+                  </label>
+                ))
+              )}
+            </div>
+            <div className="label-modal-foot">
+              <button disabled={s.skLabels.length === 0} onClick={() => s.setSkLabels([])}>
+                Очистить
+              </button>
+              <button className="set-primary" onClick={() => setLabelsOpen(false)}>
+                Готово
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

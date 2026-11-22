@@ -20,6 +20,19 @@ const libraryEntry = z.object({
   adult: z.boolean().optional(),
 });
 
+/** Upper bound for the main-owned per-URL maps (read_progress / read_scroll).
+ * They used to grow forever — one key per chapter ever read — and every ~5 s
+ * progress flush serialises the WHOLE settings.json synchronously in the main
+ * process. Old resume points are dropped; history/library rows keep the state. */
+const PROGRESS_MAP_LIMIT = 1000;
+function capProgressMap<T>(map: Record<string, T>): Record<string, T> {
+  const keys = Object.keys(map);
+  if (keys.length <= PROGRESS_MAP_LIMIT) return map;
+  const out: Record<string, T> = {};
+  for (const k of keys.slice(keys.length - PROGRESS_MAP_LIMIT)) out[k] = map[k];
+  return out;
+}
+
 export function registerLibrary(deps: {
   library: LibraryService;
   history: HistoryManager;
@@ -96,13 +109,16 @@ export function registerLibrary(deps: {
       const s = settings.get();
       // Mirror into read_progress too — startPageFor() reads it when the user
       // re-open through the chapters list / URL bar, not through history.
-      const rp = { ...s.read_progress, [url]: [page, total] as [number, number] };
-      const saved: Record<string, unknown> = { ...s, viewing_history: history.toVec(), read_progress: rp };
+      const rp = capProgressMap({ ...s.read_progress, [url]: [page, total] as [number, number] });
+      // NOT viewing_history: that was a full copy of the DB history (78 KB of a
+      // 149 KB settings.json for a normal user) rewritten on every 5-second
+      // progress flush. The DB is the source of truth; the settings copy is only
+      // a legacy migration source read at boot.
+      const saved: Record<string, unknown> = { ...s, read_progress: rp };
       // Keep the vertical offset inside a tall webtoon page (px) so resuming
       // lands where the reader left off instead of at the page's top.
       if (typeof offset === 'number' && offset >= 0) {
-        const rs = { ...s.read_scroll, [url]: offset };
-        saved.read_scroll = rs;
+        saved.read_scroll = capProgressMap({ ...s.read_scroll, [url]: offset });
       }
       settings.save(saved as unknown as Settings);
       sync?.scheduleSync();

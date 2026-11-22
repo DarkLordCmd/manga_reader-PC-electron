@@ -86,7 +86,11 @@ export function probeSocks5Handshake(addr: string): Promise<TorStatus> {
 export function parseBridgeAddr(line: string): { host: string; port: number } | null {
   const tokens = line.trim().split(/\s+/);
   for (const t of tokens) {
-    const cleaned = t.replace(/^\[|\]$/g, '');
+    // Bridge addresses may be IPv6 in brackets ("[2001:db8::1]:443"). Remove
+    // ALL brackets (the old /^\[|\]$/ left the closing one when the token ended
+    // with ":port", so IPv6 bridges were unparsable and silently dropped — with
+    // only IPv6 bridges configured the app fell back to a DIRECT Tor start).
+    const cleaned = t.replace(/[[\]]/g, '').replace(/^["']|["',;]$/g, '');
     if (cleaned.includes(':')) {
       const idx = cleaned.lastIndexOf(':');
       const host = cleaned.slice(0, idx);
@@ -131,7 +135,9 @@ export async function probeSite(key: string, torAddr: string, torProxiedSites: s
       {
         url: site.url,
         headers: { 'User-Agent': site.onion ? TOR_UA : UA },
-        timeoutMs: 10_000,
+        // An onion service through a cold Tor circuit regularly needs 10-20 s
+        // for the first load; a flat 10 s budget reported working sites as down.
+        timeoutMs: site.onion || useTor ? 25_000 : 10_000,
       },
       useTor ? torAddr || '127.0.0.1:9150' : undefined,
     );

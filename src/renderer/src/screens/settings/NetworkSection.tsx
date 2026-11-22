@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { errorText } from '../../lib/errors';
+import { useEffect, useState } from 'react';
 import Section, { Row, SubHead } from './Section';
 import Toggle from '../../components/Toggle';
-import type { BridgeStatus, SiteStatus, TorStatus } from '@shared/ipc';
+import type { BridgeStatus, SenkuroImportProgress, SiteStatus, TorDiagnostics, TorStatus } from '@shared/ipc';
 import type { SettingsCommon } from './useSettings';
 
 const TOR_SITES: { key: string; label: string }[] = [
@@ -20,6 +21,46 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
   const [torChecking, setTorChecking] = useState(false);
   const [bridgeResults, setBridgeResults] = useState<BridgeStatus[] | null>(null);
   const [siteResults, setSiteResults] = useState<SiteStatus[] | null>(null);
+  const [circuitBusy, setCircuitBusy] = useState(false);
+  const [circuitMsg, setCircuitMsg] = useState<string | null>(null);
+  const [torInfo, setTorInfo] = useState<TorDiagnostics | null>(null);
+  const [torInfoBusy, setTorInfoBusy] = useState(false);
+  const [skgBusy, setSkgBusy] = useState(false);
+  const refreshTorInfo = async (): Promise<void> => {
+    setTorInfoBusy(true);
+    try {
+      setTorInfo(await window.api.torDiagnostics());
+    } catch {
+      /* diagnostics are best-effort */
+    } finally {
+      setTorInfoBusy(false);
+    }
+  };
+  const [skgMsg, setSkgMsg] = useState<string | null>(null);
+  const [skgProgress, setSkgProgress] = useState<SenkuroImportProgress | null>(null);
+  const [skgMarkRead, setSkgMarkRead] = useState(true);
+
+  useEffect(() => window.api.onSenkuroImportProgress((p) => setSkgProgress(p)), []);
+  useEffect(() => {
+    void refreshTorInfo();
+    // Diagnostics are cheap; refresh when the section opens once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const runSkgImport = async (): Promise<void> => {
+    setSkgBusy(true);
+    setSkgMsg(null);
+    setSkgProgress(null);
+    try {
+      const r = await window.api.senkuroImportBookmarks({ markRead: skgMarkRead });
+      setSkgMsg(r.message);
+    } catch (e: any) {
+      setSkgMsg(`Ошибка импорта: ${errorText(e)}`);
+    } finally {
+      setSkgBusy(false);
+      setSkgProgress(null);
+    }
+  };
 
   const toggleTorSite = (key: string, on: boolean): void => {
     const set = new Set(settings.tor_proxied_sites);
@@ -34,7 +75,17 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
       const cookies = await window.api.loginSite(url);
       setLoginMsg(cookies ? `${label}: куки сохранены` : `${label}: отменено`);
     } catch (e: any) {
-      setLoginMsg(`${label}: ошибка — ${e?.message ?? e}`);
+      setLoginMsg(`${label}: ошибка — ${errorText(e)}`);
+    }
+  };
+
+  const clearCookies = async (field: 'onion' | 'nhentai' | 'nhentai_onion' | 'senkuro', label: string): Promise<void> => {
+    setLoginMsg(`${label}: очищаю куки…`);
+    try {
+      await window.api.clearSiteCookies(field);
+      setLoginMsg(`${label}: куки очищены`);
+    } catch (e: any) {
+      setLoginMsg(`${label}: ошибка — ${errorText(e)}`);
     }
   };
 
@@ -43,6 +94,32 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
       <Section title="Tor и сеть" desc="Встроенный Tor, мосты и адрес SOCKS-прокси.">
         <Row label="Domain Fronting" note="Доступ к ExHentai без VPN, когда DNS заблокирован.">
           <Toggle checked={settings.enable_domain_fronting} onChange={(v) => upd({ enable_domain_fronting: v })} />
+        </Row>
+        <Row
+          label="Картинки EH напрямую"
+          note="Скачивать изображения с CDN (ehgt/hath) без Tor — заметно быстрее, но CDN видит ваш реальный IP. Страницы галереи/каталога всё равно идут через Tor."
+        >
+          <Toggle checked={settings.eh_images_direct} onChange={(v) => upd({ eh_images_direct: v })} />
+        </Row>
+        <Row
+          label="Оригиналы изображений EH"
+          note="Читать полноразмерные оригиналы вместо ресайза 1280 px — резче на вебтунах и сканах, но больше трафика."
+        >
+          <Toggle checked={settings.eh_original_images} onChange={(v) => upd({ eh_original_images: v })} />
+        </Row>
+        <Row
+          label="Кэш каталога EH"
+          note="Сколько минут отдавать сохранённые страницы каталога ExHentai/E-Hentai (меньше запросов и банов). 0 — без кэша."
+        >
+          <input
+            className="text-input"
+            type="number"
+            min={0}
+            max={240}
+            value={settings.eh_listing_cache_minutes}
+            onChange={(e) => upd({ eh_listing_cache_minutes: Math.max(0, Math.min(240, Number(e.target.value) || 0)) })}
+          />
+          <span className="set-note">мин</span>
         </Row>
         <Row
           label="Встроенный Tor"
@@ -78,6 +155,33 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
                 ? `✓ Tor работает (${torStatus.latencyMs} мс)`
                 : `✗ Tor недоступен: ${torStatus.reason}`}
             </div>
+          </Row>
+        )}
+        <Row
+          label="Цепь Tor"
+          note="Новый выходной узел без перезапуска Tor. Помогает, когда сайт ограничил IP выхода (clearnet). Для ExHentai через .onion бан привязан к аккаунту, а не к IP — там поможет другой аккаунт или ожидание."
+        >
+          <button
+            disabled={circuitBusy || !settings.builtin_tor}
+            onClick={async () => {
+              setCircuitBusy(true);
+              setCircuitMsg(null);
+              try {
+                const r = await window.api.newTorCircuit();
+                setCircuitMsg(r.ok ? 'Цепь сменена — попробуй запрос снова' : 'Не удалось: встроенный Tor не запущен (используется внешний?)');
+              } catch (e) {
+                setCircuitMsg(`Ошибка: ${errorText(e)}`);
+              } finally {
+                setCircuitBusy(false);
+              }
+            }}
+          >
+            {circuitBusy ? 'Меняю…' : 'Сменить цепь Tor'}
+          </button>
+        </Row>
+        {circuitMsg && (
+          <Row stack>
+            <span className="set-note">{circuitMsg}</span>
           </Row>
         )}
         <Row label="Сайты через Tor" stack>
@@ -157,7 +261,11 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
             onChange={(e) => upd({ mangalib_proxy_addr: e.target.value })}
           />
         </Row>
-        <Row label="ExHentai" stack note="Обычный HTTP-прокси для запросов к ExHentai вне Tor.">
+        <Row
+          label="ExHentai"
+          stack
+          note="Прокси для ExHentai вне Tor: http://host:port или socks5://host:port (как в JHenTai). Пусто — напрямую/через domain fronting."
+        >
           <input
             className="text-input wide"
             value={settings.exhentai_proxy_addr}
@@ -182,6 +290,16 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
           <button onClick={() => void doLogin('http://exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion', 'ExHentai onion')}>
             Войти в ExHentai (onion)
           </button>
+          <button className="set-danger" onClick={() => void clearCookies('onion', 'ExHentai onion')}>
+            Очистить куки
+          </button>
+        </Row>
+        <Row stack>
+          <span className="set-note">
+            На onion-зеркале сессия хранится в одной cookie <code>onikakushi</code> — это нормально, отдельных
+            ipb_member_id / ipb_pass_hash / igneous тут не будет (они нужны только для обычного ExHentai). После входа
+            значение меняется; если каталог пишет «пустая страница» — сессия истекла, войди заново и введи капчу.
+          </span>
         </Row>
 
         <SubHead>NHentai (onion)</SubHead>
@@ -198,6 +316,9 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
           <button onClick={() => void doLogin('http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion', 'NHentai onion')}>
             Войти в NHentai (onion)
           </button>
+          <button className="set-danger" onClick={() => void clearCookies('nhentai_onion', 'NHentai onion')}>
+            Очистить куки
+          </button>
         </Row>
 
         <SubHead>NHentai (clearnet)</SubHead>
@@ -212,6 +333,9 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
         </Row>
         <Row>
           <button onClick={() => void doLogin('https://nhentai.net', 'NHentai')}>Войти в NHentai</button>
+          <button className="set-danger" onClick={() => void clearCookies('nhentai', 'NHentai')}>
+            Очистить куки
+          </button>
         </Row>
         <Row label="Onion base" note="Адрес onion-зеркала NHentai. Пусто — встроенный по умолчанию.">
           <input
@@ -225,8 +349,29 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
           </button>
         </Row>
 
-        <SubHead>Senkuro</SubHead>
-        <Row stack note="Вход идёт через SSO Senkuro: откроется окно, где нужно нажать «Войти».">
+        <Row label="Состояние Tor" note="Bootstrap, построенные цепи и выходы — для диагностики медленных запросов.">
+          <button onClick={() => void refreshTorInfo()}>{torInfoBusy ? 'Проверяю…' : 'Обновить'}</button>
+        </Row>
+        {torInfo && (
+          <Row stack>
+            <span className="set-note">
+              {torInfo.running ? 'Tor запущен' : 'Tor не запущен'}
+              {torInfo.bootstrap ? ` · bootstrap ${torInfo.bootstrap}` : ''}
+              {` · цепей: ${torInfo.circuits}`}
+              {torInfo.exits.length > 0 ? ` · выходов: ${torInfo.exits.length}` : ''}
+              {` · мостов: ${torInfo.bridgeCount}`}
+            </span>
+            {torInfo.bridgeCount === 1 && (
+              <span className="set-note" style={{ color: '#e0a040' }}>
+                Tor рекомендует минимум два моста (conflux/резерв). Добавь второй мост в списке ниже.
+              </span>
+            )}
+          </Row>
+        )}        <SubHead>Senkuro</SubHead>
+        <Row
+          stack
+          note="Вход идёт через страницу авторизации Senkuro SSO (PKCE OAuth) — главная сайта не открывается. Если сеть блокирует один из SSO-хостов, окно само попробует второй."
+        >
           <textarea
             className="cookie-input"
             rows={4}
@@ -237,7 +382,41 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
         </Row>
         <Row>
           <button onClick={() => void doLogin('https://senkuro.me/', 'Senkuro')}>Войти в Senkuro</button>
+          <button className="set-danger" onClick={() => void clearCookies('senkuro', 'Senkuro')}>
+            Очистить куки
+          </button>
         </Row>
+        <SubHead>Библиотека Senkuro (Senkognito)</SubHead>
+        <Row
+          stack
+          note="Импортирует закладки «Читаю / В планах / Прочитано / Любимое / Отложено / Брошено» с прогрессом (на какой главе остановился) и отметками прочитанных глав. Используется тот же аккаунт Senkuro. Отметки читаного хранятся до 4000 последних глав (до 40 на произведение)."
+        >
+          <label className="filter-check">
+            <input type="checkbox" checked={skgMarkRead} onChange={(e) => setSkgMarkRead(e.target.checked)} />
+            отмечать прочитанные главы
+          </label>
+        </Row>
+        <Row>
+          <button className="set-primary" disabled={skgBusy} onClick={() => void runSkgImport()}>
+            {skgBusy ? 'Импортирую…' : 'Импортировать закладки Senkuro'}
+          </button>
+        </Row>
+        {skgBusy && skgProgress && (
+          <Row stack>
+            <span className="set-note">
+              {skgProgress.phase === 'bookmarks'
+                ? `Загружаю закладки: ${skgProgress.done}`
+                : skgProgress.phase === 'saving'
+                  ? 'Сохраняю…'
+                  : `Обрабатываю ${skgProgress.done}/${skgProgress.total}${skgProgress.title ? ` — ${skgProgress.title}` : ''}`}
+            </span>
+          </Row>
+        )}
+        {skgMsg && (
+          <Row stack>
+            <span className="set-note">{skgMsg}</span>
+          </Row>
+        )}
         {loginMsg && (
           <Row stack>
             <span className="set-note">{loginMsg}</span>

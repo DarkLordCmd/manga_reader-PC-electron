@@ -1,3 +1,4 @@
+import { errorText } from '../lib/errors';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from '../state/store';
 import type { CatalogCard } from '@shared/ipc';
@@ -40,7 +41,7 @@ export default function Popular(): JSX.Element {
     } catch (e: any) {
       if (id !== reqRef.current) return;
       setCards([]);
-      setError(String(e?.message ?? e));
+      setError(errorText(e));
     } finally {
       if (id === reqRef.current) setLoading(false);
     }

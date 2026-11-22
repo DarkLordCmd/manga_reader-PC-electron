@@ -27,12 +27,22 @@ export type { EhLimitState };
  * Limit state for the EH sources. E-Hentai and ExHentai share one client but
  * not one quota: a block recorded for `exhentai` must leave `ehentai` working
  * (and vice versa), so every block carries the group it applies to.
+ *
+ * Deadlines are kept PER GROUP. A single shared deadline let a new 2-minute
+ * e-hentai usage limit inherit a 1-hour exhentai image limit (blocking the
+ * wrong site for an hour) while the group swap also unblocked the exhentai
+ * window that was still running.
  */
 export class EhLimitWatcher {
-  private until = 0;
-  private kind = '';
-  private group: string | null = null;
+  private blocks = new Map<string, { kind: string; until: number }>();
+  private currentGroup: string | null = null;
   private cbs: ((blocked: boolean) => void)[] = [];
+
+  private prune(now = Date.now()): void {
+    for (const [key, b] of this.blocks) {
+      if (now >= b.until) this.blocks.delete(key);
+    }
+  }
 
   private emit(): void {
     const b = this.isBlocked();
@@ -40,41 +50,48 @@ export class EhLimitWatcher {
   }
 
   state(): EhLimitState {
-    return { blocked: Date.now() < this.until, until: this.until, kind: this.kind };
+    this.prune();
+    let best: { kind: string; until: number } | null = null;
+    for (const b of this.blocks.values()) if (!best || b.until > best.until) best = b;
+    return { blocked: best !== null, until: best?.until ?? 0, kind: best?.kind ?? '' };
   }
 
   isBlocked(): boolean {
-    return this.state().blocked;
+    this.prune();
+    return this.blocks.size > 0;
   }
 
   /** `group` null = the block covers every EH host. */
   groupOf(): string | null {
-    return this.group;
+    return this.currentGroup;
   }
 
   /** True when this host group is inside an active block. */
   isBlockedFor(group: string | null): boolean {
-    if (!this.isBlocked()) return false;
-    if (!this.group || !group) return true;
-    return this.group === group;
+    this.prune();
+    if (this.blocks.size === 0) return false;
+    if (this.blocks.has('*')) return true;
+    if (!group) return true;
+    return this.blocks.has(group);
   }
 
   block(kind: string, durationMs: number, group: string | null = null): void {
-    this.kind = kind;
-    this.group = group;
-    this.until = Math.max(this.until, Date.now() + durationMs);
+    const key = group ?? '*';
+    const until = Date.now() + durationMs;
+    this.currentGroup = group;
+    // Extend an existing window for the SAME group only.
+    this.blocks.set(key, { kind, until: Math.max(until, this.blocks.get(key)?.until ?? 0) });
     this.emit();
   }
 
   clear(): void {
-    this.until = 0;
-    this.kind = '';
-    this.group = null;
+    this.blocks.clear();
+    this.currentGroup = null;
     this.emit();
   }
 
   remainingSec(): number {
-    return Math.max(0, Math.ceil((this.until - Date.now()) / 1000));
+    return Math.max(0, Math.ceil((this.state().until - Date.now()) / 1000));
   }
 
   onChange(cb: (blocked: boolean) => void): void {

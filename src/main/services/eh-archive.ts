@@ -27,7 +27,14 @@ export function parseArchiverPage(html: string): ArchiveCost | null {
 
 export async function fetchArchiveCost(url: string, opts: { cookieHeader?: string; proxy?: string }): Promise<ArchiveCost | null> {
   const r = await httpFetch({ url, headers: { Referer: url, ...(opts.cookieHeader ? { Cookie: opts.cookieHeader } : {}) } }, opts.proxy);
-  return parseArchiverPage(r.text);
+  const parsed = parseArchiverPage(r.text);
+  // E-Hentai only renders the archiver form when the account uses the right
+  // site setting; JHenTai surfaces the same hint. Without it the user only sees
+  // a bare "could not load the archive page".
+  if (!parsed && /archiver settings|manual select|manual start/i.test(r.text)) {
+    throw new Error('E-Hentai: чтобы скачивать архивы, включи в настройках сайта (Archiver Settings) «Manual Select, Manual Start (Default)».');
+  }
+  return parsed;
 }
 
 export async function buyArchive(

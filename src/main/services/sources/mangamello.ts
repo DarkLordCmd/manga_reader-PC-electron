@@ -16,7 +16,10 @@ export function parseMangaMelloSearch(jsonText: string, _base: string): CatalogI
       url: `${SITE}${id}/`,
       title: m?.title ?? 'Без названия',
       coverUrl: typeof m?.cover === 'string' ? m.cover : null,
-      pages: typeof m?.chapter === 'number' ? m.chapter : null,
+      // `chapter` is the LAST CHAPTER NUMBER (612 for Gintama), not a page count:
+      // putting it into `pages` made the card read "612 стр." for a 2-page chapter.
+      pages: null,
+      chapterCount: typeof m?.chapter === 'number' ? m.chapter : null,
     };
   });
 }
@@ -30,21 +33,21 @@ export function parseMangaMelloChapter(jsonText: string): { title: string; pageU
   return { title: `MangaMello: ${j?.title ?? ''} глава ${j?.chapter ?? ''}`, pageUrls: pages };
 }
 
-export async function searchMangaMello(query: string, page = 0): Promise<CatalogItem[]> {
+export async function searchMangaMello(query: string, page = 0, proxy?: string): Promise<CatalogItem[]> {
   const q = new URLSearchParams({ search: query.trim(), page: String(page + 1) });
-  const raw = await httpGetJson(`${BASE}?${q.toString()}`, { Referer: BASE });
+  const raw = await httpGetJson(`${BASE}?${q.toString()}`, { Referer: BASE }, proxy);
   return parseMangaMelloSearch(JSON.stringify(raw), BASE);
 }
 
 // MangaMello has no chapter-list endpoint in the documented API shape; the
 // search response only carries the latest chapter count. Chapter list is
 // therefore synthesized as 1..N chapter URLs on the site host.
-export async function fetchMangaMelloChapters(mangaUrl: string): Promise<ChapterInfo[]> {
+export async function fetchMangaMelloChapters(mangaUrl: string, proxy?: string): Promise<ChapterInfo[]> {
   const segs = mangaUrl.trim().replace(/\/+$/, '').split('/').filter(Boolean);
   const nums = segs.filter((s) => /^\d+$/.test(s));
   const id = nums[nums.length - 1] ?? '';
   if (!id) throw new Error('MangaMello: не удалось разобрать URL манги');
-  const raw = await httpGetJson(`${BASE}${id}/`, { Referer: BASE });
+  const raw = await httpGetJson(`${BASE}${id}/`, { Referer: BASE }, proxy);
   const j = raw as any;
   const count = typeof j?.chapter === 'number' ? j.chapter : typeof j?.chapters === 'number' ? j.chapters : null;
   if (!count || count < 1) throw new Error('MangaMello: не удалось получить список глав');
@@ -60,12 +63,12 @@ export async function fetchMangaMelloChapters(mangaUrl: string): Promise<Chapter
   return chapters;
 }
 
-export async function fetchMangaMelloChapter(chapterUrl: string): Promise<{ title: string; pageUrls: string[] }> {
+export async function fetchMangaMelloChapter(chapterUrl: string, proxy?: string): Promise<{ title: string; pageUrls: string[] }> {
   const segs = chapterUrl.trim().replace(/\/+$/, '').split('/').filter(Boolean);
   const nums = segs.filter((s) => /^\d+$/.test(s));
   const mangaId = nums[nums.length - 2] ?? '';
   const chapter = nums[nums.length - 1] ?? '';
   if (!mangaId || !chapter) throw new Error('MangaMello: не удалось разобрать URL главы');
-  const raw = await httpGetJson(`${BASE}${mangaId}/${chapter}/`, { Referer: BASE });
+  const raw = await httpGetJson(`${BASE}${mangaId}/${chapter}/`, { Referer: BASE }, proxy);
   return parseMangaMelloChapter(JSON.stringify(raw));
 }

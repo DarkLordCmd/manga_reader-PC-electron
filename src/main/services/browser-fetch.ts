@@ -39,8 +39,20 @@ const STEALTH_JS = `
 let win: BrowserWindow | null = null;
 let ses: Electron.Session | null = null;
 let currentProxy = '';
-let chain: Promise<unknown> = Promise.resolve();
-let workspaceChain: Promise<unknown> = Promise.resolve();
+/** ONE lock for the shared window. There used to be two independent chains
+ * (navigations vs in-window fetches) over the same BrowserWindow and the same
+ * session proxy: one branch could navigate away (destroying the other's JS
+ * context → "Script failed to execute"), flip the proxy of a request that was
+ * already intended for Tor (IP leak), or resolve a stale `did-finish-load`
+ * promise with a different page's HTML. Everything that touches the window now
+ * runs exclusively. */
+let windowLock: Promise<unknown> = Promise.resolve();
+
+function withWindowLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = windowLock.then(fn, fn);
+  windowLock = run.catch(() => {});
+  return run;
+}
 
 function prepareSession(): Electron.Session {
   if (ses) return ses;
@@ -133,10 +145,15 @@ async function loadViaWindow(
   await seedSessionCookies(prepareSession(), cookie, cookieHost);
   return await new Promise<string>((resolve, reject) => {
     let settled = false;
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      w.webContents.off('did-finish-load', onFinish);
+      w.webContents.off('did-fail-load', onFail);
+    };
     const finish = (fn: () => void): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      cleanup();
       fn();
     };
     const timer = setTimeout(() => {
@@ -151,12 +168,12 @@ async function loadViaWindow(
     // page — so poll the DOM until the anti-bot wall is gone or timeout.
     // If the wall persists (interactive Turnstile), the window is shown so
     // the user can complete it manually.
-    w.webContents.once('did-finish-load', () => {
+    const onFinish = (): void => {
       let shown = false;
       const wallStart = Date.now();
       void (async () => {
         const deadline = wallStart + Math.max(timeoutMs - 5000, 6000);
-        while (Date.now() < deadline) {
+        while (Date.now() < deadline && !settled) {
           try {
             const html: string = await w.webContents.executeJavaScript('document.documentElement.outerHTML', true);
             w.setTitle('Через встроенный браузер… (если появится проверка Cloudflare — пройди её)');
@@ -178,11 +195,16 @@ async function loadViaWindow(
           }
         }
       })();
-    });
-    w.webContents.on('did-fail-load', (_e, code, desc, _url, isMainFrame) => {
+    };
+    const onFail = (_e: unknown, code: number, desc: string, _url: string, isMainFrame: boolean): void => {
       if (!isMainFrame || code === -3) return; // -3 = sub-frame abort (captcha iframe)
       finish(() => reject(new Error(`Не удалось загрузить страницу через встроенный браузер: ${code} ${desc}`)));
-    });
+    };
+    // Listeners are registered per call and removed on settle: the old code
+    // left a `did-finish-load` listener behind on every failed load, so a later
+    // navigation woke all the stale watchers (redundant 2.5 s DOM polling).
+    w.webContents.once('did-finish-load', onFinish);
+    w.webContents.on('did-fail-load', onFail);
     void w.loadURL(url).catch(() => {});
   });
 }
@@ -191,9 +213,7 @@ export async function fetchHtmlViaBrowser(
   url: string,
   opts: { proxy?: string; timeoutMs?: number; cookie?: string; cookieHost?: string } = {},
 ): Promise<string> {
-  const run = chain.then(() => loadViaWindow(url, opts.proxy, opts.timeoutMs ?? 30_000, opts.cookie, opts.cookieHost));
-  chain = run.catch(() => {});
-  return await run;
+  return await withWindowLock(() => loadViaWindow(url, opts.proxy, opts.timeoutMs ?? 30_000, opts.cookie, opts.cookieHost));
 }
 
 /** Attach user-supplied cookies to the browsing session's cookie JAR once.
@@ -246,9 +266,12 @@ export async function fetchViaWindowFetch(
   url: string,
   opts: { proxy?: string; timeoutMs?: number; cookie?: string; cookieHost?: string } = {},
 ): Promise<{ status: number; text: string }> {
-  // Only the window/pairing setup is serialized; the actual in-window fetch
-  // runs concurrently so page-count fan-out can hit several items at once.
-  const setup = workspaceChain.then(async () => {
+  const timeoutMs = opts.timeoutMs ?? 30_000;
+  // Everything that touches the shared window runs under one lock (see
+  // withWindowLock): the old code had two independent chains, so a navigation
+  // could kill this fetch's JS context or switch the session proxy underneath
+  // it while the request was in flight.
+  return await withWindowLock(async () => {
     const w = await ensureBrowser(opts.proxy);
     await seedSessionCookies(prepareSession(), opts.cookie, opts.cookieHost);
     const origin = new URL(url).origin + '/';
@@ -257,7 +280,7 @@ export async function fetchViaWindowFetch(
         const t = setTimeout(() => {
           cleanup();
           reject(new Error('origin load timeout'));
-        }, opts.timeoutMs ?? 30_000);
+        }, timeoutMs);
         const ok = (): void => {
           clearTimeout(t);
           cleanup();
@@ -282,17 +305,34 @@ export async function fetchViaWindowFetch(
         });
       });
     }
-    return w;
+    // In-window fetch with a real deadline. The old code bounded only the
+    // origin navigation: a stalled Tor stream then hung the caller (and the UI
+    // spinner) until Chromium's multi-minute TCP timeouts.
+    const abortKey = `__mrFetchAbort_${Math.random().toString(36).slice(2)}`;
+    const expr = `(async () => {
+      const ctl = new AbortController();
+      window[${JSON.stringify(abortKey)}] = ctl;
+      try {
+        const r = await fetch(${JSON.stringify(url)}, { credentials: 'include', headers: { 'Accept': 'text/html' }, signal: ctl.signal });
+        return { status: r.status, text: await r.text() };
+      } finally { window[${JSON.stringify(abortKey)}] = null; }
+    })()`;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([
+        w.webContents.executeJavaScript(expr, true),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            void w.webContents.executeJavaScript(`window[${JSON.stringify(abortKey)}]?.abort?.()`).catch(() => {});
+            reject(new Error('Не удалось загрузить страницу через встроенный браузер: таймаут'));
+          }, timeoutMs);
+        }),
+      ]);
+      return result as { status: number; text: string };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   });
-  workspaceChain = setup.catch(() => {});
-  const w = await setup;
-  return (await w.webContents.executeJavaScript(
-    `(async () => {
-      const r = await fetch(${JSON.stringify(url)}, { credentials: 'include', headers: { 'Accept': 'text/html' } });
-      return { status: r.status, text: await r.text() };
-    })()`,
-    true,
-  )) as { status: number; text: string };
 }
 
 /** In-window fetch with a patient retry: nhentai rate-limits bursts of

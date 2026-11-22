@@ -7,6 +7,7 @@ import {
   ehClearnetCoverFallbacks,
   fetchCoverBuffer,
   setCoverTorResolver,
+  clearCoverFailureCache,
 } from '../src/main/services/covers';
 import { defaultSettings, type Settings } from '../src/shared/settings';
 
@@ -41,6 +42,8 @@ describe('ehClearnetCoverFallbacks', () => {
     expect(ehClearnetCoverFallbacks('not a url')).toEqual([]);
   });
 });
+
+beforeEach(() => clearCoverFailureCache());
 
 describe('fetchCoverBuffer onion fallback', () => {
   beforeEach(() => {

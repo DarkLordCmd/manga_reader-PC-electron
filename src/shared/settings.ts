@@ -32,6 +32,15 @@ export interface Settings {
   viewing_history: HistoryEntry[];
   show_r34_history: boolean;
   eh_tag_bookmarks: string[];
+  /** Read the full-size original image from the EH viewer page (#i7) instead of
+   * the 1280 px resized copy — slower and uses more traffic, but webtoons and
+   * scans are crisp. */
+  eh_original_images: boolean;
+  /** Download EH image CDN pages (ehgt/hath) directly instead of through Tor.
+   * Much faster, but the CDN sees the real IP. */
+  eh_images_direct: boolean;
+  /** Listing cache TTL in minutes (0 disables caching). Fewer requests to EH. */
+  eh_listing_cache_minutes: number;
   read_chapters: string[];
   downloads_dir: string | null;
   lib_image_server: string | null;
@@ -73,6 +82,9 @@ export function defaultSettings(): Settings {
     viewing_history: [],
     show_r34_history: true,
     eh_tag_bookmarks: [],
+    eh_original_images: false,
+    eh_images_direct: false,
+    eh_listing_cache_minutes: 5,
     read_chapters: [],
     downloads_dir: null,
     lib_image_server: null,
@@ -154,6 +166,9 @@ export function parseSettings(raw: unknown): Settings {
     viewing_history: history,
     show_r34_history: bool(o.show_r34_history, true),
     eh_tag_bookmarks: strArr(o.eh_tag_bookmarks),
+    eh_original_images: bool(o.eh_original_images, false),
+    eh_images_direct: bool(o.eh_images_direct, false),
+    eh_listing_cache_minutes: Math.max(0, Math.min(240, num(o.eh_listing_cache_minutes, 5))),
     read_chapters: strArr(o.read_chapters),
     downloads_dir: typeof o.downloads_dir === 'string' ? o.downloads_dir : null,
     lib_image_server: typeof o.lib_image_server === 'string' && o.lib_image_server.trim() ? o.lib_image_server.trim() : null,

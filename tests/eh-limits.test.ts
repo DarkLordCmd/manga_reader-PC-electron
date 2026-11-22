@@ -111,4 +111,23 @@ describe('EH limit scoping', () => {
     }).toThrow(/изображений/i);
     expect(w.remainingSec()).toBeGreaterThan(3000);
   });
+
+  it('does not leak one group\'s deadline into another group\'s block', () => {
+    // Regression: a single shared `until` meant that after a 1-hour exhentai
+    // image limit, a 2-minute e-hentai usage limit inherited the hour (blocking
+    // the wrong source) while the group switch unblocked the still-running
+    // exhentai window.
+    const w = new EhLimitWatcher();
+    w.block('image-limit', 3_600_000, 'exhentai');
+    w.block('usage-limit', 120_000, 'ehentai');
+    expect(w.isBlockedFor('ehentai')).toBe(true);
+    expect(w.isBlockedFor('exhentai')).toBe(true);
+    vi.setSystemTime(121_000);
+    // e-hentai's short window is over, exhentai's long one still runs.
+    expect(w.isBlockedFor('ehentai')).toBe(false);
+    expect(w.isBlockedFor('exhentai')).toBe(true);
+    vi.setSystemTime(3_600_001);
+    expect(w.isBlockedFor('exhentai')).toBe(false);
+    expect(w.isBlocked()).toBe(false);
+  });
 });

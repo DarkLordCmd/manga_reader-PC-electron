@@ -1,3 +1,4 @@
+import { errorText } from '../../lib/errors';
 import Section, { Row } from './Section';
 import Toggle from '../../components/Toggle';
 import type { SyncState } from '@shared/sync';
@@ -27,7 +28,7 @@ export default function SyncSection({ settings, upd, google, setGoogle, syncStat
                   setGoogle(r);
                   setSyncMsg('Вход выполнен');
                 } catch (e: any) {
-                  setSyncMsg(`Ошибка: ${e?.message ?? e}`);
+                  setSyncMsg(`Ошибка: ${errorText(e)}`);
                 }
               }}
             >
@@ -61,10 +62,13 @@ export default function SyncSection({ settings, upd, google, setGoogle, syncStat
               onClick={async () => {
                 setSyncMsg('Синхронизирую…');
                 try {
-                  await window.api.syncNow();
-                  setSyncMsg('Готово');
+                  // syncNow resolves with the final state even on failure (the
+                  // service catches its own errors), so "Готово" used to appear
+                  // after a failed sync.
+                  const st = await window.api.syncNow();
+                  setSyncMsg(st.state === 'error' ? `Ошибка: ${st.lastError ?? 'не удалось синхронизировать'}` : 'Готово');
                 } catch (e: any) {
-                  setSyncMsg(`Ошибка: ${e?.message ?? e}`);
+                  setSyncMsg(`Ошибка: ${errorText(e)}`);
                 }
               }}
             >
@@ -83,7 +87,9 @@ export default function SyncSection({ settings, upd, google, setGoogle, syncStat
           </Row>
         </>
       )}
-      {syncState.lastError && (
+      {/* Only meaningful while an account is connected: after logout the stale
+          "Не выполнен вход в Google" error was shown forever. */}
+      {google.authed && syncState.lastError && (
         <Row stack>
           <span className="set-note">Ошибка синка: {syncState.lastError}</span>
         </Row>

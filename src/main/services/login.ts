@@ -3,6 +3,18 @@ import { join } from 'path';
 import { requestNewTorCircuit } from './tor-embedded';
 import { denyAllPermissions } from '../security';
 import { logger } from './logger';
+import { isSenkuroHost, senkuroFallbackUrl } from './senkuro-domains';
+import {
+  SENKURO_ACCESS_TOKEN_MAX_AGE_SEC,
+  SENKURO_OAUTH_CLIENT_ID,
+  SENKURO_OAUTH_REDIRECT_URI,
+  SENKURO_SSO_HOSTS,
+  makePkcePair,
+  parseSenkuroCallback,
+  randomUrlSafe,
+  senkuroAuthorizeUrl,
+} from './senkuro-oauth';
+import { httpFetch } from './http';
 
 export interface LoginResult {
   cookies: string;
@@ -22,7 +34,16 @@ export function hasAuthenticatedSession(target: string, cookies: { name: string;
 }
 
 export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Promise<LoginResult | null> {
-  const ses = session.fromPartition(`persist:onion-login-${Date.now()}`);
+  // A per-login `persist:onion-login-<timestamp>` partition left a directory
+  // with auth cookies in userData forever (one per login). One fixed partition,
+  // wiped before and after each login, keeps no stale session on disk.
+  const ses = session.fromPartition('persist:site-login');
+  try {
+    await ses.clearStorageData();
+    await ses.clearCache();
+  } catch {
+    /* best-effort */
+  }
 
   // Proxy all requests from this session through Tor. This MUST finish before
   // the first navigation: setProxy is async, and loading a .onion before the
@@ -38,6 +59,36 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
       /* keep going; the window will show the network error */
     }
   }
+
+  // Senkuro: open the real SSO authorization page instead of the site homepage
+  // (whose "Войти" is a button + modal). The website's own flow is OAuth+PKCE:
+  // /oauth/authorize → /auth/login → /auth/oauth/callback?code=…. We generate
+  // the PKCE pair, intercept the callback and exchange the code for an
+  // access_token, which is the same cookie the app's API calls already read.
+  const senkuroFlow = isSenkuroHost(loginUrl);
+  const senkuro = senkuroFlow
+    ? { ...makePkcePair(), state: randomUrlSafe(32), ssoIndex: 0, busy: false }
+    : null;
+  const buildStartUrl = (): string =>
+    senkuro
+      ? senkuroAuthorizeUrl({
+          ssoBase: SENKURO_SSO_HOSTS[senkuro.ssoIndex]!,
+          state: senkuro.state,
+          challenge: senkuro.challenge,
+        })
+      : loginUrl;
+  // Navigation target — for Senkuro it is the SSO authorize URL, not the site.
+  let startUrl = buildStartUrl();
+
+  /** Both SSO hosts speak the same OAuth service; fall back to the other one
+   * when the first cannot be reached (DNS/guard block on one host). */
+  const switchSenkuroSsoHost = (): boolean => {
+    if (!senkuro || senkuro.ssoIndex + 1 >= SENKURO_SSO_HOSTS.length) return false;
+    senkuro.ssoIndex++;
+    startUrl = buildStartUrl();
+    logger.info('[login] Senkuro SSO host failed — switching to', SENKURO_SSO_HOSTS[senkuro.ssoIndex]);
+    return true;
+  };
 
   return new Promise((resolve) => {
     const win = new BrowserWindow({
@@ -96,6 +147,47 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
         .catch(() => {});
     };
 
+    // DDoS-Guard can hard-block the whole senkuro.me zone for a user's network
+    // ("Владелец сайта запретил доступ из вашей сети" — the block screen users
+    // report). The site also answers on senkuro.com, so the login continues
+    // there; cookies come from the same session, so the saved session is
+    // identical. Only the .me -> .com direction is attempted once: if the
+    // mirror is blocked as well we say so instead of ping-ponging.
+    let senkuroSwitchTried = false;
+    let senkuroBlockNotified = false;
+    const maybeSwitchSenkuroDomain = async (): Promise<void> => {
+      if (done) return;
+      const current = win.webContents.getURL();
+      if (!isSenkuroHost(current)) return;
+      let pageText = '';
+      try {
+        pageText = String(
+          await win.webContents.executeJavaScript(
+            `((document.title || '') + '\\n' + (((document.body && document.body.innerText) || '').slice(0, 8000)))`,
+          ),
+        );
+      } catch {
+        return;
+      }
+      const alt = senkuroFallbackUrl(current, pageText);
+      if (!alt) return;
+      if (senkuroSwitchTried) {
+        if (senkuroBlockNotified) return;
+        senkuroBlockNotified = true;
+        statusEl = 'Senkuro блокирует эту сеть и на зеркале — попробуй другую сеть или VPN.';
+        void injectStatus();
+        return;
+      }
+      senkuroSwitchTried = true;
+      logger.info('[login] senkuro blocked for this network — switching to', alt);
+      statusEl = 'senkuro.me заблокирован DDoS-Guard — открываю senkuro.com…';
+      void injectStatus();
+      setTimeout(() => {
+        if (done) return;
+        void win.webContents.loadURL(alt).catch((e) => logger.info('[login] senkuro mirror load failed:', e?.message ?? e));
+      }, 1200);
+    };
+
     // First-document watchdog: a bad Tor circuit can leave the login page
     // blank for a minute or more. If the FIRST document has not rendered in
     // 15 s, ask Tor for a fresh circuit and reload (max two attempts). After
@@ -122,7 +214,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
         void injectStatus();
         await requestNewTorCircuit();
         if (!done && !firstPageReady) {
-          void win.webContents.loadURL(loginUrl).catch((e) => logger.info('[login] slow reload failed:', e?.message ?? e));
+          void win.webContents.loadURL(startUrl).catch((e) => logger.info('[login] slow reload failed:', e?.message ?? e));
         }
         armSlowTimer();
       }, 15_000);
@@ -150,15 +242,19 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
       // -3 (ABORTED) is normal during OAuth redirects and user-driven nav.
       if (done || !isMain || code === -3) return;
       logger.info(`[login] did-fail-load ${code} ${desc} after ${Date.now() - loadStartedAt}ms url=${url}`);
-      statusEl = `Ошибка загрузки (net ${code} ${desc}). Tor запущен и адрес SOCKS корректен?`;
+      statusEl = senkuro
+        ? `Ошибка загрузки страницы входа Senkuro (net ${code} ${desc}). Проверь сеть.`
+        : `Ошибка загрузки (net ${code} ${desc}). Tor запущен и адрес SOCKS корректен?`;
       void injectStatus();
+      // Senkuro: try the other SSO host before giving up.
+      const switchedSso = switchSenkuroSsoHost();
       // One automatic retry soon after; keep the overlay visible meanwhile.
       setTimeout(() => {
         if (done) return;
-        void win.webContents.loadURL(loginUrl).catch((e) => {
+        void win.webContents.loadURL(startUrl).catch((e) => {
           dlog('retry loadURL failed: ' + (e?.message ?? e));
         });
-      }, 3000);
+      }, switchedSso ? 800 : 3000);
     });
 
     const dbg = process.env.MR_LOGIN_DEBUG === '1';
@@ -230,11 +326,92 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
           finish(null);
         });
     };
+    // Senkuro OAuth: the SSO redirects to /auth/oauth/callback?code=…; we never
+    // let that page load. The code is exchanged for an access_token right here
+    // (authorization-code + PKCE) and stored as the same `access_token` cookie
+    // the website itself sets — the cookie our Senkuro API calls already send.
+    const finishSenkuroOAuth = async (code: string): Promise<void> => {
+      if (!senkuro || done || senkuro.busy) return;
+      senkuro.busy = true;
+      statusEl = 'Получаю токен Senkuro…';
+      void injectStatus();
+      try {
+        const body = new URLSearchParams({
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: SENKURO_OAUTH_REDIRECT_URI,
+          client_id: SENKURO_OAUTH_CLIENT_ID,
+          code_verifier: senkuro.verifier,
+        }).toString();
+        const r = await httpFetch(
+          {
+            url: `${SENKURO_SSO_HOSTS[senkuro.ssoIndex]!}/oauth/token`,
+            method: 'POST',
+            body,
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              Accept: 'application/json',
+              // The browser sends it for the site's own fetch; some OAuth
+              // servers validate the client origin.
+              Origin: 'https://senkuro.com',
+            },
+            timeoutMs: 20_000,
+          },
+          undefined,
+        );
+        let token: unknown;
+        try {
+          token = (JSON.parse(r.text) as { access_token?: unknown }).access_token;
+        } catch {
+          token = undefined;
+        }
+        if (r.status >= 400 || typeof token !== 'string' || !token) {
+          // The SSO answers plain text for bad codes ("invalid or expired
+          // code") — surface it instead of a bare status.
+          const detail = r.text.trim().slice(0, 200);
+          throw new Error(r.status >= 400 ? `HTTP ${r.status}${detail ? `: ${detail}` : ''}` : 'сервер не вернул access_token');
+        }
+        await ses.cookies.set({
+          url: 'https://senkuro.com/',
+          name: 'access_token',
+          value: token,
+          path: '/',
+          secure: true,
+          httpOnly: false,
+          sameSite: 'lax',
+          expirationDate: Math.floor(Date.now() / 1000) + SENKURO_ACCESS_TOKEN_MAX_AGE_SEC,
+        });
+        logger.info('[login] Senkuro access_token получен и сохранён');
+        grabCookies('senkuro-oauth-token');
+      } catch (e: any) {
+        senkuro.busy = false;
+        logger.warn('[login] Senkuro token exchange failed:', e?.message ?? e);
+        statusEl = `Не удалось получить токен Senkuro: ${e?.message ?? e}. Попробуй войти ещё раз.`;
+        void injectStatus();
+      }
+    };
+
     ses.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
       if (details.url.startsWith('manga-cookies://done')) {
         callback({ cancel: true });
         grabCookies('manga-cookies://done');
         return;
+      }
+      if (senkuro) {
+        const cb = parseSenkuroCallback(details.url);
+        if (cb) {
+          callback({ cancel: true });
+          if (cb.error) {
+            statusEl = `Senkuro отклонил вход: ${cb.error}`;
+            void injectStatus();
+          } else if (cb.state !== senkuro.state) {
+            statusEl = 'Senkuro вернул неверное состояние авторизации — закрой окно и попробуй снова.';
+            void injectStatus();
+          } else {
+            void finishSenkuroOAuth(cb.code);
+          }
+          return;
+        }
       }
       if (dbg) {
         // What does the login form actually submit? (cf-turnstile-response
@@ -341,6 +518,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
     // Inject a floating "Готово, забрать куки" button + a fetch handler
     win.webContents.on('did-finish-load', () => {
       if (done) return;
+      void maybeSwitchSenkuroDomain();
       const script = `
         (function() {
           var btn = document.createElement('button');
@@ -358,7 +536,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
           };
           (document.body || document.documentElement).appendChild(btn);
           ${
-            loginUrl.includes('senkuro.me')
+            isSenkuroHost(win.webContents.getURL())
               ? `
           // Senkuro login is an OAuth SSO redirect chain seeded from the
           // homepage layout — auto-click the first auth/login link.
@@ -378,6 +556,12 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
     });
 
     win.on('closed', () => {
+      // Drop the browser session once the cookies have been collected: the app
+      // keeps its own cookie jar, so nothing here needs to survive on disk.
+      const wipe = (): void => {
+        void ses.clearStorageData().catch(() => {});
+        void ses.clearCache().catch(() => {});
+      };
       if (!done) {
         // Try to grab whatever HttpOnly cookies we can on close
         void ses.cookies
@@ -389,7 +573,10 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
               .join('; ');
             finish(joined ? { cookies: joined } : null);
           })
-          .catch(() => finish(null));
+          .catch(() => finish(null))
+          .finally(wipe);
+      } else {
+        wipe();
       }
     });
 
@@ -450,8 +637,10 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
               .catch(() => {});
           }
           // Auto-finish ONLY when the flow is truly done: back on the target
-          // site's own domain, no login/SSO markers in the URL.
-          const onTargetSite = url.startsWith('http') && !onLoginOrSso && /senkuro\.me|nhentai\.net|.onion/.test(url);
+          // site's own domain, no login/SSO markers in the URL. Both Senkuro
+          // domains count: the login may have been completed on the .com
+          // mirror after DDoS-Guard blocked .me for this network.
+          const onTargetSite = url.startsWith('http') && !onLoginOrSso && /senkuro\.(me|com)|nhentai\.net|\.onion/.test(url);
           if (seenLogin && onTargetSite) {
             clearInterval(poll);
             statusEl = 'Вход признан успешным — собираю куки…';
@@ -514,7 +703,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
       }, 20000);
     }
 
-    void win.loadURL(loginUrl).catch((e) => {
+    void win.loadURL(startUrl).catch((e) => {
       dlog('loadURL failed: ' + (e?.message ?? e));
     });
   });

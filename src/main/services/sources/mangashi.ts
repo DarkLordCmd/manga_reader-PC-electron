@@ -81,15 +81,18 @@ export async function searchMangaShi(
 
 // ── Manga-shi chapters ─────────────────────────────────────────────────
 
-function findNextPage(html: string): number | null {
-  const re = /page=(\d+)/g;
+function findNextPage(html: string, current: number): number | null {
+  // A Laravel paginator renders links to the LAST page too. Returning the
+  // maximum page number jumped from page 1 straight to page 12, and the
+  // `next <= page` guard then stopped the loop — pages 2..11 were never loaded
+  // and their chapters disappeared from the list.
+  const re = /[?&]page=(\d+)/g;
   let m: RegExpExecArray | null;
-  let best: number | null = null;
   while ((m = re.exec(html)) !== null) {
-    const n = Number(m[1]);
-    if (n > 1 && (best === null || n > best)) best = n;
+    if (Number(m[1]) === current + 1) return current + 1;
   }
-  return best;
+  const next = /rel=["']next["'][^>]*href=["'][^"']*[?&]page=(\d+)/i.exec(html);
+  return next ? Number(next[1]) : null;
 }
 
 function mangashiChapterNumFromUrl(full: string, text: string): string {
@@ -145,12 +148,12 @@ export async function fetchMangaShiChapters(mangaUrl: string, proxy?: string): P
 
   parseChapters(page1);
 
-  let page = findNextPage(page1);
+  let page = findNextPage(page1, 1);
   while (page != null && page <= 200) {
     const target = `${base}/chapters/?chapter_sort=latest&page=${page}`;
     const r = await fetchHtmlSmart(target, { proxy, timeoutMs: 30_000 });
     parseChapters(r);
-    const next = findNextPage(r);
+    const next = findNextPage(r, page);
     if (next == null || next <= page) break;
     page = next;
   }

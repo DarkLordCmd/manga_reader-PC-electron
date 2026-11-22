@@ -1,3 +1,20 @@
+/** True when the bytes start with a known image signature. Unlike
+ * {@link detectImageMime} (which falls back to image/jpeg) this can reject an
+ * HTML limit/login page that arrived with an image content-type. */
+export function isImageBuffer(buf: Buffer): boolean {
+  if (!buf || buf.length < 12) return false;
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return true; // PNG
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return true; // JPEG
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return true; // GIF
+  if (buf[0] === 0x42 && buf[1] === 0x4d) return true; // BMP
+  if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return true;
+  if (buf.toString('ascii', 4, 8) === 'ftyp') {
+    const brand = buf.toString('ascii', 8, 12);
+    if (['avif', 'avis'].includes(brand) || ['mif1', 'msf1', 'heic'].includes(brand)) return true;
+  }
+  return false;
+}
+
 /** Sniffs image MIME from magic bytes. Sources serve PNG/WebP/GIF/AVIF as well
  * as JPEG, so a fixed `image/jpeg` would let the renderer mislabel/cache
  * wrongly. Falls back to JPEG (the common case for gallery scrapers). */

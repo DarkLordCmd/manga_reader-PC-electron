@@ -3,6 +3,7 @@ import { join } from 'path';
 import { existsSync, renameSync } from 'fs';
 import { SqliteSeriesRepository } from './sqlite-series-repository';
 import { needsDeletedAtColumn, needsFavoritedAtColumn, needsKindColumn } from './db-migrate';
+import { shouldRotateDatabase } from './db-recovery';
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS series (
@@ -86,7 +87,11 @@ export function openDatabase(userDataDir: string): DbHandle {
   let db: Database.Database;
   try {
     db = openAt(path);
-  } catch {
+  } catch (e) {
+    // Only genuine corruption may cost the user their library. A locked file,
+    // a permissions error or a full disk must be reported, not "recovered"
+    // by rotating a healthy database aside (that looked like total data loss).
+    if (!shouldRotateDatabase(e)) throw e;
     const ts = Date.now();
     for (const f of [path, `${path}-wal`, `${path}-shm`]) {
       if (existsSync(f)) {

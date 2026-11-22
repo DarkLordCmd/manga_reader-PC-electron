@@ -20,12 +20,16 @@ describe('eh-sni-fallback', () => {
     expect(isTorFallbackBlocked('e-hentai.org')).toBe(false);
   });
 
-  it('markTorFallbackSuccess makes subsequent requests use tor for TTL', () => {
+  it('markTorFallbackSuccess sticks for the session (no re-probing direct)', () => {
     markTorFallbackSuccess('e-hentai.org');
     expect(torFallbackActiveFor('e-hentai.org')).toBe(true);
     expect(torFallbackActiveFor('E-Hentai.org')).toBe(true); // case-insensitive
+    // Regression: a 10-minute TTL made the next request after expiry pay the
+    // full direct timeout again, then fall back — a 30 s freeze every 10 min.
     vi.setSystemTime(10 * 60_000 + 1);
-    expect(torFallbackActiveFor('e-hentai.org')).toBe(false);
+    expect(torFallbackActiveFor('e-hentai.org')).toBe(true);
+    vi.setSystemTime(6 * 3600_000);
+    expect(torFallbackActiveFor('e-hentai.org')).toBe(true);
   });
 
   it('markTorFallbackFailure blocks fallback route but not forever', () => {

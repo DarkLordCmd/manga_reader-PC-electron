@@ -42,6 +42,33 @@ describe('InMemorySeriesRepository', () => {
     expect(it.coverUrl).toBe('c1');
   });
 
+  it('keeps the chapter a catalog add does not know about', () => {
+    // Regression: adding a title to Favorites/library from the catalog carries
+    // chapterLabel/Index/Total = null, which used to overwrite (and wipe) the
+    // chapter the user was actually reading.
+    const r = new InMemorySeriesRepository();
+    r.upsertHistory(up({ chapterLabel: 'Глава 5', chapterIndex: 4, chapterTotal: 20 }));
+    r.upsertHistory(up({ chapterLabel: null, chapterIndex: null, chapterTotal: null }));
+    const it = r.get('nh:1')!;
+    expect(it.chapterLabel).toBe('Глава 5');
+    expect(it.chapterIndex).toBe(4);
+    expect(it.chapterTotal).toBe(20);
+  });
+
+  it('clearing history keeps favorites that have no reading status', () => {
+    // Regression: clearHistory tombstoned every status-null row, so a title the
+    // user only favorited (never assigned a status) disappeared from Favorites
+    // when they cleared their viewing history.
+    const r = new InMemorySeriesRepository();
+    r.upsertHistory(up({ key: 'history-only' }));
+    r.upsertHistory(up({ key: 'fav-only' }));
+    r.setFavorite('fav-only', Date.now());
+    r.clearHistory();
+    expect(r.get('history-only')).toBeNull();
+    expect(r.get('fav-only')).not.toBeNull();
+    expect(r.get('fav-only')!.favoritedAt).not.toBeNull();
+  });
+
   it('list returns only library items and filters', () => {
     const r = new InMemorySeriesRepository();
     r.upsertHistory(up({ key: 'nh:1', title: 'Alpha' }));

@@ -52,6 +52,7 @@ const MangaCard = memo(function MangaCard({ card, progressEntry, status, onSelec
       </div>
       <div className="manga-meta">
         <span className="manga-count">{count}</span>
+        {card.status && <span className="manga-pub-status" title="Статус произведения">{card.status}</span>}
         {card.score != null && <span className="score">★ {card.score.toFixed(1)}</span>}
       </div>
     </div>

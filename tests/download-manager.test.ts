@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { DownloadManager } from '../src/main/services/download-manager';
+import { DownloadManager, PAGE_PARALLEL } from '../src/main/services/download-manager';
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -129,8 +129,10 @@ describe('DownloadManager', () => {
     m.resume(t!.id);
     await m.waitIdle();
     expect(t!.state).toBe('completed');
-    expect((counts['u2'] ?? 0) + (counts['u3'] ?? 0)).toBe(2);
-    expect(counts['u1']).toBeLessThanOrEqual(2);
+    // Pages are fetched in parallel now, so a page may be requested once per
+    // (aborted) run — the invariant is one fetch per run, no duplicate page
+    // writes and a complete result set.
+    for (const u of ['u1', 'u2', 'u3']) expect(counts[u]).toBeLessThanOrEqual(2);
     expect(m.list()[0].completedPages).toEqual([0, 1, 2]);
     expect(existsSync(join(t!.outDir, '003.bin'))).toBe(true);
   });
@@ -164,6 +166,39 @@ describe('DownloadManager', () => {
     expect(t.state).toBe('queued');
     await m.waitIdle();
     expect(m.list()[0].state).toBe('completed');
+  });
+
+  it('fetches pages of one chapter in parallel', async () => {
+    // Regression: pages of a single task were fetched strictly one by one
+    // (PARALLEL only ran several TASKS), so a 100-page chapter through Tor took
+    // minutes. The manager now keeps up to PAGE_PARALLEL fetches in flight.
+    let active = 0;
+    let peak = 0;
+    const m = makeManager(async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await delay(15);
+      active--;
+      return new Uint8Array([1]);
+    });
+    const t = await m.add(
+      'https://x/g/par/',
+      async () => ({
+        title: 'Par',
+        pageUrls: Array.from({ length: 8 }, (_, i) => `p${i}`),
+        coverUrl: null,
+        source: 'S',
+        referer: null,
+        mangaId: null,
+        seriesId: 'p',
+      }),
+      {},
+    );
+    await m.waitIdle();
+    expect(t!.state).toBe('completed');
+    expect(t!.completedPages).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(PAGE_PARALLEL);
   });
 
   it('priority order', async () => {

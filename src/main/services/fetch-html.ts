@@ -20,5 +20,20 @@ export async function fetchHtmlSmart(url: string, opts: FetchHtmlOptions = {}): 
   if (!antiBot && (r.status < 200 || r.status >= 400)) throw new Error(`HTTP ${r.status} for ${url}`);
   if (!antiBot) return r.text;
   if (opts.useBrowser === false) throw new Error(`HTTP ${r.status}: анти-бот блокирует запрос`);
-  return await fetchHtmlViaBrowser(url, { proxy: opts.proxy, timeoutMs: opts.timeoutMs });
+  // The browser fallback runs in its own session with an empty cookie jar.
+  // Without seeding the caller's cookies here it opened ExHentai anonymously
+  // and got the sad-panda page instead of the logged-in one — the whole point
+  // of the fallback was defeated for authenticated sources.
+  let cookieHost: string | undefined;
+  try {
+    cookieHost = new URL(url).hostname;
+  } catch {
+    cookieHost = undefined;
+  }
+  return await fetchHtmlViaBrowser(url, {
+    proxy: opts.proxy,
+    timeoutMs: opts.timeoutMs,
+    cookie: opts.cookieHeader,
+    cookieHost,
+  });
 }

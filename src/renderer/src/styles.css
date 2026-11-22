@@ -122,10 +122,11 @@ input[type='range'] {
 ::-webkit-scrollbar-corner {
   background: #000;
 }
-* {
-  scrollbar-color: #2d2d2d #000;
-  scrollbar-width: thin;
-}
+/* NOTE: do NOT set `scrollbar-width`/`scrollbar-color` globally. In Chromium a
+   non-auto `scrollbar-width` switches the element to the native (overlay)
+   scrollbar and IGNORES the always-visible ::-webkit-scrollbar styling above —
+   on Windows the bar then fades out after scrolling and looks missing, which
+   read as "the catalog has no scrollbar". The custom 10px bar stays visible. */
 .app {
   display: flex;
   height: 100%;
@@ -174,6 +175,10 @@ input[type='range'] {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* Without this a long screen content can make the column grow past the
+     window: the catalog then loses its inner scrollbar and is clipped. */
+  min-height: 0;
+  overflow: hidden;
 }
 .topbar {
   padding: 8px 12px;
@@ -194,6 +199,11 @@ input[type='range'] {
   overflow: auto;
   padding: 12px;
 }
+/* An open modal locks the list behind it: overlays are fixed children of the
+   scrolling screen, so a wheel over the backdrop scrolled the grid away. */
+body.modal-open .screen {
+  overflow: hidden;
+}
 .reader {
   flex: 1;
   display: flex;
@@ -208,6 +218,11 @@ input[type='range'] {
   border-bottom: 1px solid var(--border);
   background: #0a0a0a;
   min-height: 48px;
+  /* The window can be as narrow as 480 px, where the URL + page groups used to
+     push the toolbar to ~720 px: the document got a horizontal scrollbar and
+     the page counter was literally off-screen. Wrap into rows instead. */
+  flex-wrap: wrap;
+  row-gap: 6px;
 }
 .reader-title {
   font-size: 12.5px;
@@ -450,7 +465,9 @@ input[type='range'] {
 }
 .scroll-item {
   content-visibility: auto;
-  contain-intrinsic-size: auto 1200px;
+  /* NO default `contain-intrinsic-size` here: the component sets an exact pixel
+     height per page from the image's real dimensions. The old `auto 1200px`
+     fallback made a 12 000-px webtoon strip collapse/shift while scrolling. */
 }
 .scroll-view.webtoon .scroll-item img {
   max-width: 100%;
@@ -568,10 +585,13 @@ input[type='range'] {
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 .catalog-search {
-  flex: 1;
+  flex: 1 1 180px;
   max-width: 420px;
+  min-width: 0;
 }
 .catalog-grid {
   display: grid;
@@ -580,14 +600,19 @@ input[type='range'] {
 }
 .manga-card {
   cursor: pointer;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  border: 1px solid #262626;
+  border-radius: 10px;
   overflow: hidden;
-  background: #0a0a0a;
+  background: #141414;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
   contain: layout paint;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 .manga-card:hover {
   border-color: var(--accent);
+  background: #171717;
 }
 .manga-cover {
   aspect-ratio: 3 / 4;
@@ -647,6 +672,12 @@ input[type='range'] {
 }
 .manga-meta .manga-count {
   color: var(--text);
+}
+/* Publication status (Senkuro: Анонс/Выходит/Завершён/…) — like the chapter
+ * count, but muted so it never fights the score. */
+.manga-meta .manga-pub-status {
+  color: var(--muted);
+  white-space: nowrap;
 }
 .manga-meta .score {
   color: var(--accent);
@@ -727,6 +758,11 @@ input[type='range'] {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
+}
+/* Senkuro publication status in the work overlay. */
+.overlay-chip.overlay-status {
+  border-color: #3d5c3d;
+  color: #a6d8a6;
 }
 .overlay-note {
   padding: 8px 2px;
@@ -837,6 +873,15 @@ input[type='range'] {
 .chapter-download.error {
   color: #ef4444;
 }
+/* Thumbnails that failed all retries keep their slot as a neutral placeholder
+   instead of a broken-image glyph. */
+.thumb-img-error {
+  width: 100%;
+  height: 100%;
+  min-height: 40px;
+  background: #141414;
+  border-radius: 4px;
+}
 /* Icon buttons in list rows: a dark press state instead of the global orange
    fill, which turns a 22px square into an oversized-looking blob. */
 .overlay-close:active,
@@ -903,6 +948,16 @@ input[type='range'] {
 .chapter-item.current {
   color: var(--accent);
   font-weight: 600;
+}
+/* The current chapter must stay visible even when it is already read:
+   `.chapter-row.read .chapter-item` (specificity 0,3,0) and `.chapter-item.read`
+   used to win over `.chapter-item.current` (0,2,0), so opening "Главы" on a
+   chapter you are reading showed it grey/green like every other read row. */
+.chapter-row.read .chapter-item.current,
+.chapter-item.read.current {
+  color: var(--accent);
+  font-weight: 600;
+  background: rgba(249, 115, 22, 0.1);
 }
 .overlay-actions {
   display: flex;
@@ -1119,16 +1174,25 @@ input[type='range'] {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 14px;
+  /* Cards keep their natural height: stretching them to the tallest card in the
+   * row left big empty areas under the page counter. */
+  align-items: start;
 }
 .history-card {
   cursor: pointer;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  border: 1px solid #262626;
+  border-radius: 10px;
   overflow: hidden;
-  background: #0a0a0a;
+  background: #141414;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+  padding-bottom: 10px;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 .history-card:hover {
   border-color: var(--accent);
+  background: #171717;
 }
 .history-cover {
   aspect-ratio: 3 / 4;
@@ -1142,7 +1206,7 @@ input[type='range'] {
   display: block;
 }
 .history-title {
-  padding: 6px 8px 2px;
+  padding: 8px 9px 2px;
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
@@ -1150,23 +1214,53 @@ input[type='range'] {
   text-overflow: ellipsis;
 }
 .history-meta {
-  padding: 0 8px;
+  padding: 2px 9px 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 11px;
-  color: var(--muted);
+  color: #b3b3b3;
 }
 .continue-btn {
-  background: transparent;
-  color: var(--accent);
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--accent);
+  color: #151515;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
   font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
-  padding: 2px;
+  padding: 5px 10px;
+  transition:
+    filter 0.15s,
+    background 0.15s;
+}
+.continue-btn:hover {
+  filter: brightness(1.08);
+}
+/* The chapter/status text must ellipsis instead of squeezing the CTA into two
+   stacked lines (the old pill wrapped ▶ and «Открыть», which looked broken). */
+.history-meta {
+  gap: 8px;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+.history-meta > span:first-child {
+  margin-right: auto;
+}
+.history-meta > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .history-bars {
-  padding: 4px 8px 8px;
+  padding: 6px 9px 9px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1189,6 +1283,12 @@ input[type='range'] {
 }
 .bar-label {
   font-size: 10px;
+}
+/* Library cards render the page counter as a DIRECT child of the card (history
+ * grid wraps it in .history-bars, which already has padding), so it hugged the
+ * left/bottom border. */
+.history-card > .bar-label {
+  padding: 2px 9px 6px;
 }
 .settings-scroll {
   width: 100%;
@@ -1565,22 +1665,56 @@ input[type='range'] {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
 }
 .filter-panel {
-  width: 288px;
+  width: 300px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: #0a0a0a;
-  padding: 14px 14px 16px;
-  overflow-y: auto;
+  overflow: hidden;
 }
 .filter-panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 4px;
+  margin: 0;
+  padding: 13px 14px 10px;
+  border-bottom: 1px solid #161616;
+  background: #0a0a0a;
+  z-index: 2;
+}
+.filter-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+/* Flex items must not shrink: with `overflow: hidden` on .fsec the browser sets
+ * min-height:0, so an overflowing body squeezed the sections and clipped their
+ * chips instead of scrolling. */
+.filter-panel-body > * {
+  flex-shrink: 0;
+}
+.filter-panel-body > .filter-title:first-child {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: none;
+}
+.filter-panel-body,
+.label-modal-list {
+  scrollbar-width: thin;
+  scrollbar-color: #2b2b2b transparent;
 }
 .filter-title-lg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.9px;
@@ -1795,6 +1929,16 @@ input[type='checkbox'].toggle-input {
   background: rgba(249, 115, 22, 0.12);
   color: var(--accent);
 }
+.catalog-error-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.catalog-error-row .error-text {
+  margin: 0;
+}
 .catalog-sentinel {
   height: 40px;
   display: flex;
@@ -1903,10 +2047,62 @@ input[type='checkbox'].toggle-input {
   font-size: 12px;
 }
 
+/* Library source filter: one chip per source present in the current
+   Main/R34 scope (catalog-style filtering, but for library sources). */
+.library-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 8px;
+}
+.library-sources-label {
+  font-size: 10.5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 2px;
+}
+.source-chip {
+  background: #141414;
+  border: 1px solid #2d2d2d;
+  color: #cfcfcf;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+.source-chip:hover {
+  border-color: #454545;
+}
+.source-chip.active {
+  background: rgba(249, 115, 22, 0.14);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .library-toolbar {
   display: flex;
   gap: 8px;
   margin-bottom: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+/* Narrow windows: never let the search field or the sort select stick out of
+   the viewport (they were clipped at the 480 px minimum window width). */
+.library-toolbar .catalog-search {
+  flex: 1 1 160px;
+  min-width: 0;
+  max-width: none;
+}
+.library-toolbar select {
+  max-width: 100%;
 }
 .library-tabs {
   display: flex;
@@ -2009,4 +2205,295 @@ input[type='checkbox'].toggle-input {
 }
 .qs-empty {
   padding: 6px 8px;
+}
+
+/* Senkuro: searchable label dictionary (≈1100 entries) and range rows. */
+.filter-note {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 2px 0;
+}
+.label-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 4px 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 4px;
+}
+.label-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+.label-pick:hover {
+  background: #151515;
+}
+.label-pick input {
+  margin: 0;
+}
+.filter-row .filter-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Collapsible filter sections (Senkuro's long filter set) ─────────────── */
+.fsec {
+  border: 1px solid #1b1b1b;
+  border-radius: 10px;
+  background: #0d0d0d;
+  margin: 6px 0;
+  overflow: hidden;
+}
+.fsec-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 8px 10px;
+  background: #0d0d0d;
+  border: 0;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.fsec-head:hover {
+  background: #121212;
+}
+.fsec-title {
+  flex: 1;
+  text-align: left;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fsec.open .fsec-title {
+  color: var(--text);
+}
+.fsec-badge {
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(249, 115, 22, 0.16);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.fsec-chevron {
+  width: 12px;
+  text-align: center;
+  color: #7a7a7a;
+  font-size: 12px;
+  transition: transform 0.15s;
+}
+.fsec.has-active {
+  border-color: rgba(249, 115, 22, 0.28);
+}
+.fsec.has-active .fsec-title {
+  color: var(--text);
+}
+.fsec.open {
+  background: #0f0f0f;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.fsec.open .fsec-head {
+  background: #0f0f0f;
+}
+.fsec.open .fsec-chevron {
+  transform: rotate(180deg);
+}
+.fsec-body {
+  padding: 2px 10px 10px;
+}
+.fsec-label {
+  font-size: 10.5px;
+  color: #6f6f6f;
+  margin: 6px 0 4px;
+}
+.fsec-label:first-child {
+  margin-top: 0;
+}
+.filter-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+}
+.filter-range .filter-input {
+  width: 74px;
+  text-align: center;
+  padding: 4px 6px;
+}
+.filter-range-sep {
+  color: #4a4a4a;
+  font-size: 11px;
+}
+.filter-panel .tag-checklist {
+  max-height: none;
+}
+.tag-checklist.compact {
+  margin-top: 6px;
+}
+.label-picker-btn {
+  width: 100%;
+  margin-top: 2px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px dashed #2a2a2a;
+  background: #121212;
+  color: var(--text);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.label-picker-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.label-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+.label-modal {
+  width: min(560px, 92vw);
+  max-height: 78vh;
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+}
+.label-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.label-modal-head strong {
+  font-size: 14px;
+}
+.label-modal-head .filter-note {
+  margin-left: auto;
+}
+.label-modal-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 8px 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 14px;
+  align-content: start;
+}
+.label-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+/* Search autocomplete (per-source suggestions under the catalog search box). */
+.search-suggest {
+  position: relative;
+  flex: 1 1 180px;
+  max-width: 420px;
+  min-width: 0;
+}
+.search-suggest .catalog-search {
+  width: 100%;
+  max-width: none;
+  flex: none;
+}
+.ss-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 60;
+  max-height: 430px;
+  overflow-y: auto;
+  background: #0d0d0d;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  scrollbar-width: thin;
+  scrollbar-color: #2b2b2b transparent;
+}
+.ss-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.ss-item:hover,
+.ss-item.active {
+  background: #171717;
+}
+.ss-cover {
+  width: 34px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #161616;
+  flex-shrink: 0;
+}
+.ss-tag {
+  width: 34px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: #161616;
+  color: #666;
+  font-size: 17px;
+  flex-shrink: 0;
+}
+.ss-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ss-title {
+  font-size: 12.5px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.ss-meta {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ss-note {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--muted);
 }

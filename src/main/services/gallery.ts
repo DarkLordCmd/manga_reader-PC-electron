@@ -2,7 +2,11 @@ import { readdirSync, statSync } from 'fs';
 import { join, basename } from 'path';
 import { naturalCompare } from './natural-sort';
 
-const SUPPORTED_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp']);
+// Must stay in sync with the ZIP reader (zip-gallery.ts) and the downloader
+// (download-manager.ts extFromUrl): a page saved as .avif was listed by ZIP
+// archives and by finished downloads, but a plain folder gallery silently
+// skipped it (Chromium renders AVIF fine, so this was a pure inconsistency).
+const SUPPORTED_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif']);
 
 export function listPageFiles(dir: string): string[] {
   let entries: string[];

@@ -27,6 +27,9 @@ interface Store {
   setScreen: (s: Screen) => void;
   settings: Settings;
   setSettings: (s: Settings) => void;
+  /** False until the real settings file has been loaded from the main process
+   * (screens that hydrate their initial state from settings must wait). */
+  settingsReady: boolean;
   opened: OpenedGallery | null;
   setOpened: Dispatch<SetStateAction<OpenedGallery | null>>;
   pendingChapterList: { mangaId: string; title: string } | null;
@@ -55,18 +58,37 @@ export function StoreProvider({ children }: { children: ReactNode }): JSX.Elemen
     if (s !== 'Reader') sessionStorage.setItem('mr:screen', s);
   }, []);
   const [settings, setSettingsState] = useState<Settings>(defaultSettings());
+  const [settingsReady, setSettingsReady] = useState(false);
   const [opened, setOpened] = useState<OpenedGallery | null>(null);
   const [pendingChapterList, setPendingChapterList] = useState<{ mangaId: string; title: string } | null>(null);
 
   useEffect(() => {
-    window.api.getSettings().then(setSettingsState);
+    window.api
+      .getSettings()
+      .then((s) => {
+        setSettingsState(s);
+        setSettingsReady(true);
+      })
+      .catch(() => {
+        // Never leave the app unhydrated: screens that wait for settingsReady
+        // (catalog source restore) would stay on defaults forever.
+        setSettingsReady(true);
+      });
   }, []);
 
-  useEffect(() => window.api.onSettingsChanged(setSettingsState), []);
+  useEffect(
+    () =>
+      window.api.onSettingsChanged((s) => {
+        setSettingsState(s);
+        setSettingsReady(true);
+      }),
+    [],
+  );
 
   const setSettings = (s: Settings): void => {
     setSettingsState(s);
-    window.api.setSettings(s);
+    // Optimistic save: a rejected IPC must not become an unhandled rejection.
+    void window.api.setSettings(s).catch(() => {});
   };
 
   return (
@@ -76,6 +98,7 @@ export function StoreProvider({ children }: { children: ReactNode }): JSX.Elemen
         setScreen,
         settings,
         setSettings,
+        settingsReady,
         opened,
         setOpened,
         pendingChapterList,

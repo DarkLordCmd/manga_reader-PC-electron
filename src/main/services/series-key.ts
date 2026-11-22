@@ -64,7 +64,14 @@ export function seriesKeyForUrl(url: string): string | null {
     if (/senkuro\./.test(host)) return `sk:${afterMarker('manga') ?? ''}`;
     if (/manga-shi\./.test(host)) return `ms:${afterMarker('manga') ?? ''}`;
     if (/remanga\./.test(host)) return `rm:${afterMarker('manga') ?? ''}`;
-    if (/mangalib|^libmir|^chzz/.test(host)) return `ml:${afterMarker('manga') ?? segs[segs.length - 1] ?? ''}`;
+    // Mangalib URLs are /<locale?>/<numeric-id>--<slug>[/read/v…/c…]: the
+    // chapter path has NO "manga" marker, so the old fallback (last segment =
+    // "c5") produced a different key per chapter — every chapter became its own
+    // history/library row. The numeric slug segment is the series identity.
+    if (/mangalib|^libmir|^chzz/.test(host)) {
+      const slug = segs.find((s) => /^\d+--/.test(s)) ?? afterMarker('manga') ?? segs[segs.length - 1] ?? '';
+      return `ml:${slug}`;
+    }
     if (/com-x/.test(host)) {
       const readerNews = raw.match(/\/reader\/(\d+)/)?.[1];
       const catalogNews = raw.match(/\/(?:online\/)?(\d+)-[\w-]+\.html/i)?.[1];

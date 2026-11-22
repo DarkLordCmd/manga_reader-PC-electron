@@ -1,4 +1,5 @@
 import { httpGetJson } from './http';
+import { SwrCache } from './swr-cache';
 import type { MangaCard } from '@shared/mangadex';
 
 export type { MangaCard };
@@ -63,11 +64,19 @@ export function parseMangaSearch(json: any): MangaCard[] {
 export function parseChapterFeed(json: any): ChapterInfo[] {
   const data: any[] = json?.data ?? [];
   const out: ChapterInfo[] = [];
+  // The feed has one entry per scanlation group, so "Chapter 5" appeared several
+  // times (duplicate list rows, a chapter count higher than the card's).
+  const seen = new Set<string>();
   for (const ch of data) {
     const id = ch?.id;
     if (typeof id !== 'string') continue;
     const attrs = ch.attributes ?? {};
     const chapter_num = typeof attrs.chapter === 'string' ? attrs.chapter : '—';
+    const key = `${typeof attrs.volume === 'string' ? attrs.volume : ''}|${chapter_num}`;
+    if (chapter_num !== '—') {
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
     const title = typeof attrs.title === 'string' && attrs.title.length > 0 ? attrs.title : null;
     out.push({ chapter_id: id, chapter_num, title, lang: attrs.translatedLanguage ?? '' });
   }
@@ -124,6 +133,8 @@ async function resolveTagIds(tags: string[]): Promise<string[]> {
   return out;
 }
 
+const searchCache = new SwrCache<MangaCard[]>(120_000, 40);
+
 export async function searchMangaDex(
   query: string,
   sort: MangaSort,
@@ -131,6 +142,8 @@ export async function searchMangaDex(
   tags: string[] = [],
   langs: string[] = [],
 ): Promise<MangaCard[]> {
+  const key = ['md', query, sort, page, tags.join(','), langs.join(',')].join('|');
+  return searchCache.get(key, async () => {
   const tagIds = await resolveTagIds(tags);
   const params = new URLSearchParams({ limit: '30', offset: String(page * 30), 'includes[]': 'cover_art' });
   params.set(`order[${ORDER_KEY[sort]}]`, 'desc');
@@ -142,6 +155,7 @@ export async function searchMangaDex(
   const cards = parseMangaSearch(json);
   if (cards.length === 0) throw new Error('Ничего не найдено.');
   return cards;
+  });
 }
 
 export async function fetchChapterList(manga_id: string): Promise<ChapterInfo[]> {

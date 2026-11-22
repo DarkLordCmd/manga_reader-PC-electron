@@ -1,5 +1,6 @@
 import { SORTS } from './constants';
 import QuickSearchPresets from './QuickSearchPresets';
+import SearchSuggest from './SearchSuggest';
 import type { CatalogSearch } from './useCatalogSearch';
 
 export default function CatalogToolbar({ s }: { s: CatalogSearch }): JSX.Element {
@@ -23,15 +24,7 @@ export default function CatalogToolbar({ s }: { s: CatalogSearch }): JSX.Element
         </select>
       )}
       {s.exNotice && <span className="muted">{s.exNotice}</span>}
-      <input
-        className="catalog-search"
-        value={s.query}
-        placeholder="Название манги…"
-        onChange={(e) => s.setQuery(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') void s.search(0);
-        }}
-      />
+      <SearchSuggest s={s} />
       {s.source === 'mangadex' && (
         <select value={s.sort} onChange={(e) => s.setSort(e.target.value)}>
           {SORTS.map((opt) => (
@@ -41,7 +34,7 @@ export default function CatalogToolbar({ s }: { s: CatalogSearch }): JSX.Element
           ))}
         </select>
       )}
-      <button onClick={() => void s.search(0)}>Найти</button>
+      <button onClick={() => void s.search(0, false, true)}>Найти</button>
       <QuickSearchPresets s={s} />
     </div>
   );

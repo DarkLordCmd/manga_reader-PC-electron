@@ -22,7 +22,6 @@ export interface ZipGalleryInfo {
   entries: string[];
 }
 
-const entriesCache = new Map<string, string[]>();
 
 function listEntries(zipPath: string): Promise<string[]> {
   return new Promise((resolve, reject) => {
@@ -48,7 +47,6 @@ export async function openZipGallery(zipPath: string, tmpBase: string): Promise<
   if (raw.length === 0) return null;
   const entries = raw.sort(naturalCompare);
   const id = zipId(zipPath);
-  entriesCache.set(id, entries);
   const title =
     zipPath
       .split(/[\\/]/)
@@ -86,6 +84,7 @@ function extractEntry(zipPath: string, entryName: string, dest: string): Promise
     yauzl.open(zipPath, { lazyEntries: true }, (err, zf) => {
       if (err || !zf) return reject(err ?? new Error('cannot open zip'));
       let found = false;
+      let failed = false;
       zf.on('entry', (entry: yauzl.Entry) => {
         if (entry.fileName !== entryName) {
           zf.readEntry();
@@ -101,6 +100,17 @@ function extractEntry(zipPath: string, entryName: string, dest: string): Promise
           stream.pipe(ws);
           ws.on('close', () => {
             zf.close();
+            // A failed stream still emits 'close' — promoting that partial file
+            // to `dest` made the truncated page a permanent cache hit, so the
+            // reader showed one broken page forever. Drop it instead.
+            if (failed) {
+              try {
+                rmSync(part, { force: true });
+              } catch {
+                /* ignore */
+              }
+              return;
+            }
             try {
               renameSync(part, dest);
               resolve(dest);
@@ -109,7 +119,13 @@ function extractEntry(zipPath: string, entryName: string, dest: string): Promise
             }
           });
           ws.on('error', (e) => {
+            failed = true;
             zf.close();
+            try {
+              rmSync(part, { force: true });
+            } catch {
+              /* ignore */
+            }
             reject(e);
           });
         });

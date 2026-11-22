@@ -1,4 +1,5 @@
 import { httpGetJson } from '../http';
+import { SwrCache } from '../swr-cache';
 import { type CatalogItem, type CatalogFilters } from './catalog-types';
 
 export interface ChapterInfo {
@@ -54,7 +55,11 @@ export function mangaSeriesUrlFromChapterUrl(url: string): string | null {
   return null;
 }
 
-export async function searchRemanga(query: string, page: number, filters: CatalogFilters = {}): Promise<CatalogItem[]> {
+const searchCache = new SwrCache<CatalogItem[]>(120_000, 40);
+
+export async function searchRemanga(query: string, page: number, filters: CatalogFilters = {}, proxy?: string): Promise<CatalogItem[]> {
+  const key = ['rm', query, page, JSON.stringify(filters)].join('|');
+  return searchCache.get(key, async () => {
   // UI sends '' for the default sort — `'' || 'views'` (a nullish coalescing
   // would keep the empty string) → invalid ordering crashes the API.
   const params = new URLSearchParams({ page: String(page + 1), count: '20', ordering: filters.remangaOrdering || 'views' });
@@ -63,10 +68,14 @@ export async function searchRemanga(query: string, page: number, filters: Catalo
   if (filters.remangaTypes) params.set('types', filters.remangaTypes);
   for (const g of filters.remangaGenres ?? []) params.append('genres', g);
   for (const c of filters.remangaCategories ?? []) params.append('categories', c);
-  const json = (await httpGetJson(`https://api.remanga.org/api/v2/search/catalog/?${params.toString()}`, {
-    Referer: 'https://remanga.org/',
-    Accept: 'application/json',
-  })) as any;
+  const json = (await httpGetJson(
+    `https://api.remanga.org/api/v2/search/catalog/?${params.toString()}`,
+    {
+      Referer: 'https://remanga.org/',
+      Accept: 'application/json',
+    },
+    proxy,
+  )) as any;
   const results: any[] = json?.results ?? json?.content ?? [];
   // API now returns cover paths without a host (/media/titles/...).
   const coverOf = (r: any): string | null => {
@@ -78,7 +87,10 @@ export async function searchRemanga(query: string, page: number, filters: Catalo
     url: `https://remanga.org/manga/${r?.dir ?? ''}/`,
     title: r?.main_name ?? r?.rus_name ?? r?.name ?? 'Без названия',
     coverUrl: coverOf(r),
-    pages: r?.count_chapters ?? null,
+    // count_chapters is a chapter count, not a page count: the card renders
+    // `pages` as "N стр." and showed "612 стр." for a 2-page chapter.
+    pages: null,
+    chapterCount: typeof r?.count_chapters === 'number' ? r.count_chapters : null,
     kind: r?.type?.name ?? null,
     score: typeof r?.avg_rating === 'number' ? r.avg_rating : null,
     // Remanga flags adult/forbidden titles with is_forbidden.
@@ -93,18 +105,23 @@ export async function searchRemanga(query: string, page: number, filters: Catalo
       ),
     ].slice(0, 40),
   }));
+  });
 }
 
 const REMANGA_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
-export async function fetchRemangaChapters(mangaUrl: string): Promise<ChapterInfo[]> {
+export async function fetchRemangaChapters(mangaUrl: string, proxy?: string): Promise<ChapterInfo[]> {
   const dir = mangaUrl.trim().replace(/\/+$/, '').split('/').pop() ?? '';
   if (!dir) throw new Error('Не удалось определить директорию тайтла');
 
-  const titleJson = (await httpGetJson(`https://remanga.org/api/v2/titles/${dir}/`, {
-    Referer: 'https://remanga.org/',
-    Accept: 'application/json',
-  })) as any;
+  const titleJson = (await httpGetJson(
+    `https://remanga.org/api/v2/titles/${dir}/`,
+    {
+      Referer: 'https://remanga.org/',
+      Accept: 'application/json',
+    },
+    proxy,
+  )) as any;
   const mainName: string = titleJson?.main_name ?? '';
   const branchId: number = titleJson?.branches?.[0]?.id ?? 0;
   if (!branchId) throw new Error('Remanga: не удалось определить ID ветки');
@@ -119,10 +136,14 @@ export async function fetchRemangaChapters(mangaUrl: string): Promise<ChapterInf
       is_published: '1',
       detail: '1',
     });
-    const json = (await httpGetJson(`https://api.remanga.org/api/v2/titles/chapters/?${q.toString()}`, {
-      Referer: 'https://remanga.org/',
-      Accept: 'application/json',
-    })) as any;
+    const json = (await httpGetJson(
+      `https://api.remanga.org/api/v2/titles/chapters/?${q.toString()}`,
+      {
+        Referer: 'https://remanga.org/',
+        Accept: 'application/json',
+      },
+      proxy,
+    )) as any;
     const results: any[] = json?.results ?? [];
     if (results.length === 0) break;
     for (const ch of results) {
@@ -147,15 +168,19 @@ export async function fetchRemangaChapters(mangaUrl: string): Promise<ChapterInf
   }));
 }
 
-export async function fetchRemangaChapter(chapterUrl: string): Promise<{ title: string; pageUrls: string[] }> {
+export async function fetchRemangaChapter(chapterUrl: string, proxy?: string): Promise<{ title: string; pageUrls: string[] }> {
   const parts = chapterUrl.trim().replace(/\/+$/, '').split('/');
   const chapterId = parts.pop() ?? '';
   if (!chapterId) throw new Error('Не удалось определить ID главы');
 
-  const json = (await httpGetJson(`https://api.remanga.org/api/v2/titles/chapters/${chapterId}/`, {
-    Referer: 'https://remanga.org/',
-    Accept: 'application/json',
-  })) as any;
+  const json = (await httpGetJson(
+    `https://api.remanga.org/api/v2/titles/chapters/${chapterId}/`,
+    {
+      Referer: 'https://remanga.org/',
+      Accept: 'application/json',
+    },
+    proxy,
+  )) as any;
 
   const chapterNum: string = json?.chapter ?? '?';
   const chapterName: string = typeof json?.name === 'string' ? json.name : '';

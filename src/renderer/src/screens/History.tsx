@@ -34,6 +34,10 @@ export default function History(): JSX.Element {
       : entries.filter((e) => e.category === 'main');
 
   const clear = async (): Promise<void> => {
+    // Irreversible and covers BOTH tabs (the main-process clear has no category
+    // filter), so ask first — one stray click used to wipe the main history
+    // while the user was standing on the R34 tab.
+    if (!window.confirm('Очистить всю историю просмотров (Main и R34)?')) return;
     await window.api.clearHistory();
     refresh();
   };

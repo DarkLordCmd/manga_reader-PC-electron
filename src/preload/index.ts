@@ -12,6 +12,7 @@ const api: Api = {
   rescanFolder: (path) => ipcRenderer.invoke(CH.rescanFolder, path),
   getHistory: () => ipcRenderer.invoke(CH.getHistory),
   recordProgress: (url, page, total, offset) => ipcRenderer.invoke(CH.recordProgress, url, page, total, offset),
+  setSeriesProgress: (seriesId, index, total) => ipcRenderer.invoke(CH.setSeriesProgress, seriesId, index, total),
   clearHistory: () => ipcRenderer.invoke(CH.clearHistory),
   openUrl: (url, startPage, mangaId, coverUrl, kind, chapterIndex, adult) =>
     ipcRenderer.invoke(CH.openUrl, url, startPage, mangaId, coverUrl, kind, chapterIndex, adult),
@@ -26,10 +27,26 @@ const api: Api = {
   cookieLogin: (input) => ipcRenderer.invoke(CH.cookieLogin, input),
   refreshIgneous: () => ipcRenderer.invoke(CH.refreshIgneous),
   parseCookieText: (text) => ipcRenderer.invoke(CH.parseCookieText, text),
+  clearSiteCookies: (field) => ipcRenderer.invoke(CH.clearSiteCookies, field),
   setReadingPosition: (id, index) => ipcRenderer.invoke(CH.setReadingPosition, id, index),
   ehTagSuggest: (text) => ipcRenderer.invoke(CH.ehTagSuggest, text),
+  catalogSuggest: (source, query) => ipcRenderer.invoke(CH.catalogSuggest, source, query),
   nhentaiTagSuggest: (text) => ipcRenderer.invoke(CH.nhentaiTagSuggest, text),
   checkTor: () => ipcRenderer.invoke(CH.checkTor),
+  ehResetImageLimit: () => ipcRenderer.invoke(CH.ehResetImageLimit),
+  ehTorrents: (url: string) => ipcRenderer.invoke(CH.ehTorrents, url),
+  ehGalleryInfo: (url: string) => ipcRenderer.invoke(CH.ehGalleryInfo, url),
+  ehFavorites: (page: number) => ipcRenderer.invoke(CH.ehFavorites, page),
+  ehHathDownload: (url: string, resolution: string) => ipcRenderer.invoke(CH.ehHathDownload, url, resolution),
+  senkuroLabels: () => ipcRenderer.invoke(CH.senkuroLabels),
+  torDiagnostics: () => ipcRenderer.invoke(CH.torDiagnostics),
+  senkuroImportBookmarks: (opts) => ipcRenderer.invoke(CH.senkuroImport, opts),
+  onSenkuroImportProgress: (cb) => {
+    const fn = (_e: unknown, p: Parameters<typeof cb>[0]): void => cb(p);
+    ipcRenderer.on(CH.senkuroImportProgress, fn);
+    return () => ipcRenderer.removeListener(CH.senkuroImportProgress, fn);
+  },
+  newTorCircuit: () => ipcRenderer.invoke(CH.newTorCircuit),
   checkBridges: (lines) => ipcRenderer.invoke(CH.checkBridges, lines),
   checkSites: () => ipcRenderer.invoke(CH.checkSites),
   libMirrorsCheck: () => ipcRenderer.invoke(CH.libMirrorsCheck),
@@ -56,7 +73,7 @@ const api: Api = {
   downloadsAddArchive: (sourceUrl, title, downloadUrl) => ipcRenderer.invoke(CH.downloadsAddArchive, sourceUrl, title, downloadUrl),
   ehLimitsState: () => ipcRenderer.invoke(CH.ehLimitsState),
   pinHasPin: () => ipcRenderer.invoke(CH.pinHasPin),
-  pinSetPin: (pin) => ipcRenderer.invoke(CH.pinSetPin, pin),
+  pinSetPin: (pin, current) => ipcRenderer.invoke(CH.pinSetPin, pin, current),
   pinRemovePin: (pin) => ipcRenderer.invoke(CH.pinRemovePin, pin),
   pinVerifyPin: (pin) => ipcRenderer.invoke(CH.pinVerifyPin, pin),
   pinFailedAttempt: () => ipcRenderer.invoke(CH.pinFailedAttempt),

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { SOURCES } from './constants';
 import type { CatalogSearch } from './useCatalogSearch';
 import { tagChipStyle } from '../../lib/tag-colors';
+import { errorText } from '../../lib/errors';
 
 /** Tags for the current work. MangaDex/E-Hentai deliver them with the listing;
  * nhentai only has them on the gallery page, so they are fetched once when the
@@ -40,9 +41,51 @@ function OverlayTags({ url, initial }: { url: string; initial?: string[] }): JSX
 
 export default function ChaptersOverlay({ s }: { s: CatalogSearch }): JSX.Element | null {
   const { picked } = s;
+  // Feedback lives in the overlay: the toolbar notice was rendered UNDER the
+  // overlay (z-index) and stuck there forever after closing it.
+  const [addBusy, setAddBusy] = useState(false);
+  const [added, setAdded] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  useEffect(() => {
+    setAddBusy(false);
+    setAdded(false);
+    setAddError(null);
+  }, [picked?.url]);
+
   if (!picked) return null;
   const sourceLabel = SOURCES.find((x) => x.key === s.source)?.label ?? '';
   const chapters = s.chapters;
+
+  const addToLibrary = async (): Promise<void> => {
+    if (addBusy || added) return;
+    setAddBusy(true);
+    setAddError(null);
+    try {
+      let adult = picked.adult;
+      if (adult === undefined) {
+        try {
+          const resolved = await window.api.catalogAdultBatch([picked.url]);
+          adult = resolved[picked.url] === true;
+        } catch {
+          /* keep undefined */
+        }
+      }
+      await window.api.libraryAdd({
+        url: picked.url,
+        title: picked.title,
+        coverUrl: picked.coverUrl,
+        source: sourceLabel,
+        seriesId: picked.url,
+        adult: adult === true,
+      });
+      setAdded(true);
+    } catch (e) {
+      setAddError(errorText(e));
+    } finally {
+      setAddBusy(false);
+    }
+  };
+
   return (
     <div className="overlay" onClick={() => s.setPicked(null)}>
       <div className="overlay-card chapters" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
@@ -57,6 +100,7 @@ export default function ChaptersOverlay({ s }: { s: CatalogSearch }): JSX.Elemen
 
         <div className="overlay-meta">
           {sourceLabel && <span className="overlay-chip">{sourceLabel}</span>}
+          {picked.status && <span className="overlay-chip overlay-status">{picked.status}</span>}
           {chapters ? <span>Глав: {chapters.length}</span> : <span>Загружаю список…</span>}
         </div>
 
@@ -89,33 +133,10 @@ export default function ChaptersOverlay({ s }: { s: CatalogSearch }): JSX.Elemen
         </div>
 
         <div className="overlay-actions">
-          <button
-            className="btn-secondary"
-            onClick={() =>
-              void (async () => {
-                let adult = picked.adult;
-                if (adult === undefined) {
-                  try {
-                    const resolved = await window.api.catalogAdultBatch([picked.url]);
-                    adult = resolved[picked.url] === true;
-                  } catch {
-                    /* keep undefined */
-                  }
-                }
-                await window.api.libraryAdd({
-                  url: picked.url,
-                  title: picked.title,
-                  coverUrl: picked.coverUrl,
-                  source: sourceLabel,
-                  seriesId: picked.url,
-                  adult: adult === true,
-                });
-                s.setExNotice('Добавлено в библиотеку');
-              })()
-            }
-          >
-            + В библиотеку
+          <button className="btn-secondary" disabled={addBusy || added} onClick={() => void addToLibrary()}>
+            {added ? '✓ В библиотеке' : addBusy ? 'Добавляю…' : '+ В библиотеку'}
           </button>
+          {addError && <span className="error-text">{addError}</span>}
           <button className="btn-ghost" onClick={() => s.setPicked(null)}>
             Закрыть
           </button>

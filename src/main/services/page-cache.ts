@@ -27,6 +27,10 @@ export function initPageCache(root: string, maxMb = 512): void {
   dir = join(root, 'page-cache');
   maxBytes = Math.max(64, maxMb) * 1024 * 1024;
   mkdirSync(dir, { recursive: true });
+  // Prune what a previous session left above the budget now, instead of waiting
+  // for 50 new pages to be written (the cache could sit at 2x the limit for a
+  // long time after the setting was lowered).
+  void prune();
 }
 
 export function pageCacheDir(): string | null {

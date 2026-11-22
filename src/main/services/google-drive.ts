@@ -23,16 +23,32 @@ export class GoogleDrive {
     return res;
   }
 
+  /** Cached file id: download() and upload() are called in the same sync cycle,
+   * and two independent files.list calls could pick different files if Drive
+   * returned duplicates in a different order (then one file was read while the
+   * other was overwritten). */
+  private cachedId: { id: string | null; ts: number } | null = null;
+
   async findSyncFile(): Promise<string | null> {
     const q = encodeURIComponent(`name='${SYNC_FILE_NAME}'`);
-    const res = await this.req(`${FILES_API}?spaces=appDataFolder&q=${q}&fields=files(id,name)`, { method: 'GET' });
+    const res = await this.req(
+      `${FILES_API}?spaces=appDataFolder&q=${q}&orderBy=modifiedTime%20desc&fields=files(id,name)`,
+      { method: 'GET' },
+    );
     if (!res.ok) throw new Error(`Drive list не удался (HTTP ${res.status})`);
     const j = (await res.json()) as { files?: { id: string }[] };
     return j.files?.[0]?.id ?? null;
   }
 
-  async download(): Promise<string | null> {
+  private async resolveId(): Promise<string | null> {
+    if (this.cachedId && Date.now() - this.cachedId.ts < 30_000) return this.cachedId.id;
     const id = await this.findSyncFile();
+    this.cachedId = { id, ts: Date.now() };
+    return id;
+  }
+
+  async download(): Promise<string | null> {
+    const id = await this.resolveId();
     if (!id) return null;
     const res = await this.req(`${FILES_API}/${id}?alt=media`, { method: 'GET' });
     if (res.status === 404) return null;
@@ -41,7 +57,7 @@ export class GoogleDrive {
   }
 
   async upload(content: string): Promise<void> {
-    const id = await this.findSyncFile();
+    const id = await this.resolveId();
     const boundary = 'mangareadersync';
     const meta = id ? { name: SYNC_FILE_NAME } : { name: SYNC_FILE_NAME, parents: ['appDataFolder'] };
     const body =
@@ -54,5 +70,15 @@ export class GoogleDrive {
       body,
     });
     if (!res.ok) throw new Error(`Drive upload не удался (HTTP ${res.status})`);
+    if (!id) {
+      // The first upload created the file: remember its id so the next request
+      // in this session updates instead of creating a duplicate.
+      try {
+        const j = (await res.json()) as { id?: string };
+        this.cachedId = { id: j.id ?? null, ts: Date.now() };
+      } catch {
+        this.cachedId = null;
+      }
+    }
   }
 }

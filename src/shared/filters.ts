@@ -469,10 +469,10 @@ export const NH_POPULAR_TAGS: string[] = [
 // Senkuro (senkuro.me) enum values from the site frontend (manga-status/type/format/rating modules).
 export const SENKURO_STATUS: [string, string][] = [
   ['ANNOUNCE', 'Анонс'],
-  ['ONGOING', 'Выходит'],
-  ['FINISHED', 'Завершён'],
-  ['HIATUS', 'Заморожен'],
-  ['CANCELLED', 'Отменён'],
+  ['ONGOING', 'Онгоинг'],
+  ['FINISHED', 'Выпущено'],
+  ['HIATUS', 'Приостановлено'],
+  ['CANCELLED', 'Отменено'],
 ];
 export const SENKURO_TYPE: [string, string][] = [
   ['MANGA', 'Манга'],
@@ -480,33 +480,75 @@ export const SENKURO_TYPE: [string, string][] = [
   ['MANHUA', 'Маньхуа'],
   ['COMICS', 'Комикс'],
   ['OEL_MANGA', 'OEL Манга'],
-  ['RU_MANGA', 'Русская манга'],
+  ['RU_MANGA', 'РуМанга'],
 ];
 export const SENKURO_FORMAT: [string, string][] = [
-  ['SINGLE', 'Одиночка'],
+  ['DIGEST', 'Сборник'],
+  ['DOUJINSHI', 'Додзинси'],
+  ['IN_COLOR', 'В цвете'],
+  ['SINGLE', 'Сингл'],
   ['WEB', 'Веб'],
   ['WEBTOON', 'Вебтун'],
   ['YONKOMA', 'Ёнкома'],
-  ['DIGEST', 'Дайджест'],
-  ['DOUJINSHI', 'Додзинси'],
-  ['IN_COLOR', 'В цвете'],
   ['SHORT', 'Short'],
 ];
+/** Age ratings used by the site (multi-select: 0+ / 12+ / 16+ / 18+). */
 export const SENKURO_RATING: [string, string][] = [
-  ['', 'Все'],
-  ['GENERAL', 'Без 18+'],
-  ['SENSITIVE', 'Чувствительное'],
-  ['QUESTIONABLE', 'Спорное'],
-  ['EXPLICIT', 'Только 18+'],
+  ['GENERAL', '0+'],
+  ['SENSITIVE', '12+'],
+  ['QUESTIONABLE', '16+'],
+  ['EXPLICIT', '18+'],
 ];
-
+/** Team (translation) status — the API's typo'd enum name is translitionStatus. */
+export const SENKURO_TRANSLATION: [string, string][] = [
+  ['IN_PROGRESS', 'Переводится'],
+  ['FINISHED', 'Завершён'],
+  ['ABANDONED', 'Заброшен'],
+  ['FROZEN', 'Заморожен'],
+];
+/** Original source of the work (MangaSourceFilter.include). */
+export const SENKURO_SOURCE: [string, string][] = [
+  ['ANIME', 'Аниме'],
+  ['COMIC', 'Комикс'],
+  ['DOUJINSHI', 'Додзинси'],
+  ['GAME', 'Игра'],
+  ['LIGHT_NOVEL', 'Ранобэ'],
+  ['LIVE_ACTION', 'Лайв-экшн'],
+  ['MANGA', 'Манга'],
+  ['NOVEL', 'Новелла'],
+  ['ORIGINAL', 'Оригинальная работа'],
+  ['OTHER', 'Другое'],
+  ['PICTURE_BOOK', 'Иллюстрированные книги'],
+  ['VIDEO_GAME', 'Видео-игра'],
+  ['VISUAL_NOVEL', 'Визуальная новелла'],
+  ['WEB_NOVEL', 'Веб-новелла'],
+];
+/** Origin countries the site shows (MangaOriginCountryFilter, ISO codes). */
+export const SENKURO_COUNTRY: [string, string][] = [
+  ['KR', 'Корея'],
+  ['JP', 'Япония'],
+  ['CN', 'Китай'],
+  ['US', 'США'],
+  ['RU', 'Россия'],
+  ['FR', 'Франция'],
+];
+/** Chapter-count presets from the site's "Количество глав" block. */
+export const SENKURO_CHAPTER_PRESETS: [number, number, string][] = [
+  [1, 20, '1–20'],
+  [20, 100, '20–100'],
+  [100, 200, '100–200'],
+  [201, 0, '>200'],
+];
 export const SENKURO_ORDERING: [string, string][] = [
-  ['', 'По умолчанию'],
-  ['-views', 'По просмотрам'],
-  ['-rating', 'По рейтингу'],
-  ['rating', 'По рейтингу ▲'],
-  ['-id', 'По добавлению ▼'],
-  ['id', 'По добавлению ▲'],
+  ['', 'По популярности'],
+  ['-score', 'По рейтингу ▼'],
+  ['score', 'По рейтингу ▲'],
+  ['-views', 'По просмотрам ▼'],
+  ['views', 'По просмотрам ▲'],
+  ['-chapters', 'По главам ▼'],
+  ['chapters', 'По главам ▲'],
+  ['-created', 'По добавлению ▼'],
+  ['created', 'По добавлению ▲'],
 ];
 
 // Com-X (com-x.life): разделы каталога comix-read (from the site's own nav).

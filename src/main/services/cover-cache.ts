@@ -14,6 +14,9 @@ export class CoverDiskCache {
   private ready: Promise<void> | null = null;
   private bytes = 0;
   private putsSinceSweep = 0;
+  /** True while a sweep is running — keeps parallel full-directory scans from
+   * piling up when the cache sits at its budget. */
+  private sweeping = false;
 
   constructor(dir: string, maxBytes = DEFAULT_MAX_BYTES) {
     this.dir = dir;
@@ -71,9 +74,16 @@ export class CoverDiskCache {
     } catch {
       return;
     }
-    if (this.bytes > this.maxBytes || ++this.putsSinceSweep >= 64) {
+    // Hysteresis + in-flight flag: once the cache is full, `bytes` stays slightly
+    // above maxBytes after every sweep, so EVERY subsequent put (30 covers per
+    // catalog page) used to start a full directory scan — and several scans ran
+    // concurrently. Sweep only above 105% and never more than one at a time.
+    if (!this.sweeping && (this.bytes > this.maxBytes * 1.05 || ++this.putsSinceSweep >= 64)) {
       this.putsSinceSweep = 0;
-      void this.sweep();
+      this.sweeping = true;
+      void this.sweep().finally(() => {
+        this.sweeping = false;
+      });
     }
   }
 
@@ -92,8 +102,10 @@ export class CoverDiskCache {
       }
       stats.sort((a, b) => a.mtimeMs - b.mtimeMs);
       let bytes = stats.reduce((n, s) => n + s.size, 0);
+      // Trim to 90% of the budget so the next puts do not trigger a sweep at once.
+      const target = Math.floor(this.maxBytes * 0.9);
       for (const s of stats) {
-        if (bytes <= this.maxBytes) break;
+        if (bytes <= target) break;
         try {
           await fs.unlink(s.path);
           bytes -= s.size;

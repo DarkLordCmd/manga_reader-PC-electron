@@ -5,6 +5,7 @@ import { app } from 'electron';
 import { probeBridgeLine, parseBridgeAddr } from './tor-check';
 import { markBridgeHealth } from './tor-bridge-health';
 import { logger } from './logger';
+import { EMBEDDED_CONTROL_PORT, EMBEDDED_SOCKS_PORT } from './tor-config';
 
 /** Bundled "little-t tor" daemon so the user does not have to install or
  * configure Tor Browser. Lifecycle:
@@ -16,8 +17,7 @@ import { logger } from './logger';
  *     bootstrap fails, a watchdog switches to the next ranked bridge;
  *   - obfs4proxy/lyrebird ships next to the tor binary;
  *   - `--__OwningControllerProcess` makes tor exit when our process exits. */
-export const EMBEDDED_SOCKS_PORT = 9153;
-export const EMBEDDED_CONTROL_PORT = 9158;
+export { EMBEDDED_SOCKS_PORT, EMBEDDED_CONTROL_PORT } from './tor-config';
 
 const BOOT_TIMEOUT_MS = 45_000;
 const WATCHDOG_INTERVAL_MS = 20_000;
@@ -33,6 +33,9 @@ let readyResolve: (() => void) | null = null;
 let readyPromise: Promise<void> = Promise.resolve();
 const skippedBridges = new Set<string>();
 let lastStart: { bridges: string; dataDir: string } | null = null;
+/** How many --Bridge lines the running daemon actually uses (the app launches
+ * the fastest reachable one; Tor warns that two would enable conflux). */
+let activeBridgeCount = 0;
 let watchdog: ReturnType<typeof setInterval> | undefined = undefined;
 let socksAliveStreak = 0;
 let restarting = false;
@@ -46,6 +49,12 @@ let attemptStartedAt = 0;
 let stopping = false;
 let restartTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 let restartDelayMs = 5_000;
+/** Single-flight guard for bridge rotation. Without it an `exit`-driven
+ * restart and a watchdog rotation could run concurrently: the second one
+ * killed the freshly started daemon right before it finished bootstrapping,
+ * so an unstable bridge set turned into an endless restart storm (each cycle
+ * paying the full 10-40 s bootstrap). */
+let rotationInFlight: Promise<{ socks: string } | null> | null = null;
 
 function resetReadyPromise(): void {
   readyPromise = new Promise((resolve) => {
@@ -67,6 +76,9 @@ export async function whenEmbeddedTorReady(timeoutMs = 120_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (activeSocks) return;
+    // An intentional stop must fail fast instead of making callers wait out the
+    // whole timeout for a daemon that will never come up.
+    if (stopping && !proc) throw new Error('embedded tor stopped');
     if (proc && !proc.killed) {
       const remaining = Math.max(1, deadline - Date.now());
       await Promise.race([readyPromise, new Promise<void>((r) => setTimeout(r, remaining))]);
@@ -208,18 +220,164 @@ function controlCircuitEstablished(dataDir: string): Promise<boolean | null> {
   );
 }
 
+/** Tor rate-limits NEWNYM itself (observed: "Rate limiting NEWNYM request:
+ * delaying by 5-10 seconds"). Firing it twice in quick succession makes the
+ * second one a no-op, so the retry still uses the banned circuit. Space the
+ * signals out and wait for the queue to clear first. */
+let lastNewnymAt = 0;
+const NEWNYM_MIN_GAP_MS = 11_000;
+
+async function newnymSpaced(dataDir: string): Promise<boolean> {
+  const wait = NEWNYM_MIN_GAP_MS - (Date.now() - lastNewnymAt);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  const reply = await controlCommand('SIGNAL NEWNYM', dataDir);
+  if (reply && reply.includes('250 OK')) lastNewnymAt = Date.now();
+  return !!reply && reply.includes('250 OK');
+}
+
 /** Drops the current circuit (`SIGNAL NEWNYM`) so the next request does not
  * inherit a slow/dead path. Used by the login window when the first page
  * takes too long; a no-op when the bundled daemon is not running. */
 export async function requestNewTorCircuit(): Promise<boolean> {
   const cfg = lastStart;
   if (!cfg || !proc || !activeSocks) return false;
-  const reply = await controlCommand('SIGNAL NEWNYM', cfg.dataDir);
-  const ok = !!reply && reply.includes('250 OK');
+  const ok = await newnymSpaced(cfg.dataDir);
   logger.info(`[tor-embedded] SIGNAL NEWNYM ${ok ? 'ok' : 'failed'}`);
   return ok;
 }
 
+/** Exit relays we already tripped a per-IP limit on in this session. NEWNYM
+ * alone frequently reuses the SAME exit for the same destination, so a plain
+ * "new circuit" does not lift a site ban. Excluding the banned relay from the
+ * circuit path makes Tor pick a different one. */
+const excludedExits = new Set<string>();
+let excludedAt = 0;
+const EXCLUDED_TTL_MS = 30 * 60_000;
+const MAX_EXCLUDED = 15;
+
+/** Exit fingerprints of BUILT general circuits (last hop of each path).
+ * Paths with fewer than 3 nodes are skipped: with bridges Tor briefly builds
+ * one-hop circuits through the BRIDGE itself, and their "last node" is the
+ * bridge — excluding that broke connectivity entirely ("Not using bridge … it
+ * is in ExcludeNodes"). A normal circuit is guard/bridge + middle + exit. */
+export function parseExitFingerprints(reply: string): string[] {
+  const out: string[] = [];
+  for (const line of reply.split('\n')) {
+    if (!line.includes(' BUILT ') || !/PURPOSE=GENERAL/.test(line)) continue;
+    const fps = [...line.matchAll(/\$([0-9A-Fa-f]{40})/g)].map((m) => m[1].toUpperCase());
+    if (fps.length >= 3) out.push(fps[fps.length - 1]);
+  }
+  return out;
+}
+
+/** Fingerprints mentioned in the configured bridge lines — never exclude these. */
+function bridgeFingerprints(bridges: string): Set<string> {
+  const set = new Set<string>();
+  for (const m of bridges.matchAll(/\b([0-9A-Fa-f]{40})\b/g)) set.add(m[1].toUpperCase());
+  return set;
+}
+
+async function currentExits(dataDir: string): Promise<string[]> {
+  const reply = await controlCommand('GETINFO circuit-status', dataDir);
+  return reply ? parseExitFingerprints(reply) : [];
+}
+
+/** Clears our exclusion list and asks for a fresh circuit. Used as a safety net:
+ * a wrong exclusion must never leave the daemon unable to build circuits. */
+async function clearExclusions(dataDir: string): Promise<void> {
+  excludedExits.clear();
+  await controlCommand('SETCONF ExcludeNodes=', dataDir);
+  await controlCommand('SIGNAL NEWNYM', dataDir);
+}
+
+/**
+ * Moves to a DIFFERENT exit relay: blacklist the one we are on, then NEWNYM and
+ * wait until a circuit with a new exit is built. This is what actually bypasses
+ * a per-IP ban (E-Hentai "excessive request rate"), because the ban follows the
+ * exit address. Returns changed=false when the control port is unavailable or
+ * Tor could not build a circuit outside the blacklist (exclusions are reverted).
+ */
+export async function rotateTorExit(): Promise<{ changed: boolean; exit: string | null }> {
+  const cfg = lastStart;
+  if (!cfg || !proc || !activeSocks) return { changed: false, exit: null };
+  if (Date.now() - excludedAt > EXCLUDED_TTL_MS) {
+    excludedExits.clear();
+    excludedAt = Date.now();
+  }
+  const bridges = bridgeFingerprints(cfg.bridges ?? '');
+  let before = await currentExits(cfg.dataDir);
+  if (before.length === 0) {
+    // Just after a previous NEWNYM the circuits may be torn down already; give
+    // Tor a moment so we still learn (and exclude) the exit we were banned on.
+    await new Promise((r) => setTimeout(r, 600));
+    before = await currentExits(cfg.dataDir);
+  }
+  for (const fp of before) {
+    if (bridges.has(fp)) continue; // a bridge is not an exit
+    excludedExits.add(fp);
+  }
+  if (excludedExits.size > 0) {
+    const list = [...excludedExits].filter((fp) => !bridges.has(fp)).slice(-MAX_EXCLUDED).map((fp) => `$${fp}`);
+    const reply = await controlCommand(`SETCONF ExcludeNodes=${list.join(',')}`, cfg.dataDir);
+    if (!reply) {
+      logger.warn('[tor-embedded] SETCONF ExcludeNodes rejected — rotating without exclusions');
+      await clearExclusions(cfg.dataDir);
+    }
+  }
+  const signal = await newnymSpaced(cfg.dataDir);
+  if (!signal) return { changed: false, exit: null };
+  // NEWNYM marks circuits dirty, but Tor builds a replacement only when the next
+  // stream needs one — polling circuit-status here would time out even though the
+  // exit WILL change on the next request. Look briefly for a rebuilt circuit (to
+  // report the new exit), then accept the rotation.
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 500));
+    const after = await currentExits(cfg.dataDir);
+    const fresh = after.find((fp) => !before.includes(fp) && !bridges.has(fp));
+    if (fresh) {
+      logger.info(`[tor-embedded] rotated exit ${before[before.length - 1] ?? '?'} -> ${fresh}`);
+      return { changed: true, exit: fresh };
+    }
+  }
+  logger.info('[tor-embedded] circuit invalidated; the next request picks a new exit (banned exits excluded)');
+  return { changed: true, exit: null };
+}
+
+export interface TorDiagnostics {
+  running: boolean;
+  socks: string | null;
+  bootstrap: string | null;
+  circuits: number;
+  exits: string[];
+  bridgeCount: number;
+}
+
+/** Snapshot for the settings screen: bootstrap phase, built circuits and the
+ * exits currently in use. Also lets the UI warn when only one bridge is
+ * configured (Tor wants at least two for conflux/resilience). */
+export async function getTorDiagnostics(): Promise<TorDiagnostics> {
+  const cfg = lastStart;
+  const running = !!proc && !!activeSocks;
+  const bridgeCount = activeBridgeCount;
+  if (!cfg || !running) return { running, socks: activeSocks, bootstrap: null, circuits: 0, exits: [], bridgeCount };
+  let bootstrap: string | null = null;
+  let circuits = 0;
+  let exits: string[] = [];
+  try {
+    const phase = await controlCommand('GETINFO status/bootstrap-phase', cfg.dataDir);
+    const m = phase?.match(/PROGRESS=(\d+)(?:\s+TAG=([^\s]+))?/);
+    bootstrap = m ? (m[2] ? `${m[1]}% ${m[2]}` : `${m[1]}%`) : null;
+    const status = await controlCommand('GETINFO circuit-status', cfg.dataDir);
+    if (status) {
+      circuits = status.split('\n').filter((l) => l.includes(' BUILT ')).length;
+      exits = parseExitFingerprints(status);
+    }
+  } catch {
+    /* diagnostics are best-effort */
+  }
+  return { running, socks: activeSocks, bootstrap, circuits, exits, bridgeCount };
+}
 function stopProcess(): void {
   const child = proc;
   proc = null;
@@ -234,11 +392,40 @@ function stopProcess(): void {
   }
 }
 
+/** Kills the current child and waits (bounded) until it is really gone.
+ * Tor keeps a lock on its DataDirectory and the SOCKS/control ports until the
+ * process exits: spawning the next bridge immediately after `kill()` made the
+ * new tor fail with "could not lock data directory"/EADDRINUSE, which looked
+ * like "this bridge is dead" and blacklisted a perfectly good bridge. */
+async function stopProcessAndWait(timeoutMs = 3_000): Promise<void> {
+  const child = proc;
+  if (!child) {
+    stopProcess();
+    return;
+  }
+  const exited = new Promise<void>((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve();
+      return;
+    }
+    const t = setTimeout(resolve, timeoutMs);
+    child.once('exit', () => {
+      clearTimeout(t);
+      resolve();
+    });
+  });
+  stopProcess();
+  await exited;
+}
+
 /** Restarts Tor after an unexpected exit or a confirmed dead-circuit state.
  * Uses the same bridge list/data dir as the last successful start; the delay
  * backs off to 60 s so a permanently blocked network is not hammered. */
 function scheduleRestart(reason: string): void {
   if (stopping || restartTimer) return;
+  // A rotation is already in progress and will either succeed or schedule its
+  // own restart — never start a competing one that kills its daemon.
+  if (rotationInFlight) return;
   const cfg = lastStart;
   if (!cfg) return;
   const delay = restartDelayMs;
@@ -260,9 +447,13 @@ function scheduleRestart(reason: string): void {
 }
 
 function launchTor(bridgeLine: string, binDir: string, dataDir: string): void {
+  activeBridgeCount = bridgeLine.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).length;
   const args: string[] = [
     '--SocksPort',
-    `127.0.0.1:${EMBEDDED_SOCKS_PORT} IPv6Traffic PreferIPv6`,
+    // No PreferIPv6: it makes Tor prefer IPv6 for relay/directory connections,
+    // which is slower (or broken) on IPv4-only ISP links. Tor Browser itself
+    // does not set it either.
+    `127.0.0.1:${EMBEDDED_SOCKS_PORT} IPv6Traffic IsolateSOCKSAuth`,
     '--ControlPort',
     `127.0.0.1:${EMBEDDED_CONTROL_PORT}`,
     '--CookieAuthentication',
@@ -289,8 +480,18 @@ function launchTor(bridgeLine: string, binDir: string, dataDir: string): void {
     return;
   }
   const child = proc;
-  child.stdout?.on('data', onTorLine);
-  child.stderr?.on('data', onTorLine);
+  // `spawn` does not throw for ENOENT/EACCES/"not a valid Win32 application" —
+  // the failure only arrives as an 'error' event. Without this listener the
+  // half-created child stayed "alive" forever: attemptBridge waited the full
+  // 45 s per bridge and whenEmbeddedTorReady() hung until its 120 s timeout.
+  child.on('error', (e: any) => {
+    logger.warn('[tor-embedded] tor process error:', e?.message ?? e);
+    if (child === proc) stopProcess();
+    abortAttempt?.();
+    if (!stopping) scheduleRestart('tor process error');
+  });
+  child.stdout?.on('data', (b: Buffer) => onTorLine(child, b));
+  child.stderr?.on('data', (b: Buffer) => onTorLine(child, b));
   child.on('exit', (code) => {
     // A newer process may already have replaced this one (bridge rotation);
     // an exit from the old child must not kill or restart the new daemon.
@@ -302,10 +503,17 @@ function launchTor(bridgeLine: string, binDir: string, dataDir: string): void {
   });
 }
 
-function onTorLine(buf: Buffer): void {
+function onTorLine(child: ChildProcess, buf: Buffer): void {
+  // Output of a replacement/stopped child must never mark the daemon ready:
+  // a late "Bootstrapped 100%" from the previous process used to advertise
+  // 127.0.0.1:9153 while the new one had not even bound the port.
+  if (child !== proc) return;
   for (const line of buf.toString('utf8').split('\n')) {
     const t = line.trim();
     if (!t) continue;
+    // The watchdog opens a control connection every 20 s; tor logs each one at
+    // notice level. Logging them grew main.log by ~4k lines/day for no signal.
+    if (t.includes('New control connection')) continue;
     // obfs4 answers this when the bridge is down/blocked — retrying the same
     // one only burns the bootstrap timeout.
     if (t.includes('unable to connect') && /general SOCKS server failure|connection refused|TLS error/i.test(t)) {
@@ -333,6 +541,7 @@ function onTorLine(buf: Buffer): void {
 
 /** Boots the daemon with a single (given) bridge and waits for bootstrap. */
 async function attemptBridge(bridgeLine: string, binDir: string, dataDir: string): Promise<{ socks: string } | null> {
+  if (stopping) return null;
   resetReadyPromise();
   bridgeFailStreak = 0;
   attemptStartedAt = Date.now();
@@ -355,14 +564,15 @@ async function attemptBridge(bridgeLine: string, binDir: string, dataDir: string
     abortAttempt = () => finish(null);
     const timer = setTimeout(() => finish(null), BOOT_TIMEOUT_MS);
     const poll = setInterval(() => {
-      if (activeSocks) finish({ socks: activeSocks ?? '' });
+      if (stopping) finish(null);
+      else if (activeSocks) finish({ socks: activeSocks ?? '' });
       else if (!proc) finish(null);
     }, 500);
     readyPromise
       .then(() => finish(activeSocks ? { socks: activeSocks } : null))
       .catch(() => {});
   });
-  if (bridgeLine.trim()) markBridgeHealth(join(dataDir, '..'), bridgeLine, !!result);
+  if (bridgeLine.trim() && !stopping) markBridgeHealth(join(dataDir, '..'), bridgeLine, !!result);
   return result;
 }
 
@@ -397,7 +607,9 @@ function loadPreferredBridge(userDataDir: string, bridges: string): string | nul
 function savePreferredBridge(userDataDir: string, line: string): void {
   if (!line.trim()) return;
   try {
-    writeFileSync(preferredBridgePath(userDataDir), JSON.stringify({ line, at: Date.now() }));
+    // The bridge line is a censored-network secret (address + fingerprint) and
+    // is encrypted in settings.json; the remembered copy was 0644 plaintext.
+    writeFileSync(preferredBridgePath(userDataDir), JSON.stringify({ line, at: Date.now() }), { mode: 0o600 });
   } catch {
     /* best-effort */
   }
@@ -412,6 +624,17 @@ function clearPreferredBridge(userDataDir: string): void {
 }
 
 async function runRotation(bridges: string, userDataDir: string): Promise<{ socks: string } | null> {
+  // Single-flight: exit-driven restarts and watchdog rotations used to run
+  // concurrently and kill each other's daemon mid-bootstrap.
+  if (rotationInFlight) return await rotationInFlight;
+  const run = rotate(bridges, userDataDir).finally(() => {
+    rotationInFlight = null;
+  });
+  rotationInFlight = run;
+  return await run;
+}
+
+async function rotate(bridges: string, userDataDir: string): Promise<{ socks: string } | null> {
   const binDir = torBinaryDir();
   if (!binDir) {
     logger.info('[tor-embedded] bundled tor not found (vendor/tor or resources/tor) — fallback to user Tor');
@@ -427,21 +650,26 @@ async function runRotation(bridges: string, userDataDir: string): Promise<{ sock
 
   const remembered = loadPreferredBridge(userDataDir, bridges);
   if (remembered) {
-    stopProcess();
+    await stopProcessAndWait();
+    if (stopping) return null;
     logger.info(`[tor-embedded] trying remembered bridge ${parseBridgeAddr(remembered)?.host}`);
     if (await attemptBridge(remembered, binDir, dataRoot)) {
       savePreferredBridge(userDataDir, remembered);
       startWatchdog(remembered, dataRoot);
       return { socks: `127.0.0.1:${EMBEDDED_SOCKS_PORT}` };
     }
+    if (stopping) return null;
     logger.info('[tor-embedded] remembered bridge failed — full rotation');
     skippedBridges.add(remembered);
     clearPreferredBridge(userDataDir);
   }
 
   const ranked = await rankBridges(bridges);
+  if (stopping) return null;
   if (ranked.length === 0) {
     logger.info('[tor-embedded] no reachable bridge — starting tor WITHOUT bridges (direct)');
+    await stopProcessAndWait();
+    if (stopping) return null;
     const direct = await attemptBridge('', binDir, dataRoot);
     if (direct) startWatchdog('', dataRoot);
     return direct;
@@ -452,9 +680,12 @@ async function runRotation(bridges: string, userDataDir: string): Promise<{ sock
     `[tor-embedded] bridge ranking: ${ranked.map((l) => parseBridgeAddr(l)?.host).join(' → ')}${skippedBridges.size ? ` (skipped: ${skippedBridges.size})` : ''}`,
   );
   for (const cand of tried) {
-    stopProcess();
+    if (stopping) return null;
+    await stopProcessAndWait();
+    if (stopping) return null;
     logger.info(`[tor-embedded] trying bridge ${parseBridgeAddr(cand)?.host}`);
     const r = await attemptBridge(cand, binDir, dataRoot);
+    if (stopping) return null;
     if (r) {
       savePreferredBridge(userDataDir, cand);
       startWatchdog(cand, dataRoot);
@@ -462,11 +693,14 @@ async function runRotation(bridges: string, userDataDir: string): Promise<{ sock
     }
     logger.info(`[tor-embedded] bridge ${parseBridgeAddr(cand)?.host} failed to bootstrap — blacklisting for this session`);
     skippedBridges.add(cand);
-    stopProcess();
   }
-  // Every bridge failed → allow next invocation to try everything again.
+  // Every bridge failed → allow the next invocation to try everything again
+  // (kept as a session hint, but the list is re-ranked from scratch: a bridge
+  // may have recovered between attempts).
   skippedBridges.clear();
   logger.info('[tor-embedded] all bridges exhausted; falling back to direct start');
+  await stopProcessAndWait();
+  if (stopping) return null;
   const direct = await attemptBridge('', binDir, dataRoot);
   if (direct) startWatchdog('', dataRoot);
   return direct;
@@ -474,9 +708,11 @@ async function runRotation(bridges: string, userDataDir: string): Promise<{ sock
 
 function startWatchdog(bridgeLine: string, dataDir: string): void {
   clearInterval(watchdog!);
+  watchdog = undefined;
+  if (stopping) return;
   socksAliveStreak = 0;
   watchdog = setInterval(async () => {
-    if (!proc || restarting) return;
+    if (stopping || !proc || restarting) return;
     const alive = await socksAlive();
     const circuit = alive ? await controlCircuitEstablished(dataDir) : null;
     // A listening SOCKS port with `circuit-established=0` means the daemon is
@@ -524,20 +760,40 @@ export async function startEmbeddedTor(bridges: string, userDataDir: string): Pr
     if (activeSocks) return { socks: activeSocks };
     try {
       await whenEmbeddedTorReady();
-      return activeSocks ? { socks: activeSocks } : null;
     } catch {
       return null;
     }
+    if (stopping) return null;
+    return activeSocks ? { socks: activeSocks } : null;
   }
   return await runRotation(bridges, userDataDir);
 }
 
-export function stopEmbeddedTor(): void {
+export async function stopEmbeddedTor(): Promise<void> {
   stopping = true;
   if (restartTimer) {
     clearTimeout(restartTimer);
     restartTimer = undefined;
   }
   clearInterval(watchdog!);
-  stopProcess();
+  watchdog = undefined;
+  // Wake an in-flight attemptBridge so its bridge loop aborts immediately
+  // instead of spawning the next tor.exe after stopEmbeddedTor() returned.
+  abortAttempt?.();
+  // Wait for the process to really exit: the next start needs the SOCKS port
+  // and the DataDirectory lock, and a dying tor still holds both.
+  await stopProcessAndWait();
+  // Also let an in-flight rotation observe `stopping` and clear the
+  // single-flight guard — otherwise a start() issued right after this stop
+  // returns the OLD rotation's result and the new bridge list is never used.
+  if (rotationInFlight) {
+    try {
+      await rotationInFlight;
+    } catch {
+      /* the aborted rotation has nothing useful to report */
+    }
+  }
+  skippedBridges.clear();
+  // Unblock anything awaiting readiness: a stopped daemon will never boot.
+  readyResolve?.();
 }

@@ -70,9 +70,23 @@ export function frontingIpFor(host: string): string {
   return nextIP(host);
 }
 
+/** One fronting Agent per host+IP, bounded: a fresh Agent per attempt leaked a
+ * connection pool and keep-alive timers for every fallback request. */
+const frontingDispatchers = new Map<string, Agent>();
+const FRONTING_POOL_LIMIT = 12;
+
 export function buildFrontingDispatcher(host: string, ip: string): Agent {
+  const key = `${host}|${ip}`;
+  const cached = frontingDispatchers.get(key);
+  if (cached) return cached;
   const tlsConnector = buildConnector({ timeout: 15_000 });
-  return new Agent({
+  const agent = new Agent({
+    // Keep the fronting tunnel alive between page requests (undici's 4 s
+    // default forced a fresh TCP+TLS handshake to the fixed IP every time).
+    keepAliveTimeout: 60_000,
+    keepAliveMaxTimeout: 10 * 60_000,
+    keepAliveTimeoutThreshold: 5_000,
+    connections: 8,
     connect: async (opts: any, callback) => {
       try {
         const port = Number(opts?.port || (opts?.protocol === 'https:' ? 443 : 80));
@@ -93,4 +107,13 @@ export function buildFrontingDispatcher(host: string, ip: string): Agent {
       }
     },
   });
+  while (frontingDispatchers.size >= FRONTING_POOL_LIMIT) {
+    const oldest = frontingDispatchers.keys().next().value;
+    if (oldest === undefined) break;
+    const evicted = frontingDispatchers.get(oldest);
+    frontingDispatchers.delete(oldest);
+    void evicted?.close().catch(() => {});
+  }
+  frontingDispatchers.set(key, agent);
+  return agent;
 }

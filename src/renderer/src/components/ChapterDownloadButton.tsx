@@ -11,9 +11,9 @@ export default function ChapterDownloadButton({ state, onDownload }: Props): JSX
     state === 'busy'
       ? 'Добавляю в загрузки…'
       : state === 'done'
-        ? 'Глава уже скачивается'
+        ? 'Глава уже в загрузках'
         : state === 'error'
-          ? 'Не удалось добавить — нажмите, чтобы повторить'
+          ? 'Скачивание не удалось — нажмите, чтобы повторить'
           : 'Скачать главу';
   return (
     <button

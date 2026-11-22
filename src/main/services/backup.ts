@@ -37,7 +37,10 @@ export function buildBackup(
     settings: sanitizeSettings(settings, includeSecrets),
     series,
     accounts: includeSecrets ? accounts : undefined,
-    downloads,
+    // Download tasks carry the Cookie header and proxy they were started with
+    // (for E-Hentai that is the live session). A "without secrets" backup must
+    // not ship them: only settings/accounts were sanitised before.
+    downloads: includeSecrets ? downloads : downloads.map((d) => ({ ...d, headers: {}, proxy: undefined })),
   };
 }
 

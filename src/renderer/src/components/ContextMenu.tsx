@@ -37,13 +37,20 @@ export default function ContextMenu({ x, y, items, onClose }: Props): JSX.Elemen
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose();
     };
+    // The menu is position:fixed while the card grid scrolls underneath it:
+    // without closing on scroll it stayed pinned next to an unrelated card.
+    const onScroll = (e: Event): void => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
     window.addEventListener('mousedown', onDown);
     window.addEventListener('keydown', onKey);
     window.addEventListener('resize', onClose);
+    window.addEventListener('scroll', onScroll, true);
     return () => {
       window.removeEventListener('mousedown', onDown);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', onClose);
+      window.removeEventListener('scroll', onScroll, true);
     };
   }, [onClose]);
 

@@ -38,7 +38,26 @@ describe('fetchHtmlSmart', () => {
     mocks.fetchHtmlViaBrowser.mockResolvedValue('<html><body class="fixed">ok</body></html>');
     const html = await fetchHtmlSmart('https://x/');
     expect(html).toContain('class="fixed"');
-    expect(mocks.fetchHtmlViaBrowser).toHaveBeenCalledWith('https://x/', { proxy: undefined, timeoutMs: undefined });
+    expect(mocks.fetchHtmlViaBrowser).toHaveBeenCalledWith('https://x/', {
+      proxy: undefined,
+      timeoutMs: undefined,
+      cookie: undefined,
+      cookieHost: 'x',
+    });
+  });
+
+  it('seeds the caller cookies into the browser fallback (authenticated sources)', async () => {
+    // Regression: the fallback opened its session anonymously, so an EH page
+    // behind a Cloudflare challenge came back as the sad-panda/login page.
+    mocks.httpFetch.mockResolvedValue({ status: 403, text: 'Just a moment...' });
+    mocks.fetchHtmlViaBrowser.mockResolvedValue('<html><body>ok</body></html>');
+    await fetchHtmlSmart('https://exhentai.org/s/abc/123-1', { cookieHeader: 'ipb_member_id=1; ipb_pass_hash=x' });
+    expect(mocks.fetchHtmlViaBrowser).toHaveBeenCalledWith('https://exhentai.org/s/abc/123-1', {
+      proxy: undefined,
+      timeoutMs: undefined,
+      cookie: 'ipb_member_id=1; ipb_pass_hash=x',
+      cookieHost: 'exhentai.org',
+    });
   });
 
   it('throws when anti-bot detected and browser fallback disabled', async () => {

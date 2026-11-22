@@ -22,7 +22,10 @@ export default function TopBar(): JSX.Element {
     };
   }, []);
 
-  const blocked = limit?.blocked ?? false;
+  // Recompute from the deadline: the main process broadcasts only on block()/
+  // clear(), so `limit.blocked` stayed true forever after the window expired and
+  // the banner sat at "сброс через 0 c" until the app restarted.
+  const blocked = !!limit && limit.until > Date.now();
   useEffect(() => {
     if (!blocked) return;
     const iv = setInterval(() => setTick((n) => n + 1), 1000);

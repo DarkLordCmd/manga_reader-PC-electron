@@ -10,10 +10,12 @@ export interface SeriesRepository {
   upsertHistory(item: SeriesUpsert): LibraryItem;
   updateProgress(key: string, currentPage: number, totalPages: number, openedAt: number): void;
   setStatus(key: string, status: ReadingStatus | null): void;
+  setCategory(key: string, category: string): void;
   setFavorite(key: string, at: number | null): void;
   setNote(key: string, note: string): void;
   setRating(key: string, rating: number | null): void;
   setTags(key: string, tags: string[]): void;
+  setTitle(key: string, title: string, chapterLabel?: string | null): void;
   delete(key: string): void;
   clearHistory(): void;
   list(query: LibraryQuery): LibraryItem[];
@@ -35,10 +37,12 @@ export abstract class BaseSeriesRepository implements SeriesRepository {
   abstract upsertHistory(item: SeriesUpsert): LibraryItem;
   abstract updateProgress(key: string, currentPage: number, totalPages: number, openedAt: number): void;
   abstract setStatus(key: string, status: ReadingStatus | null): void;
+  abstract setCategory(key: string, category: string): void;
   abstract setFavorite(key: string, at: number | null): void;
   abstract setNote(key: string, note: string): void;
   abstract setRating(key: string, rating: number | null): void;
   abstract setTags(key: string, tags: string[]): void;
+  abstract setTitle(key: string, title: string, chapterLabel?: string | null): void;
   abstract delete(key: string): void;
   abstract clearHistory(): void;
   abstract importItems(items: LibraryItem[]): { added: number; updated: number };
@@ -55,7 +59,12 @@ export abstract class BaseSeriesRepository implements SeriesRepository {
     return [...items].sort((a, b) => {
       if (sort === 'title') return a.title.localeCompare(b.title);
       if (sort === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
-      if (sort === 'added') return b.createdAt - a.createdAt;
+      // The Favorites screen asks for "added": it means "added to favorites",
+      // not "first inserted into the DB" (a title read months ago appeared in
+      // the middle of the grid right after being favorited).
+      if (sort === 'added') {
+        return query.scope === 'favorites' ? (b.favoritedAt ?? 0) - (a.favoritedAt ?? 0) : b.createdAt - a.createdAt;
+      }
       return b.openedAt - a.openedAt;
     });
   }
@@ -105,18 +114,32 @@ export class InMemorySeriesRepository extends BaseSeriesRepository {
     const now = Date.now();
     const existing = this.map.get(item.key);
     if (existing) {
+      // Reviving a tombstoned row starts a fresh history entry (see the SQLite
+      // repository): library-only fields must not return with it.
+      const revived = existing.deletedAt !== null;
       const next: LibraryItem = {
         ...existing,
         ...item,
+        // A catalog action carries no adult flag: never drag an R34 row to Main.
+        category: existing.category === 'r34' && item.category !== 'r34' ? 'r34' : item.category,
         kind: item.kind ?? existing.kind ?? null,
         coverUrl: item.coverUrl ?? existing.coverUrl,
         currentPage: Math.max(existing.currentPage, item.currentPage),
         totalPages: Math.max(existing.totalPages, item.totalPages),
+        // A catalog add ("В избранное"/"В библиотеку") carries no chapter info;
+        // it must not wipe the chapter the user was actually reading.
+        chapterLabel: item.chapterLabel ?? existing.chapterLabel,
+        chapterIndex: item.chapterIndex ?? existing.chapterIndex,
+        chapterTotal: item.chapterTotal ?? existing.chapterTotal,
+        status: revived ? null : existing.status,
+        note: revived ? '' : existing.note,
+        rating: revived ? null : existing.rating,
+        tags: revived ? [] : existing.tags,
         openedAt: item.openedAt ?? now,
         createdAt: existing.createdAt,
         updatedAt: now,
         deletedAt: null,
-        favoritedAt: existing.favoritedAt,
+        favoritedAt: revived ? null : existing.favoritedAt,
       };
       this.map.set(item.key, next);
       return clone(next);
@@ -156,6 +179,9 @@ export class InMemorySeriesRepository extends BaseSeriesRepository {
   setStatus(key: string, status: ReadingStatus | null): void {
     this.patch(key, { status });
   }
+  setCategory(key: string, category: string): void {
+    this.patch(key, { category });
+  }
   setFavorite(key: string, at: number | null): void {
     this.patch(key, { favoritedAt: at });
   }
@@ -168,6 +194,11 @@ export class InMemorySeriesRepository extends BaseSeriesRepository {
   setTags(key: string, tags: string[]): void {
     this.patch(key, { tags: [...tags] });
   }
+  /** Repairs a stored title/label discovered from the source (e.g. a Senkuro
+   * row saved with the chapter number as its title). */
+  setTitle(key: string, title: string, chapterLabel?: string | null): void {
+    this.patch(key, chapterLabel === undefined ? { title } : { title, chapterLabel });
+  }
 
   delete(key: string): void {
     this.patch(key, { deletedAt: Date.now() });
@@ -179,8 +210,12 @@ export class InMemorySeriesRepository extends BaseSeriesRepository {
 
   clearHistory(): void {
     const now = Date.now();
+    // Only history-only rows: favorites (and rows carrying a note/rating/tags)
+    // are library entries and must survive "clear viewing history".
     for (const v of this.map.values()) {
-      if (v.status === null && v.deletedAt === null) {
+      const historyOnly =
+        v.status === null && v.favoritedAt === null && v.note === '' && v.rating === null && v.tags.length === 0;
+      if (historyOnly && v.deletedAt === null) {
         v.deletedAt = now;
         v.updatedAt = now;
       }

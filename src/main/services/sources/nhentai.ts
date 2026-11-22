@@ -116,7 +116,13 @@ export async function searchNhentai(
   // Mirrors the original app: an empty query opens the homepage (trending
   // covers), a single tag with no query browses /tag/{slug}/, and a query
   // goes to /search/?q=.
-  const tagPart = (opts.tags ?? []).map((t) => `tag:${t}`).join(' ');
+  // Multi-word tag names ("big breasts", "full color") must be sent as a single
+  // search term. `tag:big breasts` was split by the site's parser into a broken
+  // `tag:big` plus a free word, so selecting such a tag returned unrelated
+  // results. The slug form (spaces → underscores) is what /tag/ browsing uses.
+  const tagPart = (opts.tags ?? [])
+    .map((t) => `tag:"${t.trim().replace(/\s+/g, '_').replace(/"/g, '')}"`)
+    .join(' ');
   const nhentaiPageParam = page > 0 ? `page=${page + 1}` : '';
   let url: string;
   if (opts.tags?.length === 1 && query.trim() === '') {

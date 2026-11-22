@@ -1,6 +1,9 @@
 export interface PageUrl {
   gid: string;
   index: number;
+  /** `?thumb=1`: requested by the thumbnail panel, so it must not jump the
+   * load queue ahead of the page the user is actually reading. */
+  thumb?: boolean;
 }
 
 /**
@@ -23,7 +26,7 @@ export function parseMangaPageUrl(raw: string): PageUrl | null {
       index = Number(parts[0]);
     }
     if (!gid || !Number.isInteger(index) || index < 0) return null;
-    return { gid, index };
+    return url.searchParams.has('thumb') ? { gid, index, thumb: true } : { gid, index };
   } catch {
     return null;
   }

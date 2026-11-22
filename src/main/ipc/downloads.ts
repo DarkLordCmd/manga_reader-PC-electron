@@ -7,7 +7,7 @@ import { sourceLabel, type GalleryResolution } from '../services/resolve-gallery
 import { fetchArchiveCost, buyArchive } from '../services/eh-archive';
 import { extractGidToken } from '../services/catalog-search';
 import { makeDownloadFetchOpts } from '../app/http-helpers';
-import { galleries } from '../app/state';
+import { galleries, touchMap } from '../app/state';
 import type { DownloadManager } from '../services/download-manager';
 import type { SettingsService } from '../services/settings';
 import type { ExAccountsService } from '../services/accounts';
@@ -31,7 +31,14 @@ export function registerDownloads(deps: {
   });
 
   handleSafe(CH.downloadsList, z.tuple([]), () => downloads.list());
-  handleSafe(CH.downloadsAdd, z.tuple([httpUrl]), async (_e, sourceUrl) => {
+  // MangaDex chapter ids are bare UUIDs; the old `httpUrl` schema rejected them,
+  // so the download button for every MangaDex chapter failed with a validation
+  // error while the resolver itself supports the UUID form.
+  const chapterRef = z.union([httpUrl, z.string().uuid()]);
+  handleSafe(CH.downloadsAdd, z.tuple([chapterRef]), async (_e, rawRef: string) => {
+    const sourceUrl = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawRef.trim())
+      ? `https://mangadex.org/chapter/${rawRef.trim()}`
+      : rawRef.trim();
     const { proxy, cookieHeader } = downloadFetchOpts(sourceUrl);
     const holder: { res: GalleryResolution | null } = { res: null };
     const task = await downloads.add(
@@ -51,6 +58,13 @@ export function registerDownloads(deps: {
       if (mangaId && SERIES_SOURCES.includes(sourceLabel(sourceUrl))) {
         downloads.setChapterMeta(task.id, { mangaId });
         const count = await deps.fetchChapterCountSafe(mangaId);
+        // The "N новых глав" badge belongs to the chapters that were missing
+        // them; once a chapter of this manga is downloaded, the older rows of
+        // the same title should stop advertising it.
+        for (const other of downloads.list()) {
+          if (other.id === task.id || other.mangaId !== mangaId) continue;
+          downloads.setChapterMeta(other.id, { newChapters: 0, ...(count != null ? { chapterTotal: count } : {}) });
+        }
         if (count != null) downloads.setChapterMeta(task.id, { chapterTotal: count });
       }
     }
@@ -63,12 +77,18 @@ export function registerDownloads(deps: {
       if (!t.mangaId || t.chapterTotal == null) continue;
       const list = await deps.fetchChapterListSafe(t.mangaId);
       if (!list) continue;
+      // Always refresh the snapshot: the old code kept the count from the moment
+      // the chapter was downloaded, so "new chapters" stayed stale forever and
+      // different chapters of one title showed different numbers.
       if (list.length > t.chapterTotal) {
         downloads.setChapterMeta(t.id, {
           newChapters: list.length - t.chapterTotal,
+          chapterTotal: list.length,
           latestChapterId: list[list.length - 1].chapter_id,
         });
         updated.push(t.id);
+      } else if (list.length < t.chapterTotal) {
+        downloads.setChapterMeta(t.id, { chapterTotal: list.length });
       }
     }
     return updated;
@@ -82,7 +102,7 @@ export function registerDownloads(deps: {
     if (!t || t.state !== 'completed') return null;
     const g = galleryFromFolder(t.outDir);
     if (!g) return null;
-    galleries.set(g.id, g);
+    touchMap(galleries, g.id, g, 16);
     return { id: g.id, title: g.title, pageCount: g.pages.length, pages: g.pages, url: `file://${t.outDir}` };
   });
   handleSafe(CH.downloadsCheckUpdates, z.tuple([]), async () => {
