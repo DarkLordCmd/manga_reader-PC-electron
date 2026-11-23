@@ -572,6 +572,28 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
           }, 1500);`
               : ''
           }
+          ${
+            /remanga/i.test(win.webContents.getURL())
+              ? `
+          // Remanga has no /login route: the header button opens an auth modal.
+          // Click it once the homepage controls are rendered.
+          (function() {
+            var tries = 0;
+            var timer = setInterval(function() {
+              try {
+                var btn = Array.prototype.find.call(document.querySelectorAll('button, a'), function(el) {
+                  return /Вход\\/Регистрация|Войти|Вход/i.test((el.textContent || '').trim());
+                });
+                if (btn) {
+                  btn.click();
+                  clearInterval(timer);
+                }
+              } catch (e) {}
+              if (++tries > 20) clearInterval(timer);
+            }, 500);
+          })();`
+              : ''
+          }
         })();
       `;
       win.webContents.executeJavaScript(script).catch(() => {});
