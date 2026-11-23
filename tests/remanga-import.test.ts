@@ -44,7 +44,7 @@ describe('Remanga bookmark mapping', () => {
         age_limit: 18,
         count_chapters: 90,
       },
-      1,
+      2,
     )!;
     expect(m.status).toBe('planned');
     expect(m.chapterIndex).toBe(4);
@@ -67,8 +67,20 @@ describe('Remanga bookmark mapping', () => {
   });
 
   it('skips the not-interesting list and rows without a slug', () => {
-    expect(mapRemangaBookmark({ dir: 'x' }, 5)).toBeNull();
+    expect(mapRemangaBookmark({ dir: 'x' }, 6)).toBeNull();
     expect(mapRemangaBookmark({ title: { rus_name: 'No slug' } }, 0)).toBeNull();
+  });
+});
+
+describe('Remanga bookmark list types', () => {
+  it('maps statuses from user_bookmarks types (1/3/5/7)', () => {
+    expect(mapRemangaBookmark({ title: { dir: 'a', rus_name: 'A' } }, 1)!.status).toBe('reading');
+    expect(mapRemangaBookmark({ title: { dir: 'b', rus_name: 'B' } }, 3)!.status).toBe('completed');
+    expect(mapRemangaBookmark({ title: { dir: 'c', rus_name: 'C' } }, 5)!.status).toBe('on_hold');
+    const fav = mapRemangaBookmark({ title: { dir: 'd', rus_name: 'D' } }, 7)!;
+    expect(fav.favorite).toBe(true);
+    expect(fav.status).toBeNull();
+    expect(mapRemangaBookmark({ title: { dir: 'e', rus_name: 'E' } }, 6)).toBeNull();
   });
 });
 

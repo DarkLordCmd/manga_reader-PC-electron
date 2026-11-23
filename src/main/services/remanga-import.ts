@@ -6,8 +6,19 @@ import type { SeriesRepository } from './series-repository';
 import type { ReadingStatus } from '@shared/library';
 import { normalizeWorkTitle } from '@shared/work-title';
 
-/** Remanga bookmark types (v1 API): 0 reading, 1 will read, 2 read,
- * 3 abandoned, 4 postponed, 5 not interesting. */
+/** v2 user_bookmarks list types: 1 reading, 2 planned, 3 completed,
+ * 4 dropped, 5 on_hold, 6 not interesting, 7 favorite. */
+const STATUS_BY_LIST_TYPE: Record<number, ReadingStatus | null> = {
+  1: 'reading',
+  2: 'planned',
+  3: 'completed',
+  4: 'dropped',
+  5: 'on_hold',
+  6: null,
+  7: null,
+};
+
+/** Legacy v1 status ids (kept for fallback/in case Remanga returns them). */
 const STATUS_BY_TYPE: Record<number, ReadingStatus | null> = {
   0: 'reading',
   1: 'planned',
@@ -16,6 +27,14 @@ const STATUS_BY_TYPE: Record<number, ReadingStatus | null> = {
   4: 'on_hold',
   5: null,
 };
+
+export interface RemangaBookmarkType {
+  id: number;
+  name: string;
+  count: number;
+  /** 1..7 — the standard bookmark status this list represents. */
+  type: number;
+}
 
 export interface RemangaMapped {
   url: string;
@@ -26,7 +45,8 @@ export interface RemangaMapped {
   kind: string | null;
   adult: boolean;
   rating: number | null;
-  status: ReadingStatus;
+  status: ReadingStatus | null;
+  favorite: boolean;
   chapterLabel: string | null;
   chapterIndex: number | null;
   chapterTotal: number | null;
@@ -46,8 +66,11 @@ function coverUrl(t: any): string | null {
 /** Tolerant mapper: Remanga has changed the bookmark response shape more than
  * once (title/chapter nested or flattened), so both are accepted. */
 export function mapRemangaBookmark(raw: any, type: number): RemangaMapped | null {
-  const status = STATUS_BY_TYPE[type] ?? null;
-  if (!status) return null;
+  // New lists are 1..7; old v1 statuses are 0..5. Type 6 = "not interesting"
+  // and is intentionally skipped; type 7 = favorite (no reading status).
+  const status = type >= 1 && type <= 7 ? (STATUS_BY_LIST_TYPE[type] ?? null) : (STATUS_BY_TYPE[type] ?? null);
+  const favorite = type === 7;
+  if (!status && !favorite) return null;
   const t = raw?.title && typeof raw.title === 'object' ? raw.title : raw?.manga && typeof raw.manga === 'object' ? raw.manga : raw;
   const dir = String(t?.dir ?? raw?.dir ?? '').trim();
   if (!dir) return null;
@@ -87,6 +110,7 @@ export function mapRemangaBookmark(raw: any, type: number): RemangaMapped | null
     adult,
     rating,
     status,
+    favorite,
     chapterLabel,
     chapterIndex,
     chapterTotal: total,
@@ -196,28 +220,43 @@ export async function remangaCurrentUser(auth: RemangaAuth): Promise<{ id: numbe
   return r ? { id: r.id, username: r.username } : null;
 }
 
+async function fetchBookmarkTypes(auth: RemangaAuth, userId: number): Promise<RemangaBookmarkType[]> {
+  const json = (await httpGetJson(`${API}/users/${userId}/user_bookmarks/`, {
+    ...HEADERS,
+    ...authHeaders(auth),
+  })) as any;
+  const results: any[] = json?.results ?? json?.content ?? [];
+  return results
+    .map((r) => ({
+      id: number(r?.id) ?? 0,
+      name: String(r?.name ?? ''),
+      count: number(r?.count) ?? 0,
+      type: number(r?.type) ?? 0,
+    }))
+    .filter((t) => t.id > 0 && t.type > 0);
+}
+
 async function fetchType(
   auth: RemangaAuth,
   userId: number,
-  type: number,
+  typeId: number,
   limit: number | undefined,
-): Promise<{ raw: any; type: number }[]> {
-  const out: { raw: any; type: number }[] = [];
+): Promise<any[]> {
+  const out: any[] = [];
   for (let page = 1; page <= 50; page++) {
-    const url = `${API}/users/${userId}/bookmarks?type=${type}&page=${page}&ordering=-chapter_date`;
+    const url = `${API}/users/${userId}/bookmarks/?type=${typeId}&page=${page}&ordering=-chapter_date`;
     let json: any;
     try {
       json = await httpGetJson(url, { ...HEADERS, ...authHeaders(auth) });
     } catch (e) {
-      logger.info('[remanga-import] bookmarks page failed', type, page, (e as Error)?.message ?? e);
+      logger.info('[remanga-import] bookmarks page failed', typeId, page, (e as Error)?.message ?? e);
       break;
     }
-    const items: any[] = json?.content ?? json?.results ?? [];
+    const items: any[] = json?.results ?? json?.content ?? [];
     if (items.length === 0) break;
-    for (const raw of items) out.push({ raw, type });
+    for (const raw of items) out.push(raw);
     if (limit && out.length >= limit) break;
-    const totalPages = number(json?.props?.total_pages ?? json?.total_pages);
-    if (totalPages != null && page >= totalPages) break;
+    if (json?.next == null) break;
   }
   return limit ? out.slice(0, limit) : out;
 }
@@ -235,9 +274,15 @@ export async function importRemangaBookmarks(
   opts: { limit?: number } = {},
 ): Promise<{ imported: number; updated: number; duplicates: number; byStatus: Record<string, number> }> {
   if ((!auth.token && !auth.cookies) || !userId) throw new Error('Сначала войдите в Remanga.');
+  // Dynamic lists: ids differ per account, names/types are returned by
+  // user_bookmarks (Читаю=1, Буду читать=2, Прочитано=3, Брошено=4,
+  // Отложено=5, Не интересно=6, Любимое=7). Never assume ids 0..4.
+  const types = await fetchBookmarkTypes(auth, userId);
   const batches: { raw: any; type: number }[] = [];
-  for (const type of [0, 1, 2, 3, 4]) {
-    batches.push(...(await fetchType(auth, userId, type, opts.limit)));
+  for (const t of types) {
+    if (t.type === 6) continue;
+    const items = await fetchType(auth, userId, t.id, opts.limit);
+    for (const raw of items) batches.push({ raw, type: t.type });
   }
 
   const existing = deps.repo.all();
@@ -270,8 +315,10 @@ export async function importRemangaBookmarks(
       adult: m.adult,
     };
     try {
-      deps.library.setStatusFor(entry, m.status);
-      byStatus[m.status] = (byStatus[m.status] ?? 0) + 1;
+      if (m.favorite) deps.library.addFavorite(entry);
+      else deps.library.setStatusFor(entry, m.status!);
+      const key = m.favorite ? 'favorites' : m.status!;
+      byStatus[key] = (byStatus[key] ?? 0) + 1;
       if (existingUrls.has(norm)) updated++;
       else imported++;
     } catch (e) {
