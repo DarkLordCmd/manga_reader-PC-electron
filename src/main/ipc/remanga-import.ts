@@ -76,6 +76,7 @@ export function registerRemangaImport(deps: {
   handleSafe(CH.remangaLogout, z.tuple([]), async () => {
     const next = { ...deps.settings.get() };
     next.remanga_token = '';
+    next.remanga_cookies_raw = '';
     next.remanga_user_id = null;
     next.remanga_username = '';
     deps.settings.save(next);

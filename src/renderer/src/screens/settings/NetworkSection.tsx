@@ -42,6 +42,7 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
   const [rmBusy, setRmBusy] = useState(false);
   const [rmImportBusy, setRmImportBusy] = useState(false);
   const [rmMsg, setRmMsg] = useState<string | null>(null);
+  const [rmImportMsg, setRmImportMsg] = useState<string | null>(null);
 
   useEffect(() => window.api.onSenkuroImportProgress((p) => setSkgProgress(p)), []);
   useEffect(() => {
@@ -80,10 +81,10 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
 
   const runRemangaImport = async (): Promise<void> => {
     setRmImportBusy(true);
-    setRmMsg(null);
+    setRmImportMsg(null);
     try {
       const r = await window.api.remangaImportBookmarks();
-      setRmMsg(r.message);
+      setRmImportMsg(r.message);
     } catch (e: any) {
       setRmMsg(`Ошибка импорта Remanga: ${errorText(e)}`);
     } finally {
@@ -94,7 +95,7 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
   const remangaLogout = async (): Promise<void> => {
     try {
       await window.api.remangaLogout();
-      setRmMsg('Вы вышли из Remanga.');
+      setRmMsg('Куки Remanga очищены.');
     } catch (e: any) {
       setRmMsg(`Remanga: ${errorText(e)}`);
     }
@@ -423,6 +424,28 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
             Очистить куки
           </button>
         </Row>
+        <SubHead>Remanga</SubHead>
+        {settings.remanga_user_id == null ? (
+          <Row
+            label="Аккаунт"
+            note="Откроется окно Remanga — войдите на сайте (логин/почта/пароль), затем нажмите «Готово, забрать куки» или закройте окно. Пароль в приложении не сохраняется."
+          >
+            <button className="set-primary" disabled={rmBusy} onClick={() => void runRemangaWindowLogin()}>
+              {rmBusy ? 'Жду вход в Remanga…' : 'Войти в Remanga'}
+            </button>
+          </Row>
+        ) : (
+          <Row label="Аккаунт" note={`Вы вошли как ${settings.remanga_username || settings.remanga_user_id}.`}>
+            <button className="set-danger" onClick={() => void remangaLogout()}>
+              Очистить куки
+            </button>
+          </Row>
+        )}
+        {rmMsg && (
+          <Row stack>
+            <span className="set-note">{rmMsg}</span>
+          </Row>
+        )}
         <SubHead>Библиотека Senkuro (Senkognito)</SubHead>
         <Row
           stack
@@ -461,24 +484,17 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
         )}
         <SubHead>Библиотека Remanga</SubHead>
         {settings.remanga_user_id == null ? (
-          <>
-            <Row
-              label="Аккаунт"
-              note="Откроется окно Remanga — войдите на сайте (логин/почта/пароль), затем нажмите «Готово, забрать куки» или закройте окно. Пароль в приложении не сохраняется."
-            >
-              <button className="set-primary" disabled={rmBusy} onClick={() => void runRemangaWindowLogin()}>
-                {rmBusy ? 'Жду вход в Remanga…' : 'Войти в Remanga'}
-              </button>
-            </Row>
-          </>
+          <Row stack>
+            <span className="set-note">Сначала войдите в Remanga в блоке «Remanga» выше.</span>
+          </Row>
         ) : (
           <>
-            <Row label="Аккаунт" note={`Вы вошли как ${settings.remanga_username || settings.remanga_user_id}. Импорт забирает «Читаю / В планах / Прочитано / Отложено / Брошено» с последней главой.`}>
+            <Row
+              label="Синхронизация"
+              note="Импорт забирает «Читаю / В планах / Прочитано / Отложено / Брошено» с последней главой."
+            >
               <button className="set-primary" disabled={rmImportBusy} onClick={() => void runRemangaImport()}>
                 {rmImportBusy ? 'Импортирую…' : 'Импортировать закладки Remanga'}
-              </button>
-              <button className="set-danger" onClick={() => void remangaLogout()}>
-                Выйти
               </button>
             </Row>
             <Row stack>
@@ -488,9 +504,9 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
             </Row>
           </>
         )}
-        {rmMsg && (
+        {rmImportMsg && (
           <Row stack>
-            <span className="set-note">{rmMsg}</span>
+            <span className="set-note">{rmImportMsg}</span>
           </Row>
         )}
       </Section>
