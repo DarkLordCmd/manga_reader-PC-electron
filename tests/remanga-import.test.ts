@@ -52,6 +52,20 @@ describe('Remanga bookmark mapping', () => {
     expect(m.adult).toBe(true);
   });
 
+  it('reads v2 read_progress/read_progress_total', () => {
+    const m = mapRemangaBookmark(
+      {
+        read_progress: 53,
+        read_progress_total: 180,
+        title: { dir: 'v2-title', rus_name: 'V2 Title', count_chapters: 180 },
+      },
+      0,
+    )!;
+    expect(m.chapterIndex).toBe(52);
+    expect(m.chapterLabel).toBe('53');
+    expect(m.chapterTotal).toBe(180);
+  });
+
   it('skips the not-interesting list and rows without a slug', () => {
     expect(mapRemangaBookmark({ dir: 'x' }, 5)).toBeNull();
     expect(mapRemangaBookmark({ title: { rus_name: 'No slug' } }, 0)).toBeNull();

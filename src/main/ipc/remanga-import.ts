@@ -57,8 +57,15 @@ export function registerRemangaImport(deps: {
         opts ?? {},
       );
       deps.broadcastLibrary();
+      const statusLabel: Record<string, string> = {
+        reading: 'Читаю',
+        planned: 'В планах',
+        completed: 'Прочитано',
+        on_hold: 'Отложено',
+        dropped: 'Брошено',
+      };
       const statuses = Object.entries(r.byStatus)
-        .map(([k, n]) => `${k}: ${n}`)
+        .map(([k, n]) => `${statusLabel[k] ?? k}: ${n}`)
         .join(', ');
       return {
         ok: true,

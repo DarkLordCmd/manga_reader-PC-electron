@@ -54,13 +54,22 @@ export function mapRemangaBookmark(raw: any, type: number): RemangaMapped | null
   const title = String(t?.rus_name ?? t?.main_name ?? t?.en_name ?? raw?.title_name ?? t?.name ?? 'Без названия').trim();
   const chapter = raw?.chapter && typeof raw.chapter === 'object' ? raw.chapter : null;
   const labelRaw = chapter?.chapter ?? raw?.chapter_number ?? raw?.chapter ?? null;
-  const readCount = number(raw?.read_chapters ?? raw?.read_chapters_count);
+  // v2 bookmarks expose the number of read chapters as `read_progress`
+  // (0 = not started) plus `read_progress_total`.
+  const readProgress = number(raw?.read_progress ?? raw?.read_chapters ?? raw?.read_chapters_count);
   const indexRaw = number(raw?.chapter_index ?? chapter?.index);
   let chapterIndex: number | null = indexRaw;
-  if (readCount != null && readCount > 0) chapterIndex = readCount - 1;
+  if (readProgress != null && readProgress > 0) chapterIndex = readProgress - 1;
   if (chapterIndex == null && number(labelRaw) != null) chapterIndex = Math.max(0, number(labelRaw)! - 1);
-  const chapterLabel = labelRaw != null && String(labelRaw).trim() ? String(labelRaw) : chapterIndex != null ? String(chapterIndex + 1) : null;
-  const total = number(t?.count_chapters ?? raw?.count_chapters);
+  const chapterLabel =
+    readProgress != null && readProgress > 0
+      ? String(readProgress)
+      : labelRaw != null && String(labelRaw).trim()
+        ? String(labelRaw)
+        : chapterIndex != null
+          ? String(chapterIndex + 1)
+          : null;
+  const total = number(raw?.read_progress_total ?? t?.count_chapters ?? raw?.count_chapters);
   const rawRating = number(t?.avg_rating ?? raw?.avg_rating);
   const rating = rawRating != null && rawRating > 0 ? Math.min(10, Math.round(rawRating * 10) / 10) : null;
   const kind =
@@ -85,7 +94,7 @@ export function mapRemangaBookmark(raw: any, type: number): RemangaMapped | null
   };
 }
 
-const API = 'https://api.remanga.org/api';
+const API = 'https://api.remanga.org/api/v2';
 const HEADERS = {
   Accept: 'application/json',
   Referer: 'https://remanga.org/',
