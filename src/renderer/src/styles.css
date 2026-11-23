@@ -2086,6 +2086,13 @@ input[type='checkbox'].toggle-input {
   color: var(--accent);
   font-weight: 600;
 }
+.modal-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
 
 .library-toolbar {
   display: flex;

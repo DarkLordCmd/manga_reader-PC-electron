@@ -41,6 +41,9 @@ const api: Api = {
   senkuroLabels: () => ipcRenderer.invoke(CH.senkuroLabels),
   torDiagnostics: () => ipcRenderer.invoke(CH.torDiagnostics),
   senkuroImportBookmarks: (opts) => ipcRenderer.invoke(CH.senkuroImport, opts),
+  remangaLogin: (input) => ipcRenderer.invoke(CH.remangaLogin, input),
+  remangaImportBookmarks: (opts) => ipcRenderer.invoke(CH.remangaImport, opts),
+  remangaLogout: () => ipcRenderer.invoke(CH.remangaLogout),
   onSenkuroImportProgress: (cb) => {
     const fn = (_e: unknown, p: Parameters<typeof cb>[0]): void => cb(p);
     ipcRenderer.on(CH.senkuroImportProgress, fn);

@@ -23,6 +23,9 @@ const normUrl = (u: string): string => u.trim().replace(/\/+$/, '').toLowerCase(
 
 interface Props {
   item: LibraryItem;
+  /** Other library rows with the same normalized title (different sources). */
+  alternatives?: LibraryItem[];
+  onSwitchSource?: (item: LibraryItem) => void;
   onClose: () => void;
   onOpen: () => void;
   /** The full chapter list travels with the click: the reader needs it for the
@@ -31,7 +34,7 @@ interface Props {
   onChanged: () => void;
 }
 
-export default function LibraryItemModal({ item, onClose, onOpen, onOpenChapter, onChanged }: Props): JSX.Element {
+export default function LibraryItemModal({ item, alternatives = [], onSwitchSource, onClose, onOpen, onOpenChapter, onChanged }: Props): JSX.Element {
   const { settings } = useStore();
   const [status, setStatus] = useState<ReadingStatus | ''>(item.status ?? '');
   const [rating, setRating] = useState(item.rating ?? 0);
@@ -161,6 +164,24 @@ export default function LibraryItemModal({ item, onClose, onOpen, onOpenChapter,
             ×
           </button>
         </div>
+
+        {alternatives.length > 1 && (
+          <div className="modal-sources">
+            <span className="field-label">Источник</span>
+            {alternatives.map((a) => (
+              <button
+                key={a.key}
+                type="button"
+                className={`source-chip${a.key === item.key ? ' active' : ''}`}
+                title={a.url}
+                onClick={() => onSwitchSource?.(a)}
+              >
+                {a.source}
+                {a.chapterLabel ? ` · гл. ${a.chapterLabel}` : ''}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="overlay-meta">
           {item.source && <span className="overlay-chip">{item.source}</span>}

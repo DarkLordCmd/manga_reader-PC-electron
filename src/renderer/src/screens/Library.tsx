@@ -11,6 +11,7 @@ import { buildLibraryMenuItems, STATUS_LABELS } from '../lib/library-menu';
 import { resolveAdultFlag } from '../lib/adult';
 import { errorText } from '../lib/errors';
 import { startPageFor } from '@shared/settings';
+import { normalizeWorkTitle } from '@shared/work-title';
 
 const TABS: (ReadingStatus | 'all')[] = ['all', ...READING_STATUSES];
 
@@ -144,6 +145,35 @@ export default function Library(): JSX.Element {
     });
   };
 
+  // Same work on several sources: keep both rows (so the user can choose where
+  // to read), but show the greatest read-chapter progress of the group.
+  const duplicateDisplay = useMemo(() => {
+    const groups = new Map<string, LibraryItem[]>();
+    for (const it of allItems) {
+      const key = normalizeWorkTitle(it.title);
+      if (key.length < 4) continue;
+      const list = groups.get(key) ?? [];
+      list.push(it);
+      groups.set(key, list);
+    }
+    const score = (i: LibraryItem): number => (i.chapterIndex != null ? i.chapterIndex : 0) * 100000 + i.currentPage;
+    const out = new Map<string, { best: LibraryItem; count: number }>();
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const best = group.reduce((a, b) => (score(b) > score(a) ? b : a));
+      for (const it of group) out.set(it.key, { best, count: group.length });
+    }
+    return out;
+  }, [allItems]);
+
+  const alternatives = useMemo(() => {
+    if (!selected) return [];
+    const key = normalizeWorkTitle(selected.title);
+    if (key.length < 4) return [selected];
+    const list = allItems.filter((i) => normalizeWorkTitle(i.title) === key);
+    return list.some((i) => i.key === selected.key) ? list : [selected, ...list];
+  }, [selected, allItems]);
+
   return (
     <div className="screen library">
       <div className="library-toolbar">
@@ -201,7 +231,9 @@ export default function Library(): JSX.Element {
         <div className="muted">{search.trim() || status !== 'all' ? 'Ничего не найдено' : 'В библиотеке пока пусто'}</div>
       )}
       <div className="history-grid">
-        {visibleItems.map((it) => (
+        {visibleItems.map((it) => {
+          const best = duplicateDisplay.get(it.key);
+          return (
           <div
             key={it.key}
             className="history-card"
@@ -224,12 +256,13 @@ export default function Library(): JSX.Element {
                 {/* One compact line: chapter progress or page progress, never a
                     second counter row (that left a mostly empty row + gap on
                     R34 cards). */}
-                {it.chapterLabel
-                  ? `Глава ${it.chapterLabel}${it.chapterTotal ? ` из ${it.chapterTotal}` : ''}`
+                {(best?.best.chapterLabel ?? it.chapterLabel)
+                  ? `Глава ${best?.best.chapterLabel ?? it.chapterLabel}${(best?.best.chapterTotal ?? it.chapterTotal) ? ` из ${best?.best.chapterTotal ?? it.chapterTotal}` : ''}`
                   : it.totalPages > 0
                     ? `стр. ${it.currentPage}/${it.totalPages}`
                     : ''}
                 {it.rating != null ? ` · ★ ${it.rating}` : ''}
+                {best && best.count > 1 ? ` · источников: ${best.count}` : ''}
               </span>
               <button
                 className="continue-btn"
@@ -247,12 +280,15 @@ export default function Library(): JSX.Element {
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {selected && (
         <LibraryItemModal
           item={selected}
+          alternatives={alternatives}
+          onSwitchSource={(next) => setSelected(next)}
           onClose={() => setSelected(null)}
           onOpen={async () => {
             await open(selected);

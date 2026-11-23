@@ -23,6 +23,10 @@ export interface Settings {
   onion_cookies_raw: string;
   nhentai_cookies_raw: string;
   senkuro_cookies_raw: string;
+  /** Remanga bearer token (secret; renderer sees an empty value). */
+  remanga_token: string;
+  remanga_user_id: number | null;
+  remanga_username: string;
   nhentai_onion_cookies_raw: string;
   nhentai_onion_base: string;
   infinite_scroll: boolean;
@@ -77,6 +81,9 @@ export function defaultSettings(): Settings {
     nhentai_onion_cookies_raw: '',
     nhentai_onion_base: '',
     senkuro_cookies_raw: '',
+    remanga_token: '',
+    remanga_user_id: null,
+    remanga_username: '',
     infinite_scroll: false,
     tor_proxied_sites: [],
     nhentai_show_page_counts: true,
@@ -104,6 +111,7 @@ export function defaultSettings(): Settings {
 const num = (v: unknown, d: number): number => (typeof v === 'number' && isFinite(v) ? v : d);
 const bool = (v: unknown, d: boolean): boolean => (typeof v === 'boolean' ? v : d);
 const str = (v: unknown, d: string): string => (typeof v === 'string' ? v : d);
+const nullableInt = (v: unknown): number | null => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : null);
 const strArr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
 
 export function startPageFor(url: string, readProgress: Record<string, [number, number]>): number {
@@ -159,6 +167,9 @@ export function parseSettings(raw: unknown): Settings {
     onion_cookies_raw: str(o.onion_cookies_raw, ''),
     nhentai_cookies_raw: str(o.nhentai_cookies_raw, ''),
     senkuro_cookies_raw: str(o.senkuro_cookies_raw, ''),
+    remanga_token: str(o.remanga_token, ''),
+    remanga_user_id: nullableInt(o.remanga_user_id),
+    remanga_username: str(o.remanga_username, ''),
     nhentai_onion_cookies_raw: str(o.nhentai_onion_cookies_raw, ''),
     nhentai_onion_base: str(o.nhentai_onion_base, ''),
     infinite_scroll: bool(o.infinite_scroll, false),

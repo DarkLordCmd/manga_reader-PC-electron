@@ -39,6 +39,11 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
   const [skgMsg, setSkgMsg] = useState<string | null>(null);
   const [skgProgress, setSkgProgress] = useState<SenkuroImportProgress | null>(null);
   const [skgMarkRead, setSkgMarkRead] = useState(true);
+  const [rmUser, setRmUser] = useState('');
+  const [rmPass, setRmPass] = useState('');
+  const [rmBusy, setRmBusy] = useState(false);
+  const [rmImportBusy, setRmImportBusy] = useState(false);
+  const [rmMsg, setRmMsg] = useState<string | null>(null);
 
   useEffect(() => window.api.onSenkuroImportProgress((p) => setSkgProgress(p)), []);
   useEffect(() => {
@@ -62,8 +67,43 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
     }
   };
 
-  const toggleTorSite = (key: string, on: boolean): void => {
-    const set = new Set(settings.tor_proxied_sites);
+  const runRemangaLogin = async (): Promise<void> => {
+    setRmBusy(true);
+    setRmMsg(null);
+    try {
+      const r = await window.api.remangaLogin({ user: rmUser, password: rmPass });
+      setRmMsg(r.message);
+      if (r.ok) setRmPass('');
+    } catch (e: any) {
+      setRmMsg(`Remanga: ${errorText(e)}`);
+    } finally {
+      setRmBusy(false);
+    }
+  };
+
+  const runRemangaImport = async (): Promise<void> => {
+    setRmImportBusy(true);
+    setRmMsg(null);
+    try {
+      const r = await window.api.remangaImportBookmarks();
+      setRmMsg(r.message);
+    } catch (e: any) {
+      setRmMsg(`Ошибка импорта Remanga: ${errorText(e)}`);
+    } finally {
+      setRmImportBusy(false);
+    }
+  };
+
+  const remangaLogout = async (): Promise<void> => {
+    try {
+      await window.api.remangaLogout();
+      setRmMsg('Вы вышли из Remanga.');
+    } catch (e: any) {
+      setRmMsg(`Remanga: ${errorText(e)}`);
+    }
+  };
+
+  const toggleTorSite = (key: string, on: boolean): void => {    const set = new Set(settings.tor_proxied_sites);
     if (on) set.add(key);
     else set.delete(key);
     upd({ tor_proxied_sites: [...set] });
@@ -420,6 +460,55 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
         {loginMsg && (
           <Row stack>
             <span className="set-note">{loginMsg}</span>
+          </Row>
+        )}
+        <SubHead>Библиотека Remanga</SubHead>
+        {settings.remanga_user_id == null ? (
+          <>
+            <Row label="Логин/почта" note="Вход напрямую в Remanga. Пароль не сохраняется — только токен сессии.">
+              <input
+                className="set-input"
+                value={rmUser}
+                onChange={(e) => setRmUser(e.target.value)}
+                placeholder="nickname или email"
+                autoComplete="username"
+              />
+            </Row>
+            <Row label="Пароль">
+              <input
+                className="set-input"
+                type="password"
+                value={rmPass}
+                onChange={(e) => setRmPass(e.target.value)}
+                autoComplete="current-password"
+              />
+            </Row>
+            <Row>
+              <button className="set-primary" disabled={rmBusy || !rmUser.trim() || !rmPass} onClick={() => void runRemangaLogin()}>
+                {rmBusy ? 'Вхожу…' : 'Войти в Remanga'}
+              </button>
+            </Row>
+          </>
+        ) : (
+          <>
+            <Row label="Аккаунт" note={`Вы вошли как ${settings.remanga_username || settings.remanga_user_id}. Импорт забирает «Читаю / В планах / Прочитано / Отложено / Брошено» с последней главой.`}>
+              <button className="set-primary" disabled={rmImportBusy} onClick={() => void runRemangaImport()}>
+                {rmImportBusy ? 'Импортирую…' : 'Импортировать закладки Remanga'}
+              </button>
+              <button className="set-danger" onClick={() => void remangaLogout()}>
+                Выйти
+              </button>
+            </Row>
+            <Row stack>
+              <span className="set-note">
+                При совпадении названий с другим источником карточка показывает максимальное число прочитанных глав, а в карточке произведения можно выбрать источник.
+              </span>
+            </Row>
+          </>
+        )}
+        {rmMsg && (
+          <Row stack>
+            <span className="set-note">{rmMsg}</span>
           </Row>
         )}
       </Section>

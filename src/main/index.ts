@@ -46,6 +46,7 @@ import { registerLibrary } from './ipc/library';
 import { reclassifySenkuroR34 } from './services/senkuro-r34';
 import { proxyForSource } from './services/proxy-policy';
 import { registerSenkuroImport } from './ipc/senkuro-import';
+import { registerRemangaImport } from './ipc/remanga-import';
 import { registerDownloads } from './ipc/downloads';
 import { registerCatalog } from './ipc/catalog';
 import { registerGallery } from './ipc/gallery';
@@ -433,6 +434,7 @@ app.whenReady().then(() => {
 
   registerLibrary({ library, history, settings, sync, broadcastLibrary });
   registerSenkuroImport({ library, history, settings, effectiveTorSocks, broadcastLibrary, broadcastSettingsChanged });
+  registerRemangaImport({ library, history, settings, repo, broadcastLibrary, broadcastSettingsChanged });
   // Existing Senkuro imports predate the R34 flag; backfill their categories
   // from the Senkuro ratings in the background (a handful of batched requests).
   setTimeout(() => {

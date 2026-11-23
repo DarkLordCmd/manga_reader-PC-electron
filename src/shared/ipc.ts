@@ -203,6 +203,20 @@ export interface SenkuroImportProgress {
   total: number;
   title?: string;
 }
+export interface RemangaLoginResult {
+  ok: boolean;
+  message: string;
+  userId?: number | null;
+  username?: string | null;
+}
+export interface RemangaImportResult {
+  ok: boolean;
+  message: string;
+  imported: number;
+  updated: number;
+  /** Titles that already existed under another source (shown with the max read chapter). */
+  duplicates: number;
+}
 
 export interface TorDiagnostics {
   running: boolean;
@@ -373,6 +387,10 @@ export interface Api {
   senkuroImportBookmarks(opts?: { statuses?: string[]; markRead?: boolean; limit?: number }): Promise<SenkuroImportResult>;
   /** Subscribe to import progress; returns an unsubscribe function. */
   onSenkuroImportProgress(cb: (p: SenkuroImportProgress) => void): () => void;
+  /** Remanga login (token is stored in main; the renderer sees only the username/id). */
+  remangaLogin(input: { user: string; password: string }): Promise<RemangaLoginResult>;
+  remangaImportBookmarks(opts?: { limit?: number }): Promise<RemangaImportResult>;
+  remangaLogout(): Promise<void>;
   /** New Tor circuit (NEWNYM) without restarting the daemon: the exit IP a site
    * sees changes, which lifts per-IP rate limits (e.g. E-Hentai). */
   newTorCircuit(): Promise<{ ok: boolean }>;
@@ -506,7 +524,9 @@ export const CH = {
   torDiagnostics: 'tor:diagnostics',
   senkuroImport: 'senkuro:import',
   senkuroImportProgress: 'senkuro:import:progress',
-  newTorCircuit: 'tor:newCircuit',
+  remangaLogin: 'remanga:login',
+  remangaImport: 'remanga:import',
+  remangaLogout: 'remanga:logout',  newTorCircuit: 'tor:newCircuit',
   checkBridges: 'tor:bridges',
   checkSites: 'sites:check',
   libMirrorsCheck: 'libMirrors:check',

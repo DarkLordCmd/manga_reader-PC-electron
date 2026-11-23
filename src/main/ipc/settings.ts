@@ -35,6 +35,8 @@ import {
  * cookie secrets stays in one place. */
 type CookieSecretField = Extract<(typeof SECRET_SETTINGS)[number], `${string}_cookies_raw`>;
 const COOKIE_SECRET_FIELDS = SECRET_SETTINGS.filter((k) => k.endsWith('_cookies_raw')) as CookieSecretField[];
+// Main-owned bearer tokens (Remanga) must never be blanked by an old renderer snapshot.
+const TOKEN_SECRET_FIELDS = ['remanga_token'] as const;
 
 export function registerSettings(deps: {
   settings: SettingsService;
@@ -215,7 +217,7 @@ export function registerSettings(deps: {
     // strings wipe freshly grabbed sessions. The cookie keys are derived from
     // the single SECRET_SETTINGS list (backup.ts) so the two never drift.
     const prev = settings.get();
-    for (const k of COOKIE_SECRET_FIELDS) {
+    for (const k of [...COOKIE_SECRET_FIELDS, ...TOKEN_SECRET_FIELDS]) {
       const incoming = String(s[k] ?? '');
       const previous = String(prev[k] ?? '');
       if (incoming === '') {
