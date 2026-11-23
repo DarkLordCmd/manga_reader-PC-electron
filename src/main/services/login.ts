@@ -25,12 +25,19 @@ export interface LoginResult {
  * the poll to close the window at the right moment — unlike the old "any
  * cookie exists" rule it cannot fire on pre-login guest cookies. */
 export function hasAuthenticatedSession(target: string, cookies: { name: string; value: string }[], loginFormVisible: boolean): boolean {
-  if (loginFormVisible) return false;
+  if (loginFormVisible && !cookies.some((c) => c.name === 'mr_rm_token' && !!c.value)) return false;
   const has = (name: string): boolean => cookies.some((c) => c.name === name && !!c.value);
   if (/nhentai.*\.onion/i.test(target)) return has('access_token') || has('refresh_token');
   if (/exhentai|e-hentai/i.test(target)) return has('onikakushi') || has('ipb_member_id');
   if (/senkuro/i.test(target)) return has('remixsid') || has('session_id') || has('access_token');
-  if (/remanga/i.test(target)) return has('sessionid') || has('access_token') || has('mr_rm_token');
+  if (/remanga/i.test(target)) {
+    if (has('sessionid') || has('access_token') || has('mr_rm_token') || has('token') || has('auth_token')) return true;
+    // Django/Remanga may name the session cookie differently; ignore CSRF and
+    // DDoS-Guard stubs so a guest page cannot look authenticated.
+    return cookies.some(
+      (c) => !!c.value && /session|token|auth/i.test(c.name) && !/^csrf/i.test(c.name) && !/^__ddg/i.test(c.name),
+    );
+  }
   return false;
 }
 
@@ -90,6 +97,38 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
     logger.info('[login] Senkuro SSO host failed — switching to', SENKURO_SSO_HOSTS[senkuro.ssoIndex]);
     return true;
   };
+
+  // Remanga keeps auth in different places depending on the login method
+  // (httpOnly session cookie or a token sent as Bearer by the SPA). Capture the
+  // first API Authorization header and expose it as a cookie, so the normal
+  // cookie-collection path can close the window and save the session.
+  if (/remanga/i.test(loginUrl)) {
+    let captured = false;
+    ses.webRequest.onBeforeSendHeaders({ urls: ['https://api.remanga.org/*'] }, (details, callback) => {
+      try {
+        const h = details.requestHeaders;
+        const key = Object.keys(h).find((k) => ['authorization', 'x-auth-token', 'x-access-token'].includes(k.toLowerCase()));
+        const raw = key ? String(h[key] ?? '') : '';
+        const token = raw.replace(/^Bearer\s+/i, '').trim();
+        if (token && !captured) {
+          captured = true;
+          void ses.cookies
+            .set({
+              url: 'https://remanga.org/',
+              name: 'mr_rm_token',
+              value: encodeURIComponent(token),
+              path: '/',
+              sameSite: 'lax',
+            })
+            .catch(() => {});
+          logger.info('[login] Remanga token captured from API request');
+        }
+      } catch {
+        /* request headers are best-effort */
+      }
+      callback({ requestHeaders: details.requestHeaders });
+    });
+  }
 
   return new Promise((resolve) => {
     const win = new BrowserWindow({
@@ -582,7 +621,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
             var timer = setInterval(function() {
               try {
                 var btn = Array.prototype.find.call(document.querySelectorAll('button, a'), function(el) {
-                  return /Вход\\/Регистрация|Войти|Вход/i.test((el.textContent || '').trim());
+                  return (el.textContent || '').trim() === 'Вход/Регистрация';
                 });
                 if (btn) {
                   btn.click();
@@ -684,7 +723,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
           // site's own domain, no login/SSO markers in the URL. Both Senkuro
           // domains count: the login may have been completed on the .com
           // mirror after DDoS-Guard blocked .me for this network.
-          const onTargetSite = url.startsWith('http') && !onLoginOrSso && /senkuro\.(me|com)|nhentai\.net|\.onion/.test(url);
+          const onTargetSite = url.startsWith('http') && !onLoginOrSso && /senkuro\.(me|com)|remanga\.org|nhentai\.net|\.onion/.test(url);
           if (seenLogin && onTargetSite) {
             clearInterval(poll);
             statusEl = 'Вход признан успешным — собираю куки…';
@@ -702,7 +741,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
           const jar = await ses.cookies.get({});
           const loginFormVisible = await ws
             .executeJavaScript(
-              `!!document.querySelector('input[type="password"],input[name="UserName"],input[name="PassWord"],input[name="username_or_email"]')`,
+              `(function(){var el=document.querySelector('input[type="password"],input[name="UserName"],input[name="PassWord"],input[name="username_or_email"]');if(!el)return false;var s=getComputedStyle(el);return !!(el.offsetParent!==null&&s.display!=='none'&&s.visibility!=='hidden');})()`,
             )
             .catch(() => true);
           if (!done && onTargetSite && hasAuthenticatedSession(loginUrl, jar, loginFormVisible)) {
