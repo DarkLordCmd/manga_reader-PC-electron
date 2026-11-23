@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { mapRemangaBookmark } from '../src/main/services/remanga-import';
+import { mapRemangaBookmark, remangaAuthFromCookies } from '../src/main/services/remanga-import';
 import { normalizeWorkTitle } from '../src/shared/work-title';
+import { hasAuthenticatedSession } from '../src/main/services/login';
 
 describe('Remanga bookmark mapping', () => {
   it('maps a nested bookmark with chapter progress', () => {
@@ -65,5 +66,19 @@ describe('normalizeWorkTitle', () => {
 
   it('keeps different works apart', () => {
     expect(normalizeWorkTitle('Не друзья')).not.toBe(normalizeWorkTitle('Друзья'));
+  });
+});
+
+describe('Remanga browser login helpers', () => {
+  it('extracts the synthetic token cookie and keeps the session cookies', () => {
+    const a = remangaAuthFromCookies('sessionid=abc; mr_rm_token=tok%2Fen; __ddg1_=x');
+    expect(a.token).toBe('tok/en');
+    expect(a.cookies).toBe('sessionid=abc; __ddg1_=x');
+  });
+
+  it('recognises a logged-in Remanga window', () => {
+    expect(hasAuthenticatedSession('https://remanga.org/', [{ name: 'sessionid', value: 'x' }], false)).toBe(true);
+    expect(hasAuthenticatedSession('https://remanga.org/', [{ name: 'mr_rm_token', value: 'x' }], false)).toBe(true);
+    expect(hasAuthenticatedSession('https://remanga.org/', [], false)).toBe(false);
   });
 });

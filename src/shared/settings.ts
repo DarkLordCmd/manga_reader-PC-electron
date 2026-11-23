@@ -25,6 +25,7 @@ export interface Settings {
   senkuro_cookies_raw: string;
   /** Remanga bearer token (secret; renderer sees an empty value). */
   remanga_token: string;
+  remanga_cookies_raw: string;
   remanga_user_id: number | null;
   remanga_username: string;
   nhentai_onion_cookies_raw: string;
@@ -82,6 +83,7 @@ export function defaultSettings(): Settings {
     nhentai_onion_base: '',
     senkuro_cookies_raw: '',
     remanga_token: '',
+    remanga_cookies_raw: '',
     remanga_user_id: null,
     remanga_username: '',
     infinite_scroll: false,
@@ -168,6 +170,7 @@ export function parseSettings(raw: unknown): Settings {
     nhentai_cookies_raw: str(o.nhentai_cookies_raw, ''),
     senkuro_cookies_raw: str(o.senkuro_cookies_raw, ''),
     remanga_token: str(o.remanga_token, ''),
+    remanga_cookies_raw: str(o.remanga_cookies_raw, ''),
     remanga_user_id: nullableInt(o.remanga_user_id),
     remanga_username: str(o.remanga_username, ''),
     nhentai_onion_cookies_raw: str(o.nhentai_onion_cookies_raw, ''),

@@ -124,8 +124,71 @@ export async function remangaLogin(
   }
 }
 
+export interface RemangaAuth {
+  token?: string;
+  cookies?: string;
+}
+
+/** The browser login window may expose the site's localStorage token as a
+ * synthetic cookie (`mr_rm_token`), because the app only receives cookies. */
+export function remangaAuthFromCookies(cookies: string): RemangaAuth {
+  const token =
+    (cookies ?? '')
+      .split(';')
+      .map((s) => s.trim())
+      .find((s) => s.startsWith('mr_rm_token='))
+      ?.slice('mr_rm_token='.length) ?? '';
+  const clean = (cookies ?? '')
+    .split(';')
+    .map((s) => s.trim())
+    .filter((s) => !s.startsWith('mr_rm_token='))
+    .join('; ');
+  return { token: token ? decodeURIComponent(token) : '', cookies: clean };
+}
+
+function authHeaders(auth: RemangaAuth): Record<string, string> {
+  return auth.token ? { Authorization: `Bearer ${auth.token}` } : auth.cookies ? { Cookie: auth.cookies } : {};
+}
+
+export async function resolveRemangaAuth(
+  auth: RemangaAuth,
+): Promise<{ id: number; username: string; auth: RemangaAuth } | null> {
+  if (!auth.token && !auth.cookies) return null;
+  const tryOnce = async (a: RemangaAuth): Promise<{ id: number; username: string } | null> => {
+    try {
+      const json = (await httpGetJson('https://api.remanga.org/api/v2/users/current/', {
+        ...HEADERS,
+        ...authHeaders(a),
+      })) as any;
+      const c = json?.content ?? json;
+      const id = number(c?.id);
+      if (id == null) return null;
+      return { id, username: String(c?.username ?? c?.user?.username ?? id) };
+    } catch (e) {
+      logger.info('[remanga-import] current user failed', (e as Error)?.message ?? e);
+      return null;
+    }
+  };
+  // Browser login may expose a token that is not a Bearer (e.g. a storage
+  // blob); the session cookie still works, so retry with it.
+  if (auth.token) {
+    const withToken = await tryOnce({ token: auth.token });
+    if (withToken) return { ...withToken, auth: { token: auth.token } };
+  }
+  if (auth.cookies) {
+    const withCookies = await tryOnce({ cookies: auth.cookies });
+    if (withCookies) return { ...withCookies, auth: { cookies: auth.cookies } };
+  }
+  return null;
+}
+
+export async function remangaCurrentUser(auth: RemangaAuth): Promise<{ id: number; username: string } | null> {
+  const r = await resolveRemangaAuth(auth);
+  return r ? { id: r.id, username: r.username } : null;
+}
+
 async function fetchType(
-  token: string,
+  auth: RemangaAuth,
   userId: number,
   type: number,
   limit: number | undefined,
@@ -135,7 +198,7 @@ async function fetchType(
     const url = `${API}/users/${userId}/bookmarks?type=${type}&page=${page}&ordering=-chapter_date`;
     let json: any;
     try {
-      json = await httpGetJson(url, { ...HEADERS, Authorization: `Bearer ${token}` });
+      json = await httpGetJson(url, { ...HEADERS, ...authHeaders(auth) });
     } catch (e) {
       logger.info('[remanga-import] bookmarks page failed', type, page, (e as Error)?.message ?? e);
       break;
@@ -158,14 +221,14 @@ export interface RemangaImportDeps {
 
 export async function importRemangaBookmarks(
   deps: RemangaImportDeps,
-  token: string,
+  auth: RemangaAuth,
   userId: number,
   opts: { limit?: number } = {},
 ): Promise<{ imported: number; updated: number; duplicates: number; byStatus: Record<string, number> }> {
-  if (!token || !userId) throw new Error('Сначала войдите в Remanga.');
+  if ((!auth.token && !auth.cookies) || !userId) throw new Error('Сначала войдите в Remanga.');
   const batches: { raw: any; type: number }[] = [];
   for (const type of [0, 1, 2, 3, 4]) {
-    batches.push(...(await fetchType(token, userId, type, opts.limit)));
+    batches.push(...(await fetchType(auth, userId, type, opts.limit)));
   }
 
   const existing = deps.repo.all();

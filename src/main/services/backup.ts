@@ -12,6 +12,7 @@ export const SECRET_SETTINGS = [
   'nhentai_onion_cookies_raw',
   'senkuro_cookies_raw',
   'remanga_token',
+  'remanga_cookies_raw',
   'exhentai_proxy_addr',
   'mangalib_proxy_addr',
   'tor_bridges',

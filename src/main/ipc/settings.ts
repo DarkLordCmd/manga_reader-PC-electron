@@ -36,7 +36,7 @@ import {
 type CookieSecretField = Extract<(typeof SECRET_SETTINGS)[number], `${string}_cookies_raw`>;
 const COOKIE_SECRET_FIELDS = SECRET_SETTINGS.filter((k) => k.endsWith('_cookies_raw')) as CookieSecretField[];
 // Main-owned bearer tokens (Remanga) must never be blanked by an old renderer snapshot.
-const TOKEN_SECRET_FIELDS = ['remanga_token'] as const;
+const TOKEN_SECRET_FIELDS = ['remanga_token', 'remanga_cookies_raw'] as const;
 
 export function registerSettings(deps: {
   settings: SettingsService;

@@ -39,8 +39,6 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
   const [skgMsg, setSkgMsg] = useState<string | null>(null);
   const [skgProgress, setSkgProgress] = useState<SenkuroImportProgress | null>(null);
   const [skgMarkRead, setSkgMarkRead] = useState(true);
-  const [rmUser, setRmUser] = useState('');
-  const [rmPass, setRmPass] = useState('');
   const [rmBusy, setRmBusy] = useState(false);
   const [rmImportBusy, setRmImportBusy] = useState(false);
   const [rmMsg, setRmMsg] = useState<string | null>(null);
@@ -67,13 +65,12 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
     }
   };
 
-  const runRemangaLogin = async (): Promise<void> => {
+  const runRemangaWindowLogin = async (): Promise<void> => {
     setRmBusy(true);
     setRmMsg(null);
     try {
-      const r = await window.api.remangaLogin({ user: rmUser, password: rmPass });
-      setRmMsg(r.message);
-      if (r.ok) setRmPass('');
+      await window.api.loginSite('https://remanga.org/');
+      setRmMsg('Вход в Remanga сохранён. Теперь можно импортировать закладки.');
     } catch (e: any) {
       setRmMsg(`Remanga: ${errorText(e)}`);
     } finally {
@@ -465,27 +462,12 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
         <SubHead>Библиотека Remanga</SubHead>
         {settings.remanga_user_id == null ? (
           <>
-            <Row label="Логин/почта" note="Вход напрямую в Remanga. Пароль не сохраняется — только токен сессии.">
-              <input
-                className="set-input"
-                value={rmUser}
-                onChange={(e) => setRmUser(e.target.value)}
-                placeholder="nickname или email"
-                autoComplete="username"
-              />
-            </Row>
-            <Row label="Пароль">
-              <input
-                className="set-input"
-                type="password"
-                value={rmPass}
-                onChange={(e) => setRmPass(e.target.value)}
-                autoComplete="current-password"
-              />
-            </Row>
-            <Row>
-              <button className="set-primary" disabled={rmBusy || !rmUser.trim() || !rmPass} onClick={() => void runRemangaLogin()}>
-                {rmBusy ? 'Вхожу…' : 'Войти в Remanga'}
+            <Row
+              label="Аккаунт"
+              note="Откроется окно Remanga — войдите на сайте (логин/почта/пароль), затем нажмите «Готово, забрать куки» или закройте окно. Пароль в приложении не сохраняется."
+            >
+              <button className="set-primary" disabled={rmBusy} onClick={() => void runRemangaWindowLogin()}>
+                {rmBusy ? 'Жду вход в Remanga…' : 'Войти в Remanga'}
               </button>
             </Row>
           </>

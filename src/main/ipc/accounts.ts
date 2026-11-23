@@ -10,6 +10,7 @@ import { ExAccountsService, parseCookieLogin } from '../services/accounts';
 import { mergeCookieHeaders } from '../services/accounts-parse';
 import { whenEmbeddedTorReady } from '../services/tor-embedded';
 import { verifyEhLogin } from '../services/eh-extras';
+import { remangaAuthFromCookies, remangaCurrentUser } from '../services/remanga-import';
 
 export interface AccountsDeps {
   settings: SettingsService;
@@ -56,7 +57,17 @@ export function registerAccounts(deps: AccountsDeps): void {
     // session with guest cookies.
     const next = { ...settings.get() };
     const merge = (prev: string): string => mergeCookieHeaders(prev, result.cookies);
-    if (url.includes('nhentai')) {
+    if (url.includes('remanga')) {
+      const auth = remangaAuthFromCookies(result.cookies);
+      const current = await remangaCurrentUser(auth);
+      if (!current) {
+        throw new Error('Remanga: вход не подтверждён. Войдите на сайте в открывшемся окне и нажмите «Готово, забрать куки».');
+      }
+      next.remanga_token = auth.token ?? '';
+      next.remanga_cookies_raw = auth.cookies ?? '';
+      next.remanga_user_id = current.id;
+      next.remanga_username = current.username;
+    } else if (url.includes('nhentai')) {
       if (url.includes('.onion')) next.nhentai_onion_cookies_raw = merge(next.nhentai_onion_cookies_raw);
       else next.nhentai_cookies_raw = merge(next.nhentai_cookies_raw);
     } else if (url.includes('.onion')) {

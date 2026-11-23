@@ -3,7 +3,7 @@ import { CH } from '@shared/ipc';
 import type { RemangaImportResult, RemangaLoginResult } from '@shared/ipc';
 import type { Settings } from '@shared/settings';
 import { handleSafe } from './validate';
-import { importRemangaBookmarks, remangaLogin } from '../services/remanga-import';
+import { importRemangaBookmarks, remangaLogin, remangaAuthFromCookies, resolveRemangaAuth } from '../services/remanga-import';
 import type { LibraryService } from '../services/library';
 import type { HistoryManager } from '../services/history';
 import type { SettingsService } from '../services/settings';
@@ -41,14 +41,19 @@ export function registerRemangaImport(deps: {
 
   handleSafe(CH.remangaImport, z.tuple([importOptions.optional()]), async (_e, opts): Promise<RemangaImportResult> => {
     const s = deps.settings.get();
-    if (!s.remanga_token || s.remanga_user_id == null) {
-      return { ok: false, message: 'Сначала войдите в Remanga в настройках (логин/пароль).', imported: 0, updated: 0, duplicates: 0 };
+    const auth = { token: s.remanga_token, cookies: s.remanga_cookies_raw };
+    if ((!auth.token && !auth.cookies) || s.remanga_user_id == null) {
+      return { ok: false, message: 'Сначала войдите в Remanga в настройках.', imported: 0, updated: 0, duplicates: 0 };
     }
     try {
+      const resolved = await resolveRemangaAuth(auth);
+      if (!resolved) {
+        return { ok: false, message: 'Remanga: сессия недействительна — войдите заново.', imported: 0, updated: 0, duplicates: 0 };
+      }
       const r = await importRemangaBookmarks(
         { library: deps.library, history: deps.history, repo: deps.repo },
-        s.remanga_token,
-        s.remanga_user_id,
+        resolved.auth,
+        resolved.id,
         opts ?? {},
       );
       deps.broadcastLibrary();

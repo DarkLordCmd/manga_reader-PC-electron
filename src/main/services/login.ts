@@ -30,6 +30,7 @@ export function hasAuthenticatedSession(target: string, cookies: { name: string;
   if (/nhentai.*\.onion/i.test(target)) return has('access_token') || has('refresh_token');
   if (/exhentai|e-hentai/i.test(target)) return has('onikakushi') || has('ipb_member_id');
   if (/senkuro/i.test(target)) return has('remixsid') || has('session_id') || has('access_token');
+  if (/remanga/i.test(target)) return has('sessionid') || has('access_token') || has('mr_rm_token');
   return false;
 }
 
@@ -519,6 +520,27 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
     win.webContents.on('did-finish-load', () => {
       if (done) return;
       void maybeSwitchSenkuroDomain();
+      if (/remanga/i.test(loginUrl)) {
+        void win.webContents
+          .executeJavaScript(`
+            (function() {
+              if (window.__mr_rm_bridge__) return;
+              window.__mr_rm_bridge__ = 1;
+              setInterval(function() {
+                try {
+                  for (var i = 0; i < localStorage.length; i++) {
+                    var k = localStorage.key(i) || '';
+                    var v = localStorage.getItem(k) || '';
+                    if (/token|auth|jwt/i.test(k) && typeof v === 'string' && v.length > 24) {
+                      document.cookie = 'mr_rm_token=' + encodeURIComponent(v) + ';path=/;SameSite=Lax';
+                    }
+                  }
+                } catch (e) {}
+              }, 1200);
+            })();
+          `)
+          .catch(() => {});
+      }
       const script = `
         (function() {
           var btn = document.createElement('button');
