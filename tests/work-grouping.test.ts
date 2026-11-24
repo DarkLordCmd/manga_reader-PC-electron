@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { displayWorkTitle, groupLikelyWorks, likelySameWork } from '../src/shared/work-title';
+import { displayWorkTitle, groupLikelyWorks, likelySameWork, workSlugTokens } from '../src/shared/work-title';
 
 const facultyRemanga = {
   url: 'https://remanga.org/manga/hero-high-school-dungeon-attack-department_/',
@@ -24,12 +24,31 @@ describe('cross-source work grouping', () => {
     ).toBe(true);
   });
 
+  it('ignores malformed percent-encoding instead of aborting library grouping', () => {
+    expect(workSlugTokens('https://remanga.org/manga/bad%slug/')).toEqual([]);
+    expect(
+      likelySameWork(
+        { url: 'https://remanga.org/manga/bad%slug/', title: 'Работа с повреждённым slug' },
+        { url: 'https://senkuro.me/manga/other-title/', title: 'Другая работа' },
+      ),
+    ).toBe(false);
+  });
+
   it('does not merge unrelated works', () => {
     expect(
       likelySameWork(facultyRemanga, {
         url: 'https://senkuro.me/manga/mercenary-enrollment/',
         title: 'Прирождённый наёмник',
       }),
+    ).toBe(false);
+  });
+
+  it('does not merge different untitled works by their placeholder title', () => {
+    expect(
+      likelySameWork(
+        { url: 'https://remanga.org/manga/first-title/', title: 'Без названия' },
+        { url: 'https://senkuro.me/manga/second-title/', title: 'Без названия' },
+      ),
     ).toBe(false);
   });
 

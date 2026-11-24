@@ -118,6 +118,24 @@ export function mapRemangaBookmark(raw: any, type: number): RemangaMapped | null
   };
 }
 
+function mergeRemangaBookmark(a: RemangaMapped, b: RemangaMapped): RemangaMapped {
+  const aIndex = a.chapterIndex ?? -1;
+  const bIndex = b.chapterIndex ?? -1;
+  const progress = bIndex > aIndex || (bIndex === aIndex && b.currentPage > a.currentPage) ? b : a;
+  return {
+    ...a,
+    coverUrl: a.coverUrl ?? b.coverUrl,
+    adult: a.adult || b.adult,
+    rating: a.rating ?? b.rating,
+    status: a.status ?? b.status,
+    favorite: a.favorite || b.favorite,
+    chapterLabel: progress.chapterLabel,
+    chapterIndex: progress.chapterIndex,
+    chapterTotal: progress.chapterTotal ?? a.chapterTotal ?? b.chapterTotal,
+    currentPage: progress.currentPage,
+  };
+}
+
 const API = 'https://api.remanga.org/api/v2';
 const HEADERS = {
   Accept: 'application/json',
@@ -287,23 +305,30 @@ export async function importRemangaBookmarks(
 
   const existing = deps.repo.all();
   const existingUrls = new Set(existing.map((i) => i.url.replace(/\/+$/, '').toLowerCase()));
-  const existingTitles = new Set(existing.map((i) => normalizeWorkTitle(i.title)).filter((t) => t.length >= 4));
+  const existingTitles = new Set(
+    existing.map((i) => normalizeWorkTitle(i.title)).filter((t) => t.length >= 4 && t !== 'без названия'),
+  );
   const seenTitles = new Set<string>();
   let imported = 0;
   let updated = 0;
   let duplicates = 0;
   const byStatus: Record<string, number> = {};
-  const seenUrls = new Set<string>();
+  const mergedByUrl = new Map<string, RemangaMapped>();
 
   for (const { raw, type } of batches) {
-    const m = mapRemangaBookmark(raw, type);
-    if (!m) continue;
+    const mapped = mapRemangaBookmark(raw, type);
+    if (!mapped) continue;
+    const norm = mapped.url.replace(/\/+$/, '').toLowerCase();
+    const previous = mergedByUrl.get(norm);
+    mergedByUrl.set(norm, previous ? mergeRemangaBookmark(previous, mapped) : mapped);
+  }
+
+  for (const m of mergedByUrl.values()) {
     const norm = m.url.replace(/\/+$/, '').toLowerCase();
-    if (seenUrls.has(norm)) continue;
-    seenUrls.add(norm);
     const titleKey = normalizeWorkTitle(m.title);
-    if (titleKey.length >= 4 && (existingTitles.has(titleKey) || seenTitles.has(titleKey))) duplicates++;
-    if (titleKey.length >= 4) seenTitles.add(titleKey);
+    const meaningfulTitle = titleKey.length >= 4 && titleKey !== 'без названия';
+    if (meaningfulTitle && (existingTitles.has(titleKey) || seenTitles.has(titleKey))) duplicates++;
+    if (meaningfulTitle) seenTitles.add(titleKey);
 
     const entry = {
       url: m.url,
@@ -316,9 +341,9 @@ export async function importRemangaBookmarks(
     };
     try {
       if (m.favorite) deps.library.addFavorite(entry);
-      else deps.library.setStatusFor(entry, m.status!);
-      const key = m.favorite ? 'favorites' : m.status!;
-      byStatus[key] = (byStatus[key] ?? 0) + 1;
+      if (m.status) deps.library.setStatusFor(entry, m.status);
+      if (m.favorite) byStatus.favorites = (byStatus.favorites ?? 0) + 1;
+      if (m.status) byStatus[m.status] = (byStatus[m.status] ?? 0) + 1;
       if (existingUrls.has(norm)) updated++;
       else imported++;
     } catch (e) {
@@ -336,6 +361,7 @@ export async function importRemangaBookmarks(
         chapter_index: m.chapterIndex,
         chapter_total: m.chapterTotal,
         total_pages: 0,
+        currentPage: m.currentPage,
         category: m.adult ? 'r34' : 'main',
         kind: m.kind,
       });

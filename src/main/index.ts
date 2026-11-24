@@ -27,7 +27,7 @@ import { registerEhLimitHook } from './services/eh-limits-hook';
 import { httpFetchBinary } from './services/http';
 import { setLibMirror } from './services/lib-mirror';
 import { setCustomDnsServers, parseDnsServerList } from './services/custom-dns';
-import { rememberSettingsSecrets } from './services/settings-snapshot';
+import { rememberSettingsSecrets, settingsForRenderer } from './services/settings-snapshot';
 import { seriesKeyForUrl } from './services/series-key';
 import { fetchSenkuroMangaTitle, senkuroMangaSlugFromUrl } from './services/sources';
 import { proxyForUrl } from './services/proxy-policy';
@@ -340,8 +340,9 @@ app.whenReady().then(() => {
       // Record the secrets handed to the renderer, like broadcastSettingsChanged
       // does: otherwise the renderer's echo of this snapshot is not recognised
       // as stale and can overwrite a fresh login cookie.
-      rememberSettingsSecrets(s);
-      for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, s);
+      const snapshot = settingsForRenderer(s);
+      rememberSettingsSecrets(snapshot);
+      for (const w of BrowserWindow.getAllWindows()) w.webContents.send(CH.settingsChanged, snapshot);
     },
     getSettingsUpdatedAt: () => settingsUpdatedAt,
     setSettingsUpdatedAt: (t) => {
@@ -406,10 +407,11 @@ app.whenReady().then(() => {
    * re-render of the app on every toggle/zoom click. */
   const broadcastSettingsChanged = (s: Settings, exceptId?: number): void => {
     applySourceCookies(s);
-    rememberSettingsSecrets(s);
+    const snapshot = settingsForRenderer(s);
+    rememberSettingsSecrets(snapshot);
     for (const w of BrowserWindow.getAllWindows()) {
       if (exceptId !== undefined && w.webContents.id === exceptId) continue;
-      w.webContents.send(CH.settingsChanged, s);
+      w.webContents.send(CH.settingsChanged, snapshot);
     }
   };
 

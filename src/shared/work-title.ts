@@ -36,7 +36,13 @@ const SLUG_STOP = new Set([
 export function workSlugTokens(url: string): string[] {
   const m = String(url ?? '').match(/\/manga\/([^/?#]+)/i);
   if (!m) return [];
-  return decodeURIComponent(m[1])
+  let slug: string;
+  try {
+    slug = decodeURIComponent(m[1]);
+  } catch {
+    return [];
+  }
+  return slug
     .toLowerCase()
     .replace(/<[^>]*>/g, ' ')
     .split(/[^a-z0-9а-яё]+/i)
@@ -50,15 +56,18 @@ function dice(a: string[], b: string[]): number {
   return (2 * common) / (a.length + b.length);
 }
 
+const GENERIC_TITLES = new Set(['без названия']);
+
 /** Same work on two sources: exact normalized title OR very similar slug
  * (localizations often have completely different Russian titles). */
 export function likelySameWork(a: { url: string; title: string }, b: { url: string; title: string }): boolean {
   const ta = normalizeWorkTitle(a.title);
   const tb = normalizeWorkTitle(b.title);
-  if (ta.length >= 4 && ta === tb) return true;
+  const generic = GENERIC_TITLES.has(ta) || GENERIC_TITLES.has(tb);
+  if (!generic && ta.length >= 4 && ta === tb) return true;
   // One source may keep an extra subtitle/romanization in the same field:
   // "Легендарный механик" vs "Легендарный механик / Chao Shi...".
-  if (ta.length >= 8 && tb.length >= 8) {
+  if (!generic && ta.length >= 8 && tb.length >= 8) {
     const [shorter, longer] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
     if (shorter.split(' ').length >= 2 && longer.startsWith(`${shorter} `)) return true;
   }

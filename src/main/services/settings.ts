@@ -5,7 +5,17 @@ import { isEncrypted, encryptSecret, decryptSecret } from './secret-box';
 import { writeFileAtomic } from './atomic-write';
 import { logger } from './logger';
 
-const SECRET_FIELDS = ['onion_cookies_raw', 'nhentai_cookies_raw', 'senkuro_cookies_raw', 'nhentai_onion_cookies_raw'] as const;
+const SECRET_FIELDS = [
+  'onion_cookies_raw',
+  'nhentai_cookies_raw',
+  'senkuro_cookies_raw',
+  'nhentai_onion_cookies_raw',
+  'mangashi_cookies_raw',
+  'mangalib_cookies_raw',
+  'comx_cookies_raw',
+  'remanga_token',
+  'remanga_cookies_raw',
+] as const;
 
 const LEGACY_DIR = join(process.env.APPDATA ?? '', 'mangareader', 'manga_reader');
 

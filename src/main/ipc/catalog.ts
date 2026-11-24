@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { app } from 'electron';
 import { lookup as dnsPromiseLookup } from 'dns';
 import { CH } from '@shared/ipc';
-import type { CatalogCursor } from '@shared/ipc';
 import { handleSafe, nonNegInt, anyString, stringArray, httpUrl } from './validate';
 import type { SettingsService } from '../services/settings';
 import type { ExAccountsService } from '../services/accounts';
@@ -189,7 +188,7 @@ export function registerCatalog(deps: CatalogDeps): {
       nonNegInt,
       z.string().max(32),
       z.record(z.string(), z.unknown()).optional(),
-      z.custom<CatalogCursor | null>().optional(),
+      z.object({ dir: z.enum(['next', 'prev']), cursor: z.string().min(1).max(8192) }).nullable().optional(),
     ]),
     async (_e, source: string, query: string, page: number, sort: string, filters: any = {}, cursor: any = null) => {
       const s = settings.get();

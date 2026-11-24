@@ -66,11 +66,12 @@ export async function searchComx(
  * Chapters are sorted ascending by their chapter ids (their ids grow).
  */
 export async function fetchComxChapters(mangaUrl: string, proxy?: string): Promise<ChapterInfo[]> {
+  const host = new URL(mangaUrl).hostname;
   const html = await fetchHtmlViaBrowser(mangaUrl, {
     timeoutMs: 60_000,
     proxy,
-    cookie: cookieForHost('com-x.life') || undefined,
-    cookieHost: 'com-x.life',
+    cookie: cookieForHost(host),
+    cookieHost: host,
   });
   const $ = cheerio.load(html);
   const out: ChapterInfo[] = [];

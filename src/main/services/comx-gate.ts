@@ -1,7 +1,9 @@
 import { webcrypto } from 'crypto';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { httpFetch } from './http';
+import { decryptSecret, encryptSecret, isEncrypted } from './secret-box';
+import { writeFileAtomic } from './atomic-write';
 
 /** com-x.life runs a custom PoW anti-bot (token → SHA256(token:nonce) with
  *  prefix "00" → POST /_v → clearance cookie). This module emulates a normal
@@ -86,7 +88,10 @@ export function setComxUserCookies(value: string): void {
   // Drop stale auth/PoW pairs on change; the gate will re-solve clearance.
   cookieStore['com-x.life'] = '';
   cookieStore['www.com-x.life'] = '';
-  const pairs = v.split(';').map((s) => s.trim()).filter((s) => s.includes('='));
+  const pairs = v
+    .split(';')
+    .map((s) => s.trim())
+    .filter((s) => s.includes('='));
   if (pairs.length > 0) {
     storeCookies('com-x.life', pairs);
     storeCookies('www.com-x.life', pairs);
@@ -98,7 +103,12 @@ export function setComxUserCookies(value: string): void {
 export function initCookieStore(userDataDir: string): void {
   cookieStorePath = join(userDataDir, 'comx-cookie.json');
   try {
-    if (existsSync(cookieStorePath)) cookieStore = JSON.parse(readFileSync(cookieStorePath, 'utf-8')) as CookieStore;
+    if (existsSync(cookieStorePath)) {
+      const stored = readFileSync(cookieStorePath, 'utf-8');
+      const encrypted = isEncrypted(stored);
+      cookieStore = JSON.parse(encrypted ? decryptSecret(stored) : stored) as CookieStore;
+      if (!encrypted) saveCookieStore();
+    }
   } catch {
     cookieStore = {};
   }
@@ -107,7 +117,8 @@ export function initCookieStore(userDataDir: string): void {
 function saveCookieStore(): void {
   if (!cookieStorePath) return;
   try {
-    writeFileSync(cookieStorePath, JSON.stringify(cookieStore, null, 2));
+    const plain = JSON.stringify(cookieStore, null, 2);
+    writeFileAtomic(cookieStorePath, encryptSecret(plain) ?? plain, { mode: 0o600 });
   } catch {
     /* ignore */
   }
@@ -115,6 +126,15 @@ function saveCookieStore(): void {
 
 export function cookieForHost(host: string): string {
   return cookieStore[host] ?? '';
+}
+
+function hasComxClearance(host: string): boolean {
+  return cookieForHost(host)
+    .split(';')
+    .some((pair) => {
+      const eq = pair.indexOf('=');
+      return eq > 0 && pair.slice(0, eq).trim() === 'comx_cleared' && pair.slice(eq + 1).trim() !== '';
+    });
 }
 
 /** Merges Set-Cookie values for a host (later values WIN per cookie-name). */
@@ -130,6 +150,10 @@ export function storeCookies(host: string, setCookies: string[]): void {
   }
   cookieStore[host] = pairs.join('; ');
   saveCookieStore();
+}
+
+function rejectServerError(response: Awaited<ReturnType<typeof httpFetch>>, url: string): void {
+  if (response.status >= 500 && response.status < 600) throw new Error(`HTTP ${response.status} for ${url}`);
 }
 
 function headersFor(url: string): Record<string, string> {
@@ -166,6 +190,7 @@ export async function ensureComxClearance(
 
   // challenge GET also sets cookies — pick them up first.
   const first = await httpFetch({ url: target, headers: headersFor(target), timeoutMs: 20_000 }, opts.proxy);
+  rejectServerError(first, target);
   storeCookies(host, first.setCookies);
 
   const pow = await solvePow(challenge.token);
@@ -187,9 +212,11 @@ export async function ensureComxClearance(
     },
     opts.proxy,
   );
+  rejectServerError(v, 'https://com-x.life/_v');
   storeCookies(host, v.setCookies);
 
   const r = await httpFetch({ url: target, headers: headersFor(target), timeoutMs: 20_000 }, opts.proxy);
+  rejectServerError(r, target);
   storeCookies(host, r.setCookies);
   return { html: r.text, resolved: r.status === 200 && !isChallenge(r.text) };
 }
@@ -201,24 +228,27 @@ export async function ensureComxClearance(
  *  the real challenge), then refetch. */
 export async function comxFetchText(url: string, opts: { proxy?: string; timeoutMs?: number } = {}): Promise<string> {
   const r = await httpFetch({ url, headers: headersFor(url), timeoutMs: opts.timeoutMs ?? 20_000 }, opts.proxy);
+  rejectServerError(r, url);
   storeCookies(new URL(url).hostname, r.setCookies);
   if (isChallenge(r.text)) {
     const cleared = await ensureComxClearance(url, r.text, opts);
     if (cleared.resolved) return cleared.html;
     if (r.status >= 400 && r.status < 500) throw new Error(`HTTP ${r.status} for ${url}`);
-    return cleared.html;
+    throw new Error(`Com-X anti-bot challenge unresolved for ${url}`);
   }
-  if (r.status === 404 && !cookieForHost(new URL(url).hostname)) {
+  if (r.status === 404 && !hasComxClearance(new URL(url).hostname)) {
     // no clearance cookie and a plain 404 — the root usually carries the
     // challenge; warm up there, then retry the target once.
     const root = await httpFetch(
       { url: 'https://com-x.life/', headers: headersFor('https://com-x.life/'), timeoutMs: opts.timeoutMs ?? 20_000 },
       opts.proxy,
     );
+    rejectServerError(root, 'https://com-x.life/');
     if (isChallenge(root.text)) {
       const cleared = await ensureComxClearance('https://com-x.life/', root.text, opts);
       if (cleared.resolved) {
         const r2 = await httpFetch({ url, headers: headersFor(url), timeoutMs: opts.timeoutMs ?? 20_000 }, opts.proxy);
+        rejectServerError(r2, url);
         storeCookies(new URL(url).hostname, r2.setCookies);
         if (!isChallenge(r2.text) && r2.status < 400) return r2.text;
       }

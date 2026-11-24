@@ -69,5 +69,19 @@ export function parseBackup(text: string): BackupFile {
       throw new Error('Повреждённый бэкап: некорректная запись серии');
     }
   }
+  if (obj.accounts !== undefined) {
+    if (!Array.isArray(obj.accounts)) throw new Error('Повреждённый бэкап: некорректный аккаунт');
+    for (const account of obj.accounts) {
+      const valid =
+        account &&
+        typeof account === 'object' &&
+        typeof account.name === 'string' &&
+        Array.isArray(account.cookies) &&
+        account.cookies.every(
+          (pair: unknown) => Array.isArray(pair) && pair.length === 2 && pair.every((part) => typeof part === 'string'),
+        );
+      if (!valid) throw new Error('Повреждённый бэкап: некорректный аккаунт');
+    }
+  }
   return obj as BackupFile;
 }

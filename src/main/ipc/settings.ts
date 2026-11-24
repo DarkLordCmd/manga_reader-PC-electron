@@ -28,6 +28,7 @@ import { setCoverDiskMaxBytes } from '../app/state';
 import {
   rememberSettingsSecrets,
   isRendererSnapshotSecret,
+  settingsForRenderer,
 } from '../services/settings-snapshot';
 
 /** Secret settings that are session/`.onion` cookies — the renderer's stale
@@ -206,9 +207,9 @@ export function registerSettings(deps: {
 
   handleSafe(CH.torDiagnostics, z.tuple([]), async () => getTorDiagnostics());
   handleSafe(CH.getSettings, z.tuple([]), () => {
-    const s = settings.get();
-    rememberSettingsSecrets(s);
-    return s;
+    const snapshot = settingsForRenderer(settings.get());
+    rememberSettingsSecrets(snapshot);
+    return snapshot;
   });
   handleSafe(CH.setSettings, z.tuple([looseObject<Settings>()]), (e, s: Settings) => {
     // The renderer sends its full settings snapshot, which can be stale: a
@@ -217,7 +218,7 @@ export function registerSettings(deps: {
     // strings wipe freshly grabbed sessions. The cookie keys are derived from
     // the single SECRET_SETTINGS list (backup.ts) so the two never drift.
     const prev = settings.get();
-    for (const k of [...COOKIE_SECRET_FIELDS, ...TOKEN_SECRET_FIELDS]) {
+    for (const k of COOKIE_SECRET_FIELDS) {
       const incoming = String(s[k] ?? '');
       const previous = String(prev[k] ?? '');
       if (incoming === '') {
@@ -228,6 +229,9 @@ export function registerSettings(deps: {
       // has a newer session (saved by a login window). Keep the fresh one.
       if (incoming !== previous && isRendererSnapshotSecret(k, incoming)) s[k] = previous;
     }
+    // Remanga auth has dedicated login/logout IPC. A full settings echo must
+    // never inject, replace, or blank either credential.
+    for (const k of TOKEN_SECRET_FIELDS) s[k] = prev[k];
     // Main-owned reading state. The renderer only READS read_chapters,
     // read_scroll, viewing_history and read_progress, so its (possibly stale)
     // copy must never replace the main process's — a stale echo silently

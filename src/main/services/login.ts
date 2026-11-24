@@ -1,4 +1,5 @@
 import { BrowserWindow, session, app } from 'electron';
+import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { requestNewTorCircuit } from './tor-embedded';
 import { denyAllPermissions } from '../security';
@@ -76,11 +77,38 @@ function isLoginAdUrl(raw: string): boolean {
   }
 }
 
+/** Every login gets an isolated in-memory session. A fixed partition let a
+ * second login clear the first one's cookies (and closing either window wiped
+ * the other); persistent per-login partitions leaked auth files to disk. */
+export function createLoginPartition(): string {
+  return `site-login-${randomUUID()}`;
+}
+
+/** Keep source-session cookies, never cookies issued to OAuth/SSO providers.
+ * Senkuro's token is written on the .com mirror while the site may be .me. */
+export function filterLoginCookies<T extends { domain?: string; name: string; value: string }>(target: string, cookies: T[]): T[] {
+  let targetHost: string;
+  try {
+    targetHost = new URL(target).hostname.toLowerCase();
+  } catch {
+    return [];
+  }
+  const allowed = isSenkuroHost(target)
+    ? ['senkuro.me', 'senkuro.com']
+    : /(^|\.)(?:e-hentai|exhentai)\.org$/.test(targetHost)
+      ? ['e-hentai.org', 'exhentai.org']
+      : /(^|\.)mangalib\.me$/.test(targetHost)
+        ? ['mangalib.me', 'lib.social']
+        : [targetHost];
+  return cookies.filter((cookie) => {
+    if (!cookie.domain) return false;
+    const domain = cookie.domain.replace(/^\./, '').toLowerCase();
+    return allowed.some((host) => domain === host || domain.endsWith(`.${host}`) || host.endsWith(`.${domain}`));
+  });
+}
+
 export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Promise<LoginResult | null> {
-  // A per-login `persist:onion-login-<timestamp>` partition left a directory
-  // with auth cookies in userData forever (one per login). One fixed partition,
-  // wiped before and after each login, keeps no stale session on disk.
-  const ses = session.fromPartition('persist:site-login');
+  const ses = session.fromPartition(createLoginPartition());
   try {
     await ses.clearStorageData();
     await ses.clearCache();
@@ -384,7 +412,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
       void ses.cookies
         .get({})
         .then((list) => {
-          const joined = list
+          const joined = filterLoginCookies(loginUrl, list)
             .filter((c) => c.name && c.value)
             .map((c) => `${c.name}=${c.value}`)
             .join('; ');
@@ -774,7 +802,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
         void ses.cookies
           .get({})
           .then((list) => {
-            const joined = list
+            const joined = filterLoginCookies(loginUrl, list)
               .filter((c) => c.name && c.value)
               .map((c) => `${c.name}=${c.value}`)
               .join('; ');
@@ -872,7 +900,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
           // cookie exists" grabbed pre-login guest cookies (nhentai
           // `tor_session`), so require both: the login form is gone AND an
           // auth-level cookie is present.
-          const jar = await ses.cookies.get({});
+          const jar = filterLoginCookies(loginUrl, await ses.cookies.get({}));
           const loginFormVisible = await ws
             .executeJavaScript(
               `(function(){var el=document.querySelector('input[type="password"],input[name="UserName"],input[name="PassWord"],input[name="username_or_email"]');if(!el)return false;var s=getComputedStyle(el);return !!(el.offsetParent!==null&&s.display!=='none'&&s.visibility!=='hidden');})()`,

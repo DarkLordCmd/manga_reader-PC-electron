@@ -29,13 +29,16 @@ function collectCookies(setCookies: string[]): string[] {
 }
 
 /** Visits mangalib.me once to pick up DDoS-Guard cookies for API calls. */
-async function primeCookieJar(): Promise<Jar> {
+async function primeCookieJar(proxy?: string): Promise<Jar> {
   if (jar && Date.now() - jar.ts < JAR_TTL) return jar;
-  const r = await httpFetch({
-    url: 'https://mangalib.me/',
-    headers: { 'User-Agent': UA, Accept: 'text/html', ...(userCookies ? { Cookie: userCookies } : {}) },
-    timeoutMs: 30_000,
-  });
+  const r = await httpFetch(
+    {
+      url: 'https://mangalib.me/',
+      headers: { 'User-Agent': UA, Accept: 'text/html', ...(userCookies ? { Cookie: userCookies } : {}) },
+      timeoutMs: 30_000,
+    },
+    proxy,
+  );
   const c = collectCookies(r.setCookies);
   if (c.length === 0) throw new Error('Mangalib: не удалось получить cookies DDoS-Guard (сайт изменил доступ)');
   jar = { cookies: c.join('; '), ts: Date.now() };
@@ -62,7 +65,7 @@ function apiHeaders(cookies: string): Record<string, string> {
 
 export async function mangalibApi<T = any>(path: string, proxy?: string, timeoutMs = 30_000): Promise<T> {
   let j = jar;
-  if (!j || Date.now() - j.ts >= JAR_TTL) j = await primeCookieJar();
+  if (!j || Date.now() - j.ts >= JAR_TTL) j = await primeCookieJar(proxy);
   const call = async (cookies: string): Promise<unknown> => {
     const r = await httpFetch({ url: `${API_BASE}${path}`, headers: apiHeaders(cookies), timeoutMs }, proxy);
     if (r.status !== 200) throw new Error(`HTTP ${r.status} (${API_BASE}${path})`);
@@ -75,7 +78,7 @@ export async function mangalibApi<T = any>(path: string, proxy?: string, timeout
       resetMangalibJar();
     }
   }
-  j = await primeCookieJar();
+  j = await primeCookieJar(proxy);
   return (await call(j.cookies)) as T;
 }
 
@@ -133,8 +136,10 @@ export async function searchMangalib(query: string, page = 0, proxy?: string): P
     seen.add(url);
     out.push(toItem(m));
   }
-  if (out.length === 0)
+  if (list.length === 0 && page > 0) return [];
+  if (out.length === 0) {
     throw new Error(query.trim() ? 'Mangalib: поиск не дал результатов' : 'Mangalib: пустой каталог (проверь VPN/прокси)');
+  }
   return out;
 }
 

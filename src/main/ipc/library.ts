@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron';
 import { z } from 'zod';
 import { CH } from '@shared/ipc';
-import type { LibraryQuery, ReadingStatus } from '@shared/library';
+import { READING_STATUSES, type LibraryQuery, type ReadingStatus } from '@shared/library';
 import type { Settings } from '@shared/settings';
 import { handleSafe, anyString, nonNegInt, stringArray } from './validate';
 import type { LibraryService } from '../services/library';
@@ -18,6 +18,15 @@ const libraryEntry = z.object({
   category: anyString.optional(),
   kind: z.string().nullable().optional(),
   adult: z.boolean().optional(),
+});
+const readingStatus = z.enum(READING_STATUSES);
+const libraryQuery = z.object({
+  status: z.enum([...READING_STATUSES, 'all']).optional(),
+  search: anyString.optional(),
+  sort: z.enum(['last_read', 'title', 'rating', 'added']).optional(),
+  includeR34: z.boolean().optional(),
+  category: anyString.optional(),
+  scope: z.enum(['library', 'favorites']).optional(),
 });
 
 /** Upper bound for the main-owned per-URL maps (read_progress / read_scroll).
@@ -44,7 +53,7 @@ export function registerLibrary(deps: {
 
   handleSafe(CH.getHistory, z.tuple([]), () => history.toVec());
 
-  handleSafe(CH.libraryList, z.tuple([z.custom<LibraryQuery>().optional()]), (_e, query?: LibraryQuery) => library.list(query ?? {}));
+  handleSafe(CH.libraryList, z.tuple([libraryQuery.optional()]), (_e, query?: LibraryQuery) => library.list(query ?? {}));
   handleSafe(CH.libraryGet, z.tuple([anyString]), (_e, key: string) => library.get(String(key)));
   handleSafe(CH.libraryAdd, z.tuple([libraryEntry.extend({})]), (_e, entry) => {
     const item = library.addFromCatalog(entry);
@@ -63,14 +72,14 @@ export function registerLibrary(deps: {
     broadcastLibrary();
     return it;
   });
-  handleSafe(CH.librarySetStatusFor, z.tuple([libraryEntry.extend({}), z.custom<ReadingStatus>()]), (_e, entry, status: ReadingStatus) => {
+  handleSafe(CH.librarySetStatusFor, z.tuple([libraryEntry.extend({}), readingStatus]), (_e, entry, status: ReadingStatus) => {
     const it = library.setStatusFor(entry, status);
     broadcastLibrary();
     return it;
   });
   handleSafe(
     CH.librarySetStatus,
-    z.tuple([anyString, z.custom<ReadingStatus>().nullable()]),
+    z.tuple([anyString, readingStatus.nullable()]),
     (_e, key: string, status: ReadingStatus | null) => {
       library.setStatus(String(key), status);
       broadcastLibrary();

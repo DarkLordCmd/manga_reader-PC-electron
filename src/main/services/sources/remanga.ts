@@ -109,6 +109,8 @@ export async function searchRemanga(query: string, page: number, filters: Catalo
 }
 
 const REMANGA_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+// 50 chapters per page: allow up to 10,000 chapters without unbounded pagination.
+const MAX_REMANGA_CHAPTER_PAGES = 200;
 
 export async function fetchRemangaChapters(mangaUrl: string, proxy?: string): Promise<ChapterInfo[]> {
   const dir = mangaUrl.trim().replace(/\/+$/, '').split('/').pop() ?? '';
@@ -155,7 +157,9 @@ export async function fetchRemangaChapters(mangaUrl: string, proxy?: string): Pr
       });
     }
     if (typeof json?.next !== 'number' && !json?.next) break;
-    if (page > 50) break;
+    if (page >= MAX_REMANGA_CHAPTER_PAGES) {
+      throw new Error(`Remanga: превышен лимит пагинации глав (${MAX_REMANGA_CHAPTER_PAGES} страниц); список может быть неполным`);
+    }
   }
 
   if (all.length === 0) throw new Error('Remanga: список глав недоступен');

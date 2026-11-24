@@ -54,7 +54,7 @@ function withWindowLock<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-function prepareSession(): Electron.Session {
+export function prepareSession(): Electron.Session {
   if (ses) return ses;
   const s = session.fromPartition(PARTITION, { cache: false });
   denyAllPermissions(s);
@@ -221,7 +221,8 @@ export async function fetchHtmlViaBrowser(
  * is essential: the hidden window must be able to rotate session tokens and
  * keep its own `cf_clearance` — a static header override discarded both and
  * kept replaying expired nhentai onion tokens (401 forever).
- * Cookies are re-seeded only when the stored string changes (new login). */
+ * Cookies are re-seeded only when the stored string changes (new login).
+ * An explicit empty string logs out by removing only the names seeded here. */
 const seededCookieByHost = new Map<string, string>();
 
 export function parseCookiePairs(cookie: string): [string, string][] {
@@ -239,11 +240,26 @@ export function parseCookiePairs(cookie: string): [string, string][] {
 }
 
 export async function seedSessionCookies(s: Electron.Session, cookie: string | undefined, host: string | undefined): Promise<void> {
-  if (!cookie?.trim() || !host) return;
+  if (!host) return;
   const key = host.toLowerCase();
-  if (seededCookieByHost.get(key) === cookie) return;
-  seededCookieByHost.set(key, cookie);
+  const previous = seededCookieByHost.get(key);
   const url = `${key.endsWith('.onion') ? 'http' : 'https'}://${key}/`;
+  if (cookie !== undefined && !cookie.trim()) {
+    if (!previous) return;
+    seededCookieByHost.delete(key);
+    await Promise.all(
+      parseCookiePairs(previous).map(async ([name]) => {
+        try {
+          await s.cookies.remove(url, name);
+        } catch {
+          /* invalid cookie name — skip it, keep the rest */
+        }
+      }),
+    );
+    return;
+  }
+  if (!cookie?.trim() || previous === cookie) return;
+  seededCookieByHost.set(key, cookie);
   await Promise.all(
     parseCookiePairs(cookie).map(async ([name, value]) => {
       try {
@@ -352,7 +368,8 @@ export async function fetchViaWindowFetchRetry(
 export async function shutdownBrowserFetch(): Promise<void> {
   if (win && !win.isDestroyed()) win.destroy();
   win = null;
-  ses = null;
+  // The partition itself survives window destruction. Reusing it also keeps
+  // the single webRequest hook installed by prepareSession().
   currentProxy = '';
   seededCookieByHost.clear();
 }

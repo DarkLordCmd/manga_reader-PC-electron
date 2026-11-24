@@ -15,6 +15,8 @@ export interface HistoryUpdate {
   chapter_index: number | null;
   chapter_total: number | null;
   total_pages: number;
+  /** Resume page inside the chapter, when the source/import provides one. */
+  currentPage?: number;
   category: string;
   kind?: string | null;
 }
@@ -89,7 +91,7 @@ function toUpsert(u: HistoryUpdate, key: string, seriesId: string): SeriesUpsert
     source: u.source,
     category: u.category,
     kind: u.kind ?? null,
-    currentPage: 1,
+    currentPage: Math.max(1, u.currentPage ?? 1),
     totalPages: u.total_pages,
     chapterLabel: u.chapter_label,
     chapterIndex: u.chapter_index,
@@ -138,7 +140,6 @@ export class HistoryManager {
     const existing = this.repo.get(key) ?? this.repo.findByUrl(update.url);
     if (existing) {
       if (
-        existing.url !== update.url &&
         update.chapter_index != null &&
         existing.chapterIndex != null &&
         update.chapter_index < existing.chapterIndex
@@ -155,7 +156,7 @@ export class HistoryManager {
       // pass the adult flag (chapter-to-chapter navigation does not know it).
       if (existing.category === 'r34') next.category = 'r34';
       if (existing.url === update.url) {
-        next.currentPage = Math.max(existing.currentPage, 1);
+        next.currentPage = Math.max(existing.currentPage, update.currentPage ?? 1);
         next.totalPages = Math.max(existing.totalPages, update.total_pages);
         // An open without a cover (e.g. resumed from the reader) must not wipe
         // the stored one.

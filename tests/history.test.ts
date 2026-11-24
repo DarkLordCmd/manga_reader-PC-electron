@@ -90,6 +90,16 @@ describe('HistoryManager keeps the furthest chapter (rewind guard)', () => {
     expect(row.chapter_index).toBe(9);
   });
 
+  it('reimporting the same series URL with an older chapter does not rewind it', () => {
+    const m = new HistoryManager();
+    const url = 'https://senkuro.me/manga/foo/';
+    m.addOrUpdate(ch(10, 9, url));
+    m.addOrUpdate(ch(1, 0, url));
+    const row = m.all()[0];
+    expect(row.url).toBe(url);
+    expect(row.chapter_index).toBe(9);
+  });
+
   it('moving forward still advances the row', () => {
     const m = new HistoryManager();
     const c1 = 'https://senkuro.me/manga/foo/chapter/1/';

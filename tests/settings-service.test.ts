@@ -32,6 +32,24 @@ describe('SettingsService secret-at-rest', () => {
     expect(svc2.get().onion_cookies_raw).toBe('ipb_pass_hash=abc');
   });
 
+  it.each([
+    'mangashi_cookies_raw',
+    'mangalib_cookies_raw',
+    'comx_cookies_raw',
+    'remanga_token',
+    'remanga_cookies_raw',
+  ] as const)('encrypts %s at rest and restores it on load', (field) => {
+    const svc = new SettingsService(dir);
+    const secret = `secret-value-${field}`;
+    svc.save({ ...defaultSettings(), [field]: secret });
+
+    const disk = readFileSync(join(dir, 'settings.json'), 'utf8');
+    expect(disk).not.toContain(secret);
+
+    const svc2 = new SettingsService(dir);
+    expect(svc2.get()[field]).toBe(secret);
+  });
+
   it('does not rewrite already-encrypted file on load', () => {
     const svc = new SettingsService(dir);
     svc.save({ ...defaultSettings(), onion_cookies_raw: 'ipb_pass_hash=abc' });

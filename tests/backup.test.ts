@@ -72,6 +72,19 @@ describe('parseBackup', () => {
     });
     expect(() => parseBackup(text)).toThrow();
   });
+  it('rejects malformed accounts before an import can mutate local data', () => {
+    const text = JSON.stringify({
+      format: BACKUP_FORMAT,
+      version: BACKUP_VERSION,
+      exportedAt: 1,
+      settings: defaultSettings(),
+      series: [item()],
+      accounts: [{}],
+      downloads: [],
+    });
+    expect(() => parseBackup(text)).toThrow('Повреждённый бэкап: некорректный аккаунт');
+  });
+
   it('rejects a series entry without a key', () => {
     const text = JSON.stringify({
       format: BACKUP_FORMAT,

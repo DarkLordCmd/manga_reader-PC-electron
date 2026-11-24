@@ -231,7 +231,13 @@ export async function runSenkuroImport(
     const coll = collById.get(bm.collectionId);
     if (!coll) continue;
     const entity = bm.entity ?? ({} as SkgBookmark['entity']);
-    const url = `https://senkuro.me/manga/${entity.slug ?? ''}/`;
+    const slug = String(entity.slug ?? '').trim();
+    if (!slug) {
+      errors++;
+      logger.warn('[skg-import] bookmark skipped: entity has no slug', bm.entityId);
+      continue;
+    }
+    const url = `https://senkuro.me/manga/${slug}/`;
     const title = pickTitle(entity.titles);
     const status = STATUS_MAP[coll.status];
     const favorite = coll.status === 'FAVORITED';
@@ -265,7 +271,7 @@ export async function runSenkuroImport(
     let chapterIndex: number | null = null;
     if (markRead) {
       try {
-        const res = await fetchSenkuroChapters(String(entity.slug ?? ''), settings.senkuro_cookies_raw, deps.proxy);
+        const res = await fetchSenkuroChapters(slug, settings.senkuro_cookies_raw, deps.proxy);
         chapters = res.chapters.map((c) => ({ chapter_id: c.chapter_id, chapter_num: c.chapter_num }));
         chapterIndex = chapters.findIndex((c) => chapterNumberValue(c.chapter_num) === current);
         if (chapterIndex < 0) {
@@ -306,6 +312,7 @@ export async function runSenkuroImport(
         chapter_index: chapterIndex,
         chapter_total: chapters.length > 0 ? chapters.length : (entity.chapters ?? null),
         total_pages: 0,
+        currentPage: bm.page ?? undefined,
         category: categoryForUrl(url),
         kind: KIND_MAP[String(entity.type ?? '')] ?? null,
       });

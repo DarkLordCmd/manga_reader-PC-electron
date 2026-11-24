@@ -40,6 +40,8 @@ export async function searchMangaShi(
     if (page > 0 && /HTTP 404\b/.test(String((e as Error)?.message ?? e))) return [];
     throw e;
   }
+  // Laravel can answer a page past the end with HTTP 200 and no listing shell.
+  if (page > 0 && !text.includes('media-shell')) return [];
   assertLayout(['media-shell'], text, 'Manga-shi');
   const $ = cheerio.load(text);
   const results: CatalogItem[] = [];
@@ -170,7 +172,13 @@ export async function fetchMangaShiChapters(mangaUrl: string, proxy?: string): P
   let page = findNextPage(page1, 1);
   while (page != null && page <= 200) {
     const target = `${base}/chapters/?chapter_sort=latest&page=${page}`;
-    const r = await fetchHtmlSmart(target, { proxy, timeoutMs: 30_000, cookieHeader: userCookies || undefined });
+    let r: string;
+    try {
+      r = await fetchHtmlSmart(target, { proxy, timeoutMs: 30_000, cookieHeader: userCookies || undefined });
+    } catch (e) {
+      if (/HTTP 404\b/.test(String((e as Error)?.message ?? e))) break;
+      throw e;
+    }
     parseChapters(r);
     const next = findNextPage(r, page);
     if (next == null || next <= page) break;

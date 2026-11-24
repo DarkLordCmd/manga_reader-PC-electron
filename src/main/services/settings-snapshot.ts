@@ -15,6 +15,12 @@ import { SECRET_SETTINGS } from './backup';
 const sentSecrets = new Map<string, Set<string>>();
 const HISTORY_LIMIT = 20;
 
+/** Remanga credentials are owned by login/logout IPC, never by the renderer.
+ * Keep the account metadata visible but omit both session secrets. */
+export function settingsForRenderer(s: Settings): Settings {
+  return { ...s, remanga_token: '', remanga_cookies_raw: '' };
+}
+
 export function rememberSettingsSecrets(s: Settings): void {
   for (const k of SECRET_SETTINGS) {
     const value = String((s as unknown as Record<string, unknown>)[k] ?? '');

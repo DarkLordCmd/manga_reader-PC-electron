@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { session } from 'electron';
 import { detectsAntiBot } from '../src/main/services/anti-bot';
-import { parseCookiePairs, seedSessionCookies } from '../src/main/services/browser-fetch';
+import { parseCookiePairs, prepareSession, seedSessionCookies, shutdownBrowserFetch } from '../src/main/services/browser-fetch';
 
 describe('detectsAntiBot', () => {
   it('flags cloudflare challenge markers', () => {
@@ -14,6 +14,20 @@ describe('detectsAntiBot', () => {
   });
   it('flags rate limits', () => {
     expect(detectsAntiBot(429, 'too many requests')).toBe(true);
+  });
+});
+
+describe('browser session lifecycle', () => {
+  it('reuses the session webRequest hook after the hidden window is destroyed', async () => {
+    const hook = vi.spyOn(session.defaultSession.webRequest, 'onBeforeRequest');
+
+    const first = prepareSession();
+    await shutdownBrowserFetch();
+    const second = prepareSession();
+
+    expect(second).toBe(first);
+    expect(hook).toHaveBeenCalledTimes(1);
+    await shutdownBrowserFetch();
   });
 });
 
@@ -53,5 +67,40 @@ describe('browser session cookies', () => {
     await seedSessionCookies(s, 'refresh_token=new', 'reseed-test.nhentai.net');
     expect(setSpy).toHaveBeenCalledTimes(2);
     expect(setSpy.mock.calls[1][0]).toMatchObject({ url: 'https://reseed-test.nhentai.net/', name: 'refresh_token', value: 'new' });
+  });
+
+  it('clears previously seeded auth cookies on explicit logout without clobbering jar-rotated cookies', async () => {
+    type CookieDetails = { url: string; name: string; value: string };
+    const host = 'logout-test.com-x.life';
+    const url = `https://${host}/`;
+    const key = (name: string): string => `${url}|${name}`;
+    const jar = new Map<string, string>();
+    const s = {
+      cookies: {
+        set: vi.fn(async ({ url: cookieUrl, name, value }: CookieDetails) => {
+          jar.set(`${cookieUrl}|${name}`, value);
+        }),
+        remove: vi.fn(async (cookieUrl: string, name: string) => {
+          jar.delete(`${cookieUrl}|${name}`);
+        }),
+      },
+    } as unknown as Electron.Session;
+
+    await seedSessionCookies(s, 'access_token=t1; tor_session=s1', host);
+    jar.set(key('access_token'), 'jar-rotated-token');
+    jar.set(key('cf_clearance'), 'jar-rotated-clearance');
+
+    await seedSessionCookies(s, undefined, host);
+    await seedSessionCookies(s, 'access_token=t1; tor_session=s1', host);
+    expect(jar.get(key('access_token'))).toBe('jar-rotated-token');
+    expect(s.cookies.remove).not.toHaveBeenCalled();
+
+    await seedSessionCookies(s, '', host);
+
+    expect(jar.has(key('access_token'))).toBe(false);
+    expect(jar.has(key('tor_session'))).toBe(false);
+    expect(jar.get(key('cf_clearance'))).toBe('jar-rotated-clearance');
+    expect(s.cookies.remove).toHaveBeenCalledWith(url, 'access_token');
+    expect(s.cookies.remove).toHaveBeenCalledWith(url, 'tor_session');
   });
 });
