@@ -168,7 +168,7 @@ export function useCatalogSearch() {
   /** Cursor actually used to fetch each page, keyed `<sig>|<page>`: Senkuro has
    * forward-only cursors, so "Пред." needs the cursor of the target page. */
   const pageCursorRef = useRef(new Map<string, CatalogCursor | undefined>());
-  const searchRef = useRef<(p: number, append?: boolean) => Promise<void>>(async () => {});
+  const searchRef = useRef<(p: number, append?: boolean, force?: boolean) => Promise<void>>(async () => {});
   const loadingRef = useRef(false);
   const pageRef = useRef(0);
   const sigRef = useRef('');
@@ -427,7 +427,6 @@ export function useCatalogSearch() {
   /** Manga-shi's own "18+" cover badge is an age rating it also assigns for
    * violence-only titles, so it is not a reliable erotica signal. Resolve the
    * flag from the title's tags instead (one lazy request per card, cached). */
-  const adultTagCache = useRef<Map<string, boolean>>(loadAdultCache());
   const enrichMangashiAdults = useCallback(async (list: CatalogCard[]): Promise<void> => {
     const pending = [...new Set(list.map((c) => c.url))].filter(
       (url) => !adultTagCache.current.has(url) && !adultRequestsRef.current.has(url),
@@ -538,6 +537,13 @@ export function useCatalogSearch() {
           trimCursorCache(pageCursorRef.current);
         }
         if (id !== searchIdRef.current) return;
+        // A normal empty response past the last pager page means "end", not
+        // "replace the visible grid with nothing". Keep the previous page so
+        // "Пред." and the existing cards remain available.
+        if (!append && p > 0 && res.length === 0) {
+          setHasMore(false);
+          return;
+        }
         const prev = cards;
         const seen = new Set(prev.map((x) => x.url));
         const next = append ? [...prev, ...res.filter((c) => !seen.has(c.url))] : res;

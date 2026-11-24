@@ -82,7 +82,7 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
     let cancelled = false;
     const known = new Set(alternatives.map((a) => a.source));
     const current = item.source.toLowerCase();
-    const allowExternalAdult = settings.show_r34_history;
+    const allowExternalAdult = settings.show_r34_history && item.category === 'r34';
     const isExternalVisible = (x: Pick<ExternalSource, 'source' | 'adult' | 'age18'>): boolean =>
       !known.has(x.source) && (allowExternalAdult || (!isAdultWork(x) && !x.age18));
     const targets = [

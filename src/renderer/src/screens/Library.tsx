@@ -152,6 +152,13 @@ export default function Library(): JSX.Element {
     // Closing, reopening or switching source while the IPC calls were pending
     // must not let this old request reopen or replace the newer picker.
     if (epoch !== selectionEpoch.current) return;
+    const effCat = settings.show_r34_history ? category : 'main';
+    if (added.category === effCat) {
+      // Keep both source rows in the picker immediately instead of waiting for
+      // the libraryChanged round-trip to rebuild groups.
+      setAllItems((prev) => (prev.some((it) => it.key === added.key) ? prev : [...prev, added]));
+      setItems((prev) => (prev.some((it) => it.key === added.key) ? prev : [...prev, added]));
+    }
     chooseSelected(added);
   };
 

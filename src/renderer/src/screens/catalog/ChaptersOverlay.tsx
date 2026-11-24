@@ -132,6 +132,7 @@ function ChaptersDialog({ s, picked }: { s: CatalogSearch; picked: CatalogCard }
             </div>
           )}
           {!chapters && !s.chapterError && !s.opening && <div className="overlay-note">Загрузка глав…</div>}
+          {chapters && chapters.length === 0 && <div className="overlay-note">Глав не найдено</div>}
           {chapters &&
             chapters.map((c, i) => {
               const isRead = s.settings.read_chapters.includes(c.chapter_id);
@@ -150,6 +151,7 @@ function ChaptersDialog({ s, picked }: { s: CatalogSearch; picked: CatalogCard }
                   <button
                     className={`chapter-toggle${isRead ? ' on' : ''}`}
                     title={isRead ? 'Снять отметку «прочитано»' : 'Отметить прочитанной'}
+                    aria-label={isRead ? 'Снять отметку «прочитано»' : 'Отметить прочитанной'}
                     aria-pressed={isRead}
                     onClick={() => void window.api.setChapterRead(c.chapter_id, !isRead)}
                   >

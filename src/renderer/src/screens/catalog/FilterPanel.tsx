@@ -165,6 +165,7 @@ function LabelPickerDialog({
         <input
           ref={inputRef}
           className="filter-input full"
+          aria-label="Поиск лейблов"
           placeholder="Поиск лейблов…"
           value={labelQuery}
           onChange={(e) => setLabelQuery(e.target.value)}

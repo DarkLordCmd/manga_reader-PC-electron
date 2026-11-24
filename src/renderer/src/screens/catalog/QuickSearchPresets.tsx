@@ -10,7 +10,7 @@ export default function QuickSearchPresets({ s }: { s: CatalogSearch }): JSX.Ele
     });
   return (
     <div className="quick-search">
-      <button className="tab" onClick={() => s.setQsOpen((v) => !v)}>
+      <button className="tab" aria-expanded={s.qsOpen} onClick={() => s.setQsOpen((v) => !v)}>
         ★ Быстрые поиски ▾
       </button>
       {s.qsOpen && (

@@ -180,6 +180,7 @@ export default function SearchSuggest({ s }: { s: CatalogSearch }): JSX.Element 
     <div className="search-suggest">
       <input
         className="catalog-search"
+        aria-label="Название манги"
         value={query}
         placeholder="Название манги…"
         autoComplete="off"
