@@ -44,6 +44,36 @@ export function hasAuthenticatedSession(target: string, cookies: { name: string;
   return false;
 }
 
+/** Ad networks used by manga-shi/mangalib/com-x login pages. The login window
+ * is a reading surface too; block requests instead of letting ad iframes and
+ * native-ad scripts slow it down and cover the form. */
+const LOGIN_AD_HOSTS = [
+  /(^|\.)adfinity\.pro$/i,
+  /(^|\.)adfox\.ru$/i,
+  /(^|\.)adriver\.ru$/i,
+  /(^|\.)an\.yandex\.ru$/i,
+  /(^|\.)doubleclick\.net$/i,
+  /(^|\.)googlesyndication\.com$/i,
+  /(^|\.)googleadservices\.com$/i,
+  /(^|\.)adservice\.google\.com$/i,
+  /(^|\.)criteo\.(com|net)$/i,
+  /(^|\.)taboola\.com$/i,
+  /(^|\.)outbrain\.com$/i,
+  /(^|\.)adnxs\.com$/i,
+];
+
+function isLoginAdUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (u.hostname === 'yandex.ru' || u.hostname.endsWith('.yandex.ru')) {
+      return /^\/ads\b|^\/an\b|\/adfox\b|\/rtb\b/i.test(u.pathname);
+    }
+    return LOGIN_AD_HOSTS.some((re) => re.test(u.hostname));
+  } catch {
+    return false;
+  }
+}
+
 export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Promise<LoginResult | null> {
   // A per-login `persist:onion-login-<timestamp>` partition left a directory
   // with auth cookies in userData forever (one per login). One fixed partition,
@@ -435,6 +465,10 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
     };
 
     ses.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
+      if (isLoginAdUrl(details.url)) {
+        callback({ cancel: true });
+        return;
+      }
       if (details.url.startsWith('manga-cookies://done')) {
         callback({ cancel: true });
         grabCookies('manga-cookies://done');
@@ -621,6 +655,11 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
             } catch (e) {}
           };
           (document.body || document.documentElement).appendChild(btn);
+          try {
+            var st = document.createElement('style');
+            st.textContent = '[id*="adfinity"],[class*="adfinity"],[id*="adfox"],[class*="adfox"],[data-adfinity],[id*="yandex_rtb"],[class*="yandex-rtb"]{display:none!important}';
+            (document.head || document.documentElement).appendChild(st);
+          } catch (e) {}
           ${
             isSenkuroHost(win.webContents.getURL())
               ? `
