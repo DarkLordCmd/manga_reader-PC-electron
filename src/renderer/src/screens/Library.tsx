@@ -10,7 +10,7 @@ import ContextMenu, { type MenuItem } from '../components/ContextMenu';
 import { buildLibraryMenuItems, STATUS_LABELS } from '../lib/library-menu';
 import { resolveAdultFlag } from '../lib/adult';
 import { errorText } from '../lib/errors';
-import { normalizeWorkTitle, chapterLabelNumber } from '@shared/work-title';
+import { chapterLabelNumber, groupLikelyWorks } from '@shared/work-title';
 
 const TABS: (ReadingStatus | 'all')[] = ['all', ...READING_STATUSES];
 
@@ -52,6 +52,18 @@ export default function Library(): JSX.Element {
 
   useEffect(refresh, [refresh]);
   useEffect(() => window.api.onLibraryChanged(refresh), [refresh]);
+
+  const workGroups = useMemo(() => groupLikelyWorks(allItems), [allItems]);
+  const groupIndexOf = useMemo(() => {
+    const m = new Map<string, number>();
+    workGroups.forEach((g, i) => g.forEach((it) => m.set(it.key, i)));
+    return m;
+  }, [workGroups]);
+  const groupMembersOf = useMemo(() => {
+    const m = new Map<number, LibraryItem[]>();
+    workGroups.forEach((g, i) => m.set(i, g));
+    return m;
+  }, [workGroups]);
 
   const dupDisplayRef = useRef<Map<string, { best: LibraryItem; count: number }>>(new Map());
 
@@ -109,10 +121,28 @@ export default function Library(): JSX.Element {
   // applied locally: the library is already fully loaded, and multi-select
   // source chips should not trigger a DB query per toggle.
   const sourceStats = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const it of allItems) if (it.source) m.set(it.source, (m.get(it.source) ?? 0) + 1);
-    return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  }, [allItems]);
+    // Unique works per source: duplicates share one card.
+    const m = new Map<string, Set<string>>();
+    for (const it of allItems) {
+      if (!it.source) continue;
+      const gid = groupIndexOf.get(it.key);
+      const key = gid != null ? `g:${gid}` : `key:${it.key}`;
+      const set = m.get(it.source) ?? new Set<string>();
+      set.add(key);
+      m.set(it.source, set);
+    }
+    return [...m.entries()].map(([src, set]) => [src, set.size] as [string, number]).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [allItems, groupIndexOf]);
+  const allSourceTotal = useMemo(
+    () =>
+      new Set(
+        allItems.map((it) => {
+          const gid = groupIndexOf.get(it.key);
+          return gid != null ? `g:${gid}` : `key:${it.key}`;
+        }),
+      ).size,
+    [allItems, groupIndexOf],
+  );
   const filteredAll = useMemo(
     () => (sources.size === 0 ? allItems : allItems.filter((it) => sources.has(it.source))),
     [allItems, sources],
@@ -126,7 +156,8 @@ export default function Library(): JSX.Element {
     const groups = new Map<string, Set<string>>();
     for (const it of filteredAll) {
       if (!it.status) continue;
-      const key = normalizeWorkTitle(it.title) || `key:${it.key}`;
+      const gid = groupIndexOf.get(it.key);
+      const key = gid != null ? `g:${gid}` : `key:${it.key}`;
       const set = groups.get(it.status) ?? new Set<string>();
       set.add(key);
       groups.set(it.status, set);
@@ -134,10 +165,16 @@ export default function Library(): JSX.Element {
     const c: Record<string, number> = {};
     for (const [status, set] of groups) c[status] = set.size;
     return c;
-  }, [filteredAll]);
+  }, [filteredAll, groupIndexOf]);
   const filteredTotal = useMemo(
-    () => new Set(filteredAll.map((it) => normalizeWorkTitle(it.title) || `key:${it.key}`)).size,
-    [filteredAll],
+    () =>
+      new Set(
+        filteredAll.map((it) => {
+          const gid = groupIndexOf.get(it.key);
+          return gid != null ? `g:${gid}` : `key:${it.key}`;
+        }),
+      ).size,
+    [filteredAll, groupIndexOf],
   );
 
   // A source can disappear when switching Main/R34; drop stale selections so
@@ -167,21 +204,11 @@ export default function Library(): JSX.Element {
     return Math.max(label != null ? Number(label) : -1, i.chapterIndex ?? -1, i.currentPage || 0);
   };
   const duplicateDisplay = useMemo(() => {
-    const groups = new Map<string, LibraryItem[]>();
-    for (const it of allItems) {
-      const key = normalizeWorkTitle(it.title);
-      if (key.length < 4) continue;
-      const list = groups.get(key) ?? [];
-      list.push(it);
-      groups.set(key, list);
-    }
-    const progressNumber = progressOf;
-    const score = progressNumber;
     const out = new Map<string, { best: LibraryItem; count: number }>();
-    for (const group of groups.values()) {
+    for (const group of workGroups) {
       if (group.length < 2) continue;
       const best = group.reduce((a, b) => {
-        const diff = score(b) - score(a);
+        const diff = progressOf(b) - progressOf(a);
         if (diff !== 0) return diff > 0 ? b : a;
         // Same position but one label is "1 / 148" and another is a stale "2":
         // keep the one whose numeric label is higher so the card shows 148.
@@ -192,14 +219,15 @@ export default function Library(): JSX.Element {
       for (const it of group) out.set(it.key, { best, count: group.length });
     }
     return out;
-  }, [allItems]);
+  }, [workGroups]);
   dupDisplayRef.current = duplicateDisplay;
   // One card per work even when several sources have the same normalized title.
   // The card's source picker keeps access to every edition.
   const groupedItems = useMemo(() => {
     const groups = new Map<string, { first: LibraryItem; members: LibraryItem[] }>();
     for (const it of visibleItems) {
-      const key = normalizeWorkTitle(it.title) || `key:${it.key}`;
+      const gid = groupIndexOf.get(it.key);
+      const key = gid != null ? `g:${gid}` : `key:${it.key}`;
       const g = groups.get(key) ?? { first: it, members: [] };
       g.members.push(it);
       groups.set(key, g);
@@ -209,15 +237,14 @@ export default function Library(): JSX.Element {
       const dup = duplicateDisplay.get(best.key);
       return { key, item: dup?.best ?? best, count: dup?.count ?? g.members.length };
     });
-  }, [visibleItems, duplicateDisplay]);
+  }, [visibleItems, duplicateDisplay, groupIndexOf]);
 
   const alternatives = useMemo(() => {
     if (!selected) return [];
-    const key = normalizeWorkTitle(selected.title);
-    if (key.length < 4) return [selected];
-    const list = allItems.filter((i) => normalizeWorkTitle(i.title) === key);
-    return list.some((i) => i.key === selected.key) ? list : [selected, ...list];
-  }, [selected, allItems]);
+    const gid = groupIndexOf.get(selected.key);
+    if (gid == null) return [selected];
+    return groupMembersOf.get(gid) ?? [selected];
+  }, [selected, groupIndexOf, groupMembersOf]);
 
   return (
     <div className="screen library">
@@ -245,7 +272,7 @@ export default function Library(): JSX.Element {
         <div className="library-sources">
           <span className="library-sources-label">Источники</span>
           <button className={`source-chip${sources.size === 0 ? ' active' : ''}`} onClick={() => setSources(new Set())}>
-            Все ({allItems.length})
+            Все ({allSourceTotal})
           </button>
           {sourceStats.map(([src, n]) => (
             <button
