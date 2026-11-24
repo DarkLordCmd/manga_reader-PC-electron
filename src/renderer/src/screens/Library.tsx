@@ -358,7 +358,7 @@ export default function Library(): JSX.Element {
                       : '';
                 })()}
                 {it.rating != null ? ` · ★ ${it.rating}` : ''}
-                {best && count > 1 ? ` · источников: ${count}` : ''}
+                {best && count > 1 ? ` · ${count} ${count < 5 ? 'источника' : 'источников'}` : ''}
               </span>
               <button
                 className="continue-btn"

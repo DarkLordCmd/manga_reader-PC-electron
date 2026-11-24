@@ -62,6 +62,7 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
   const [workTags, setWorkTags] = useState<string[]>([]);
   const [externalSources, setExternalSources] = useState<ExternalSource[]>([]);
   const [externalBusy, setExternalBusy] = useState<string | null>(null);
+  const [externalLoading, setExternalLoading] = useState(false);
   const [externalError, setExternalError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
@@ -87,15 +88,18 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
     ].filter((t) => !current.includes(t.key.replace('mangashi', 'manga-shi').replace('comx', 'com-x')) && !known.has(t.label));
     if (targets.length === 0) {
       setExternalSources([]);
+      setExternalLoading(false);
       return;
     }
     const cacheKey = `${item.url}|${item.title}`;
     const cached = externalCache.get(cacheKey);
     if (cached && Date.now() - cached.at < EXTERNAL_TTL_MS) {
       setExternalSources(cached.items.filter((x) => !known.has(x.source)));
+      setExternalLoading(false);
       return;
     }
     setExternalSources([]);
+    setExternalLoading(true);
     void (async () => {
       const found: ExternalSource[] = [];
       await Promise.all(
@@ -130,6 +134,7 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
       if (cancelled) return;
       externalCache.set(cacheKey, { at: Date.now(), items: found });
       setExternalSources(found.filter((x) => !known.has(x.source)));
+      setExternalLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -265,7 +270,7 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
           </button>
         </div>
 
-        {(alternatives.length > 1 || externalSources.length > 0) && (
+        {(alternatives.length > 1 || externalSources.length > 0 || externalLoading) && (
           <div className="modal-sources">
             <span className="field-label">Источник</span>
             {alternatives.map((a) => (
@@ -280,6 +285,9 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
                 {a.chapterLabel ? ` · гл. ${chapterLabelNumber(a.chapterLabel) ?? a.chapterLabel}` : ''}
               </button>
             ))}
+            {externalLoading && (
+              <span className="source-chip external loading">Ищу источники…</span>
+            )}
             {externalSources.map((e) => (
               <button
                 key={`${e.source}:${e.url}`}

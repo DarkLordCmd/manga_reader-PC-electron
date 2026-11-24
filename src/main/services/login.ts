@@ -612,6 +612,12 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
                 if (window.PublicKeyCredential && PublicKeyCredential.isConditionalMediationAvailable) {
                   PublicKeyCredential.isConditionalMediationAvailable = function() { return Promise.resolve(false); };
                 }
+                if (!document.getElementById('mr-no-passkey')) {
+                  var st = document.createElement('style');
+                  st.id = 'mr-no-passkey';
+                  st.textContent = '.sandev-passkey-btn,[class*="passkey"],[href*="passkey"],[href*="webauthn"]{display:none!important}';
+                  (document.head || document.documentElement).appendChild(st);
+                }
               } catch (e) {}
             })();
           `)
@@ -687,7 +693,9 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
       }
       const script = `
         (function() {
+          if (document.getElementById('manga-login-done')) return;
           var btn = document.createElement('button');
+          btn.id = 'manga-login-done';
           btn.textContent = '✅ Готово, забрать куки';
           btn.style.cssText = 'position:fixed;top:8px;right:8px;z-index:999999;'
             + 'padding:10px 16px;background:#2ecc71;color:#fff;border:none;'
