@@ -25,7 +25,15 @@ export async function searchMangaShi(
   // manga-shi.org pagination is 1-indexed on the wire; our page is 0-based.
   if (page > 0) params.push(`page=${page + 1}`);
   const url = `${base}/catalog/${params.length ? `?${params.join('&')}` : ''}`;
-  const text = await fetchHtmlSmart(url, { proxy });
+  let text: string;
+  try {
+    text = await fetchHtmlSmart(url, { proxy });
+  } catch (e) {
+    // Laravel paginator answers 404 when the requested page is past the last
+    // one. That is the normal end of the list, not a user-facing error.
+    if (page > 0 && /HTTP 404\b/.test(String((e as Error)?.message ?? e))) return [];
+    throw e;
+  }
   assertLayout(['media-shell'], text, 'Manga-shi');
   const $ = cheerio.load(text);
   const results: CatalogItem[] = [];
@@ -75,7 +83,12 @@ export async function searchMangaShi(
       chapterCount,
     });
   });
-  if (results.length === 0) throw new Error('Manga-shi: ничего не найдено');
+  if (results.length === 0) {
+    // No cards on a follow-up page = end of pagination (empty page after the
+    // last one, filter removed all results, etc.).
+    if (page > 0) return [];
+    throw new Error('Manga-shi: ничего не найдено');
+  }
   return results;
 }
 
