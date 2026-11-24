@@ -665,7 +665,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
           `)
           .catch(() => {});
       }
-      if (/mangalib/i.test(loginUrl)) {
+      if (/mangalib/i.test(loginUrl) && !/front\/auth/i.test(loginUrl)) {
         void win.webContents
           .executeJavaScript(`
             (function() {

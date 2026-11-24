@@ -473,7 +473,7 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
           />
         </Row>
         <Row>
-          <button onClick={() => void doLogin('https://mangalib.me/', 'Mangalib')}>Войти в Mangalib</button>
+          <button onClick={() => void doLogin('https://mangalib.me/ru/front/auth', 'Mangalib')}>Войти в Mangalib</button>
           <button className="set-danger" onClick={() => void clearCookies('mangalib', 'Mangalib')}>
             Очистить куки
           </button>
