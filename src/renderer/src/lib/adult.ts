@@ -7,6 +7,11 @@ export function mangashiTitleUrl(url: string): string {
   return m ? m[1] : url;
 }
 
+/** R34 classification uses the adult flag only; an age rating is not R34. */
+export function isAdultWork(work: { adult?: boolean | null }): boolean {
+  return work.adult === true;
+}
+
 /** True when the work is 18+. `known` short-circuits for rows already in R34. */
 export async function resolveAdultFlag(url: string, known: boolean): Promise<boolean> {
   if (known) return true;

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { EhGalleryInfo, EhTorrent } from '@shared/ipc';
 import { errorText } from '../../lib/errors';
+import { useBodyScrollLock, useDialogFocus } from '../../lib/use-modal';
 
 interface Props {
   url: string;
@@ -22,6 +23,14 @@ export default function EhInfoModal({ url, onClose }: Props): JSX.Element {
   const [hathBusy, setHathBusy] = useState(false);
   const [hathMsg, setHathMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const copiedTimer = useRef<number | null>(null);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useDialogFocus(onClose, closeRef);
+  useBodyScrollLock();
+
+  useEffect(() => () => {
+    if (copiedTimer.current != null) clearTimeout(copiedTimer.current);
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -52,23 +61,37 @@ export default function EhInfoModal({ url, onClose }: Props): JSX.Element {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(text);
-      setTimeout(() => setCopied((c) => (c === text ? null : c)), 1500);
+      if (copiedTimer.current != null) clearTimeout(copiedTimer.current);
+      copiedTimer.current = window.setTimeout(() => setCopied((c) => (c === text ? null : c)), 1500);
     } catch {
       /* clipboard may be blocked */
     }
   };
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="overlay-card" style={{ maxWidth: 760, width: '92%', maxHeight: '82vh', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 }}>
-          <strong style={{ flex: 1 }}>ExHentai: информация</strong>
+    <div
+      className="overlay"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="overlay-card"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="eh-info-title"
+        style={{ maxWidth: 760, width: '92%', maxHeight: '82vh', overflow: 'auto' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+          <strong id="eh-info-title" style={{ flex: 1 }}>ExHentai: информация</strong>
           {(['info', 'torrents', 'hath'] as Tab[]).map((t) => (
-            <button key={t} className={tab === t ? 'set-primary' : undefined} onClick={() => setTab(t)}>
+            <button key={t} type="button" className={tab === t ? 'set-primary' : undefined} aria-pressed={tab === t} onClick={() => setTab(t)}>
               {t === 'info' ? 'Инфо' : t === 'torrents' ? 'Торренты' : 'H@H'}
             </button>
           ))}
-          <button onClick={onClose}>Закрыть</button>
+          <button ref={closeRef} type="button" onClick={onClose}>Закрыть</button>
         </div>
 
         {tab === 'info' &&

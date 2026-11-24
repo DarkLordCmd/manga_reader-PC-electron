@@ -6,7 +6,7 @@ export default function DisplaySection({ settings, upd }: SettingsCommon): JSX.E
   return (
     <Section title="Отображение">
       <Row label="Миниатюры в читалке">
-        <Toggle checked={settings.show_thumbnails} onChange={(v) => upd({ show_thumbnails: v })} />
+        <Toggle ariaLabel="Миниатюры в читалке" checked={settings.show_thumbnails} onChange={(v) => upd({ show_thumbnails: v })} />
       </Row>
       <Row label="Размер миниатюр">
         <input

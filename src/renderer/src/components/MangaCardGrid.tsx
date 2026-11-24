@@ -4,6 +4,7 @@ import type { ReadingStatus } from '@shared/library';
 import KindBadge from './KindBadge';
 import StatusBadge from './StatusBadge';
 import CoverImg from './CoverImg';
+import { normalizeUrl } from '../lib/status-map';
 
 interface Props {
   cards: CatalogCard[];
@@ -29,7 +30,25 @@ interface CardProps {
 const MangaCard = memo(function MangaCard({ card, progressEntry, status, onSelect, onContextMenu, blurAdult }: CardProps): JSX.Element {
   const count = card.chapterCount != null ? `${card.chapterCount} гл.` : card.pages != null ? `${card.pages} стр.` : '';
   return (
-    <div className="manga-card" onClick={() => onSelect(card)} onContextMenu={onContextMenu ? (e) => onContextMenu(e, card) : undefined}>
+    <div
+      className="manga-card"
+      role="button"
+      tabIndex={0}
+      aria-label={`Открыть ${card.title}`}
+      onClick={(e) => {
+        const control = (e.target as HTMLElement).closest('button, a, input, select, textarea, [role="button"], [tabindex]');
+        if (control && control !== e.currentTarget) return;
+        onSelect(card);
+      }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(card);
+        }
+      }}
+      onContextMenu={onContextMenu ? (e) => onContextMenu(e, card) : undefined}
+    >
       <div className="manga-cover">
         <CoverImg url={card.coverUrl} alt={card.title} className={blurAdult && (card.adult || card.age18) ? 'blur-adult' : undefined} />
         {card.kind && <KindBadge kind={card.kind} />}
@@ -63,19 +82,24 @@ const MangaCard = memo(function MangaCard({ card, progressEntry, status, onSelec
 });
 
 function MangaCardGrid({ cards, onSelect, progress, statuses, onContextMenu, blurAdult }: Props): JSX.Element {
+  const normalizedProgress = Object.fromEntries(Object.entries(progress ?? {}).map(([url, entry]) => [normalizeUrl(url), entry]));
+  const normalizedStatuses = Object.fromEntries(Object.entries(statuses ?? {}).map(([url, status]) => [normalizeUrl(url), status]));
   return (
     <div className="catalog-grid">
-      {cards.map((c) => (
-        <MangaCard
-          key={c.url}
-          card={c}
-          progressEntry={progress?.[c.url]}
-          status={statuses?.[c.url]}
-          blurAdult={blurAdult}
-          onSelect={onSelect}
-          onContextMenu={onContextMenu}
-        />
-      ))}
+      {cards.map((c) => {
+        const cardUrl = normalizeUrl(c.url);
+        return (
+          <MangaCard
+            key={c.url}
+            card={c}
+            progressEntry={normalizedProgress[cardUrl] ?? progress?.[c.url]}
+            status={normalizedStatuses[cardUrl] ?? statuses?.[c.url]}
+            blurAdult={blurAdult}
+            onSelect={onSelect}
+            onContextMenu={onContextMenu}
+          />
+        );
+      })}
     </div>
   );
 }

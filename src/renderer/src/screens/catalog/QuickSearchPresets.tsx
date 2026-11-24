@@ -59,7 +59,9 @@ export default function QuickSearchPresets({ s }: { s: CatalogSearch }): JSX.Ele
                   id: crypto.randomUUID(),
                   name,
                   source: s.source,
-                  query: s.query,
+                  query: [s.query.trim(), ...s.pickedTags.map((tag) => (tag.startsWith('!') ? `-${tag.slice(1)}` : tag))]
+                    .join(' ')
+                    .trim(),
                   ehExcludedCats: s.ehExcludedCats,
                   ehMinRating: s.ehMinRating,
                 }),

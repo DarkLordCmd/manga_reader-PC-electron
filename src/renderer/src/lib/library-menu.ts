@@ -17,6 +17,7 @@ export interface MenuSubject {
   seriesId: string;
   category?: string;
   kind?: string | null;
+  adult?: boolean;
 }
 
 export interface MenuState {
@@ -27,7 +28,7 @@ export interface MenuState {
 
 /** Shared library/favorites context menu (catalog, library, favorites, history):
  * favorite toggle, reading-status group, and remove-from-library. Callers may
- * append extra items (e.g. "Удалить из истории"). */
+ * append extra actions. */
 export function buildLibraryMenuItems(subject: MenuSubject, state: MenuState, extra: MenuItem[] = []): MenuItem[] {
   const items: MenuItem[] = [];
   if (state.favorited && state.key) {

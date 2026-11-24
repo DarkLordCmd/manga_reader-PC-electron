@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { errorText } from '../../lib/errors';
 import Section, { Row } from './Section';
 import Toggle from '../../components/Toggle';
@@ -13,6 +14,7 @@ interface Props extends SettingsCommon {
 }
 
 export default function SyncSection({ settings, upd, google, setGoogle, syncState, syncMsg, setSyncMsg }: Props): JSX.Element {
+  const [googleBusy, setGoogleBusy] = useState(false);
   return (
     <Section title="Синхронизация (Google Drive)" desc="Библиотека и прогресс чтения в вашей папке Google Drive.">
       {!google.authed ? (
@@ -20,19 +22,23 @@ export default function SyncSection({ settings, upd, google, setGoogle, syncStat
           <Row label="Аккаунт Google">
             <button
               className="set-primary"
-              disabled={google.configured === false}
+              disabled={google.configured === false || googleBusy}
               onClick={async () => {
+                if (googleBusy) return;
+                setGoogleBusy(true);
                 setSyncMsg('Открываю окно входа Google…');
                 try {
                   const r = await window.api.googleLogin();
                   setGoogle(r);
                   setSyncMsg('Вход выполнен');
-                } catch (e: any) {
+                } catch (e) {
                   setSyncMsg(`Ошибка: ${errorText(e)}`);
+                } finally {
+                  setGoogleBusy(false);
                 }
               }}
             >
-              Войти через Google
+              {googleBusy ? 'Открываю…' : 'Войти через Google'}
             </button>
           </Row>
           {google.configured === false && (
@@ -50,10 +56,10 @@ export default function SyncSection({ settings, upd, google, setGoogle, syncStat
             <span className="set-value">{syncState.lastSyncAt ? new Date(syncState.lastSyncAt).toLocaleString() : 'ещё не было'}</span>
           </Row>
           <Row label="Синхронизация">
-            <Toggle checked={settings.sync_enabled} onChange={(v) => upd({ sync_enabled: v })} />
+            <Toggle ariaLabel="Синхронизация" checked={settings.sync_enabled} onChange={(v) => upd({ sync_enabled: v })} />
           </Row>
           <Row label="Авто-синхронизация">
-            <Toggle checked={settings.sync_auto} onChange={(v) => upd({ sync_auto: v })} />
+            <Toggle ariaLabel="Авто-синхронизация" checked={settings.sync_auto} onChange={(v) => upd({ sync_auto: v })} />
           </Row>
           <Row label="Действия">
             <button
@@ -67,7 +73,7 @@ export default function SyncSection({ settings, upd, google, setGoogle, syncStat
                   // after a failed sync.
                   const st = await window.api.syncNow();
                   setSyncMsg(st.state === 'error' ? `Ошибка: ${st.lastError ?? 'не удалось синхронизировать'}` : 'Готово');
-                } catch (e: any) {
+                } catch (e) {
                   setSyncMsg(`Ошибка: ${errorText(e)}`);
                 }
               }}
@@ -76,10 +82,19 @@ export default function SyncSection({ settings, upd, google, setGoogle, syncStat
             </button>
             <button
               className="set-danger"
+              disabled={googleBusy}
               onClick={async () => {
-                await window.api.googleLogout();
-                setGoogle({ authed: false, email: null });
-                setSyncMsg('Вы вышли из Google');
+                if (googleBusy) return;
+                setGoogleBusy(true);
+                try {
+                  await window.api.googleLogout();
+                  setGoogle({ authed: false, email: null });
+                  setSyncMsg('Вы вышли из Google');
+                } catch (e) {
+                  setSyncMsg(`Ошибка выхода: ${errorText(e)}`);
+                } finally {
+                  setGoogleBusy(false);
+                }
               }}
             >
               Выйти

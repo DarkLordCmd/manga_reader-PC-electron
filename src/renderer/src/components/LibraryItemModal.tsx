@@ -5,10 +5,10 @@ import type { LibraryItem, ReadingStatus } from '@shared/library';
 import { READING_STATUSES } from '@shared/library';
 import { chapterLabelNumber, displayWorkTitle, likelySameWork } from '@shared/work-title';
 import { tagChipStyle } from '../lib/tag-colors';
-import { mangashiTitleUrl } from '../lib/adult';
+import { isAdultWork, mangashiTitleUrl } from '../lib/adult';
 import { useStore } from '../state/store';
 import { useChapterDownloads } from '../lib/use-chapter-downloads';
-import { useBodyScrollLock } from '../lib/use-modal';
+import { useBodyScrollLock, useDialogFocus } from '../lib/use-modal';
 import ChapterDownloadButton from './ChapterDownloadButton';
 
 const STATUS_LABELS: Record<ReadingStatus, string> = {
@@ -26,6 +26,7 @@ export interface ExternalSource {
   coverUrl: string | null;
   kind: string | null;
   adult: boolean;
+  /** 18+ age rating: not the R34 category, but still hidden when R34 is off. */
   age18: boolean;
 }
 const externalCache = new Map<string, { at: number; items: ExternalSource[] }>();
@@ -64,8 +65,13 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
   const [externalBusy, setExternalBusy] = useState<string | null>(null);
   const [externalLoading, setExternalLoading] = useState(false);
   const [externalError, setExternalError] = useState<string | null>(null);
+  const [externalSearchError, setExternalSearchError] = useState<string | null>(null);
+  const [externalRetry, setExternalRetry] = useState(0);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useDialogFocus(onClose, closeRef);
   const downloads = useChapterDownloads();
   useBodyScrollLock();
 
@@ -76,6 +82,9 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
     let cancelled = false;
     const known = new Set(alternatives.map((a) => a.source));
     const current = item.source.toLowerCase();
+    const allowExternalAdult = settings.show_r34_history;
+    const isExternalVisible = (x: Pick<ExternalSource, 'source' | 'adult' | 'age18'>): boolean =>
+      !known.has(x.source) && (allowExternalAdult || (!isAdultWork(x) && !x.age18));
     const targets = [
       { key: 'remanga', label: 'Remanga' },
       { key: 'senkuro', label: 'Senkuro' },
@@ -89,26 +98,31 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
     if (targets.length === 0) {
       setExternalSources([]);
       setExternalLoading(false);
+      setExternalSearchError(null);
       return;
     }
-    const cacheKey = `${item.url}|${item.title}`;
+    const query = displayWorkTitle(item.title);
+    const cacheKey = `${item.url}|${query}`;
     const cached = externalCache.get(cacheKey);
     if (cached && Date.now() - cached.at < EXTERNAL_TTL_MS) {
-      setExternalSources(cached.items.filter((x) => !known.has(x.source)));
+      setExternalSources(cached.items.filter(isExternalVisible));
       setExternalLoading(false);
+      setExternalSearchError(null);
       return;
     }
     setExternalSources([]);
     setExternalLoading(true);
+    setExternalSearchError(null);
     void (async () => {
       const found: ExternalSource[] = [];
+      let failedSearches = 0;
       await Promise.all(
         targets.map(async (t) => {
           try {
-            const cards = await window.api.searchCatalog(t.key, item.title, 0, 'default', {}, undefined);
+            const cards = await window.api.searchCatalog(t.key, query, 0, 'default', {}, undefined);
             const match = cards.find(
               (c) =>
-                (settings.show_r34_history || (!c.adult && !c.age18)) &&
+                (allowExternalAdult || (!isAdultWork(c) && !c.age18)) &&
                 likelySameWork({ url: item.url, title: item.title }, { url: c.url, title: c.title }),
             );
             if (match && !known.has(t.label)) {
@@ -123,23 +137,28 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
               };
               found.push(ext);
               if (!cancelled) {
-                setExternalSources((prev) => [...prev.filter((x) => x.source !== ext.source), ext]);
+                setExternalSources((prev) => [...prev.filter((x) => x.source !== ext.source), ext].filter(isExternalVisible));
               }
             }
           } catch {
-            /* source search is best-effort */
+            failedSearches += 1;
           }
         }),
       );
       if (cancelled) return;
+      if (failedSearches === targets.length) {
+        setExternalSearchError('Не удалось найти внешние источники. Проверьте соединение и повторите.');
+        setExternalLoading(false);
+        return;
+      }
       externalCache.set(cacheKey, { at: Date.now(), items: found });
-      setExternalSources(found.filter((x) => !known.has(x.source)));
+      setExternalSources(found.filter(isExternalVisible));
       setExternalLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [item.key, item.url, item.title, item.source, alternatives, settings.show_r34_history]);
+  }, [item.key, item.url, item.title, item.source, item.category, alternatives, settings.show_r34_history, externalRetry]);
 
   const switchExternalSource = async (ext: ExternalSource): Promise<void> => {
     if (!onUseExternal || externalBusy) return;
@@ -155,22 +174,13 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
   };
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    closeRef.current?.focus();
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  useEffect(() => {
+    // Reset only when another work is opened; settings broadcasts while the
+    // user is editing must not overwrite unsaved field values.
     setStatus(item.status ?? '');
     setRating(item.rating ?? 0);
     setNote(item.note);
     setTags(item.tags.join(', '));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.key]);
 
   // Chapter list for the title behind this row. Manga-shi keeps the chapter URL
@@ -195,7 +205,7 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
     return () => {
       cancelled = true;
     };
-  }, [item.key, item.url, chapterRetry]);
+  }, [item.key, item.url, item.seriesId, chapterRetry]);
 
   // Tags of the work itself, as the source lists them (Manga-shi exposes them
   // through schema.org JSON-LD on the title page).
@@ -215,7 +225,7 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
     return () => {
       cancelled = true;
     };
-  }, [item.key, item.url]);
+  }, [item.key, item.url, item.seriesId]);
 
   // Scroll the list to the chapter the row points at (long titles open on
   // chapter 1 otherwise). Layout effect: rAF is throttled while the window is
@@ -224,7 +234,7 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!list || !chapters) return;
-    const current = list.querySelector<HTMLElement>('.chapter-item.resume, .chapter-item.current');
+    const current = list.querySelector<HTMLElement>('.chapter-item.resume') ?? list.querySelector<HTMLElement>('.chapter-item.current');
     if (!current) return;
     const r = current.getBoundingClientRect();
     const l = list.getBoundingClientRect();
@@ -235,17 +245,52 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
   }, [chapters, readUpTo]);
 
   const save = async (): Promise<void> => {
-    await window.api.librarySetStatus(item.key, status === '' ? null : status);
-    await window.api.librarySetRating(item.key, rating > 0 ? rating : null);
-    await window.api.librarySetNote(item.key, note);
-    await window.api.librarySetTags(
-      item.key,
-      tags
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean),
-    );
-    onChanged();
+    if (actionBusy) return;
+    setActionBusy('save');
+    setActionError(null);
+    try {
+      await window.api.librarySetStatus(item.key, status === '' ? null : status);
+      await window.api.librarySetRating(item.key, rating > 0 ? rating : null);
+      await window.api.librarySetNote(item.key, note);
+      await window.api.librarySetTags(
+        item.key,
+        tags
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean),
+      );
+      onChanged();
+    } catch (e) {
+      setActionError(`Не удалось сохранить: ${errorText(e)}`);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const remove = async (): Promise<void> => {
+    if (actionBusy) return;
+    setActionBusy('remove');
+    setActionError(null);
+    try {
+      await window.api.libraryRemove(item.key);
+      onChanged();
+    } catch (e) {
+      setActionError(`Не удалось убрать из библиотеки: ${errorText(e)}`);
+      setActionBusy(null);
+    }
+  };
+
+  const deleteEntry = async (): Promise<void> => {
+    if (actionBusy || !window.confirm('Удалить запись из истории и библиотеки?')) return;
+    setActionBusy('delete');
+    setActionError(null);
+    try {
+      await window.api.libraryDelete(item.key);
+      onChanged();
+    } catch (e) {
+      setActionError(`Не удалось удалить запись: ${errorText(e)}`);
+      setActionBusy(null);
+    }
   };
 
   const currentUrl = normUrl(item.url);
@@ -260,9 +305,16 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="overlay-card library-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="overlay-card library-modal"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="library-item-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="overlay-head">
-          <h3 className="overlay-title" title={item.title}>
+          <h3 id="library-item-title" className="overlay-title" title={item.title}>
             {displayWorkTitle(item.title) || 'Без названия'}
           </h3>
           <button ref={closeRef} className="overlay-close" aria-label="Закрыть" title="Закрыть" onClick={onClose}>
@@ -270,7 +322,7 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
           </button>
         </div>
 
-        {(alternatives.length > 1 || externalSources.length > 0 || externalLoading) && (
+        {(alternatives.length > 1 || externalSources.length > 0 || externalLoading || externalSearchError) && (
           <div className="modal-sources">
             <span className="field-label">Источник</span>
             {alternatives.map((a) => (
@@ -278,6 +330,8 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
                 key={a.key}
                 type="button"
                 className={`source-chip${a.key === item.key ? ' active' : ''}`}
+                aria-pressed={a.key === item.key}
+                disabled={actionBusy != null}
                 title={a.url}
                 onClick={() => onSwitchSource?.(a)}
               >
@@ -293,13 +347,21 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
                 key={`${e.source}:${e.url}`}
                 type="button"
                 className="source-chip external"
-                disabled={externalBusy !== null}
+                disabled={externalBusy !== null || actionBusy != null}
                 title={`Переключиться на ${e.source}: ${e.title}`}
                 onClick={() => void switchExternalSource(e)}
               >
                 {externalBusy === e.url ? 'Переключаю…' : `${e.source} · есть`}
               </button>
             ))}
+          </div>
+        )}
+        {externalSearchError && (
+          <div className="chapter-error-row">
+            <span className="error-text">{externalSearchError}</span>
+            <button className="btn-ghost" onClick={() => setExternalRetry((n) => n + 1)}>
+              Повторить
+            </button>
           </div>
         )}
         {externalError && <div className="overlay-note error-text">{externalError}</div>}
@@ -352,10 +414,14 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
                   </button>
                 </div>
               )}
+              {chapters && chapters.length === 0 && <div className="overlay-note">Глав не найдено</div>}
               {chapters &&
                 chapters.map((c, i) => {
                   const isCurrent = normUrl(c.chapter_id) === currentUrl;
-                  const isRead = settings.read_chapters.includes(c.chapter_id) || (readUpTo != null && i <= readUpTo);
+                  const explicitlyRead = settings.read_chapters.includes(c.chapter_id);
+                  const inferredRead = readUpTo != null && i <= readUpTo;
+                  const isRead = explicitlyRead || inferredRead;
+                  const inferredOnly = inferredRead && !explicitlyRead;
                   const isResume = readUpTo != null && i === readUpTo;
                   const chapterNum = chapterLabelNumber(c.chapter_num) ?? c.chapter_num;
                   return (
@@ -363,7 +429,12 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
                       <button
                         className={`chapter-item${isCurrent ? ' current' : ''}${isResume ? ' resume' : ''}`}
                         title={c.title ? `${chapterNum} — ${c.title}` : chapterNum}
-                        onClick={() => onOpenChapter(c.chapter_id, i, chapters)}
+                        onClick={() => {
+                          setActionError(null);
+                          void Promise.resolve(onOpenChapter(c.chapter_id, i, chapters)).catch((e) => {
+                            setActionError(`Не удалось открыть главу: ${errorText(e)}`);
+                          });
+                        }}
                       >
                         <span className="chapter-num">{chapterNum}</span>
                         {c.title ? <span className="chapter-name">{c.title}</span> : null}
@@ -374,8 +445,8 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
                       />
                       <button
                         className={`chapter-toggle${isRead ? ' on' : ''}`}
-                        title={isRead ? 'Снять отметку «прочитано»' : 'Отметить прочитанной'}
-                        aria-label={isRead ? 'Снять отметку «прочитано»' : 'Отметить прочитанной'}
+                        title={inferredOnly ? 'Прочитано по прогрессу; явная отметка не задана' : isRead ? 'Снять отметку «прочитано»' : 'Отметить прочитанной'}
+                        aria-label={inferredOnly ? 'Прочитано по прогрессу; явная отметка не задана' : isRead ? 'Снять отметку «прочитано»' : 'Отметить прочитанной'}
                         aria-pressed={isRead}
                         onClick={() => void window.api.setChapterRead(c.chapter_id, !isRead)}
                       >
@@ -434,32 +505,24 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
           </div>
         </div>
 
+        {actionError && (
+          <div className="overlay-note error-text" role="alert">
+            {actionError}
+          </div>
+        )}
         <div className="overlay-actions">
-          <button
-            className="btn-danger"
-            onClick={async () => {
-              await window.api.libraryRemove(item.key);
-              onChanged();
-            }}
-          >
-            Убрать из библиотеки
+          <button className="btn-danger" disabled={actionBusy != null} onClick={() => void remove()}>
+            {actionBusy === 'remove' ? 'Убираю…' : 'Убрать из библиотеки'}
           </button>
-          <button
-            className="btn-danger"
-            onClick={async () => {
-              if (!window.confirm('Удалить запись из истории и библиотеки?')) return;
-              await window.api.libraryDelete(item.key);
-              onChanged();
-            }}
-          >
-            Удалить из истории
+          <button className="btn-danger" disabled={actionBusy != null} onClick={() => void deleteEntry()}>
+            {actionBusy === 'delete' ? 'Удаляю…' : 'Удалить из истории'}
           </button>
           <span className="actions-spacer" />
-          <button className="btn-secondary" onClick={onOpen}>
+          <button className="btn-secondary" disabled={actionBusy != null} onClick={onOpen}>
             Открыть
           </button>
-          <button className="btn-primary" onClick={() => void save()}>
-            Сохранить
+          <button className="btn-primary" disabled={actionBusy != null} onClick={() => void save()}>
+            {actionBusy === 'save' ? 'Сохраняю…' : 'Сохранить'}
           </button>
         </div>
       </div>

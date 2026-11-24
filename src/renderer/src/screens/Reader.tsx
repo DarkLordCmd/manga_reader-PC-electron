@@ -9,7 +9,8 @@ import BookView from '../components/BookView';
 import ThumbnailPanel from '../components/ThumbnailPanel';
 import ChapterListModal from '../components/ChapterListModal';
 import EhInfoModal from './reader/EhInfoModal';
-import { isReaderAtEnd, clampWidthScale, WIDTH_SCALE_DEFAULT, spreadStart, spreadIndices } from './reader/viewMath';
+import { useBodyScrollLock, useDialogFocus } from '../lib/use-modal';
+import { isReaderAtEnd, clampWidthScale, WIDTH_SCALE_DEFAULT, spreadStart } from './reader/viewMath';
 
 /** Last reading position per open gallery. Leaving the Reader screen unmounts
  * the component while `opened` stays in the store: without this, coming back
@@ -30,6 +31,12 @@ export default function Reader(): JSX.Element {
   const [archiveDltype, setArchiveDltype] = useState('org');
   const [archiveBusy, setArchiveBusy] = useState(false);
   const [showEhInfo, setShowEhInfo] = useState(false);
+  const helpDialogRef = useDialogFocus(() => setShowHelp(false), undefined, showHelp);
+  const archiveDialogRef = useDialogFocus(() => {
+    if (!archiveBusy) setArchive(null);
+  }, undefined, !!archive);
+  useBodyScrollLock(showHelp);
+  useBodyScrollLock(!!archive);
 
   // The main process orders page loading by distance from the reading position;
   // it only learned that position from the 1.2-5 s progress flush, so a fast
@@ -100,7 +107,6 @@ export default function Reader(): JSX.Element {
       const off = startScrollFor(key, fresh.read_scroll);
       setJumpTo(idx > 0 || off > 0 ? { index: idx, offset: off } : null);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, pageCount]);
 
   // Remember the position for a same-session remount of the Reader screen.
@@ -123,15 +129,6 @@ export default function Reader(): JSX.Element {
     },
     [],
   );
-
-  useEffect(() => {
-    if (!showHelp) return;
-    const fn = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setShowHelp(false);
-    };
-    window.addEventListener('keydown', fn);
-    return () => window.removeEventListener('keydown', fn);
-  }, [showHelp]);
 
   // Progress is flushed like JHenTai does: a periodic timer + a final write
   // when the reader (or gallery) closes — not an IPC on every scroll tick.
@@ -240,7 +237,7 @@ export default function Reader(): JSX.Element {
     rtl,
     // Hotkeys must not drive the reader underneath an open dialog: arrows
     // silently paged while the chapter list was open, 'm'/'t' changed settings.
-    showHelp || showChapters || !!archive,
+    showHelp || showChapters || showEhInfo || !!archive,
   );
 
   // The main process orders page loading by distance from the reading position;
@@ -382,7 +379,7 @@ export default function Reader(): JSX.Element {
       } else {
         alert('Не удалось открыть URL');
       }
-    } catch (e: any) {
+    } catch (e) {
       alert(`Не удалось открыть URL: ${errorText(e)}`);
     } finally {
       setOpeningUrl(false);
@@ -402,7 +399,7 @@ export default function Reader(): JSX.Element {
           setOpened({ kind: 'online', ...r, startPage: saved, coverUrl: current?.coverUrl ?? null, chapterList, chapterIndex });
           setShowChapters(false);
         }
-      } catch (e: any) {
+      } catch (e) {
         alert(`Не удалось открыть главу: ${errorText(e)}`);
       }
     },
@@ -420,7 +417,7 @@ export default function Reader(): JSX.Element {
       }
       setArchiveDltype(cost.options[0]?.key ?? 'org');
       setArchive(cost);
-    } catch (e: any) {
+    } catch (e) {
       alert(`Архив: ${errorText(e)}`);
     } finally {
       setArchiveBusy(false);
@@ -443,6 +440,8 @@ export default function Reader(): JSX.Element {
       }
       setArchive(null);
       alert('Архив скачивается в Downloads');
+    } catch (e) {
+      alert(`Архив: ${errorText(e)}`);
     } finally {
       setArchiveBusy(false);
     }
@@ -641,11 +640,7 @@ export default function Reader(): JSX.Element {
                 onVisible={onVisible}
                 onVisiblePos={onVisiblePos}
                 onJumpDone={onJumpDone}
-                onUserScroll={() => {
-                  // Real (non-programmatic) scrolling arms the end-of-chapter
-                  // auto-advance; slider/thumbnail/restore jumps do not.
-                  advanceArmedRef.current = true;
-                }}
+                onUserScroll={onUserScroll}
               />
             )}
             {settings.reading_mode === 'Book' && (
@@ -694,7 +689,7 @@ export default function Reader(): JSX.Element {
 
       {showHelp && (
         <div className="overlay" onClick={() => setShowHelp(false)}>
-          <div className="overlay-card">
+          <div ref={helpDialogRef} className="overlay-card" role="dialog" aria-modal="true" aria-label="Горячие клавиши" onClick={(e) => e.stopPropagation()}>
             <h3>Keyboard Shortcuts</h3>
             <ul>
               <li>← / A — Previous page{rtl ? ' (RTL: next)' : ''}</li>
@@ -713,9 +708,14 @@ export default function Reader(): JSX.Element {
       )}
 
       {archive && opened?.kind === 'online' && (
-        <div className="overlay" onClick={() => !archiveBusy && setArchive(null)}>
-          <div className="overlay-card archive-buy">
-            <h3>Скачать архив</h3>
+        <div
+          className="overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !archiveBusy) setArchive(null);
+          }}
+        >
+          <div ref={archiveDialogRef} className="overlay-card archive-buy" role="dialog" aria-modal="true" aria-labelledby="archive-buy-title" onClick={(e) => e.stopPropagation()}>
+            <h3 id="archive-buy-title">Скачать архив</h3>
             <p>{archive.costGp != null ? `Стоимость: ${archive.costGp} GP.` : 'Стоимость неизвестна.'}</p>
             {archive.options.length > 0 && (
               <label className="row">

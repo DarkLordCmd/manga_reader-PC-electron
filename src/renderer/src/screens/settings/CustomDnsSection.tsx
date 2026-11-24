@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { errorText } from '../../lib/errors';
 import Section, { Row } from './Section';
 import type { CustomDnsStatus } from '@shared/ipc';
 import type { SettingsCommon } from './useSettings';
@@ -54,8 +55,9 @@ export default function CustomDnsSection({ settings, upd }: SettingsCommon): JSX
             setDnsMsg('Проверяю DNS…');
             try {
               setDnsResults(await window.api.customDnsCheck());
-            } finally {
               setDnsMsg(null);
+            } catch (e) {
+              setDnsMsg(`Ошибка проверки DNS: ${errorText(e)}`);
             }
           }}
         >

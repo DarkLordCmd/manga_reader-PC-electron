@@ -16,6 +16,7 @@ export default function Favorites(): JSX.Element {
   const [category, setCategory] = useState<'main' | 'r34'>('main');
   const [menu, setMenu] = useState<{ x: number; y: number; item: LibraryItem } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const cat = settings.show_r34_history ? category : 'main';
 
   // Same stale-response guard as the Library screen: a slower answer for an
@@ -24,9 +25,19 @@ export default function Favorites(): JSX.Element {
   const refresh = useCallback(() => {
     const effCat = settings.show_r34_history ? category : 'main';
     const seq = ++refreshSeq.current;
-    void window.api.libraryList({ scope: 'favorites', search, sort: 'added', category: effCat }).then((r) => {
-      if (seq === refreshSeq.current) setItems(r);
-    });
+    setLoading(true);
+    setError(null);
+    void window.api
+      .libraryList({ scope: 'favorites', search, sort: 'added', category: effCat })
+      .then((r) => {
+        if (seq === refreshSeq.current) setItems(r);
+      })
+      .catch((e) => {
+        if (seq === refreshSeq.current) setError(errorText(e));
+      })
+      .finally(() => {
+        if (seq === refreshSeq.current) setLoading(false);
+      });
   }, [search, category, settings.show_r34_history]);
   useEffect(refresh, [refresh]);
   useEffect(() => window.api.onLibraryChanged(refresh), [refresh]);
@@ -49,7 +60,7 @@ export default function Favorites(): JSX.Element {
 
   const itemsFor = (it: LibraryItem): MenuItem[] =>
     buildLibraryMenuItems(
-      { url: it.url, title: it.title, coverUrl: it.coverUrl, source: it.source, seriesId: it.seriesId, kind: it.kind },
+      { url: it.url, title: it.title, coverUrl: it.coverUrl, source: it.source, seriesId: it.seriesId, kind: it.kind, adult: it.category === 'r34' },
       { key: it.key, favorited: it.favoritedAt !== null, status: it.status },
     );
 
@@ -68,7 +79,8 @@ export default function Favorites(): JSX.Element {
         <input className="catalog-search" placeholder="Поиск по названию…" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
       {error && <div className="error-text">{error}</div>}
-      {items.length === 0 && (
+      {loading && <div className="muted">Загрузка избранного…</div>}
+      {!loading && !error && items.length === 0 && (
         <div className="muted">
           {search.trim() ? 'Ничего не найдено' : 'В избранном пока пусто (правый клик по карточке в каталоге)'}
         </div>
@@ -78,12 +90,12 @@ export default function Favorites(): JSX.Element {
           <div
             key={it.key}
             className="history-card"
-            onClick={() => void open(it)}
             onContextMenu={(e) => {
               e.preventDefault();
               setMenu({ x: e.clientX, y: e.clientY, item: it });
             }}
           >
+            <button type="button" className="card-open" aria-label={`Открыть ${it.title || 'Без названия'}`} onClick={() => void open(it)} />
             <div className="history-cover">
               {it.coverUrl ? (
                 <CoverImg

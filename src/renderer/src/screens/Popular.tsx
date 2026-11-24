@@ -30,6 +30,7 @@ export default function Popular(): JSX.Element {
   } | null>(null);
 
   const reqRef = useRef(0);
+  const menuSeq = useRef(0);
   const load = useCallback(async () => {
     const id = ++reqRef.current;
     setLoading(true);
@@ -38,7 +39,7 @@ export default function Popular(): JSX.Element {
       const res = await window.api.catalogPopular(source);
       if (id !== reqRef.current) return;
       setCards(res);
-    } catch (e: any) {
+    } catch (e) {
       if (id !== reqRef.current) return;
       setCards([]);
       setError(errorText(e));
@@ -52,17 +53,29 @@ export default function Popular(): JSX.Element {
   }, [load]);
 
   const open = async (c: CatalogCard): Promise<void> => {
-    const r = await window.api.openUrl(c.url, 0, null, c.coverUrl, c.kind ?? null, null, c.adult === true);
-    if (r) {
-      setOpened({ kind: 'online', ...r, startPage: 0, coverUrl: c.coverUrl });
-      setScreen('Reader');
+    setError(null);
+    try {
+      const r = await window.api.openUrl(c.url, 0, null, c.coverUrl, c.kind ?? null, null, c.adult === true);
+      if (r) {
+        setOpened({ kind: 'online', ...r, startPage: 0, coverUrl: c.coverUrl });
+        setScreen('Reader');
+      } else {
+        setError(`Не удалось открыть «${c.title}»: источник недоступен или не поддерживается`);
+      }
+    } catch (e) {
+      setError(errorText(e));
     }
   };
 
   const openCardMenu = useCallback(async (e: React.MouseEvent, card: CatalogCard) => {
     e.preventDefault();
-    const lookup = await window.api.libraryLookup(card.url, card.url);
-    setMenu({ x: e.clientX, y: e.clientY, card, lookup });
+    const seq = ++menuSeq.current;
+    try {
+      const lookup = await window.api.libraryLookup(card.url, card.url);
+      if (seq === menuSeq.current) setMenu({ x: e.clientX, y: e.clientY, card, lookup });
+    } catch (err) {
+      if (seq === menuSeq.current) setError(errorText(err));
+    }
   }, []);
 
   const menuItems = (m: NonNullable<typeof menu>): MenuItem[] =>
@@ -74,6 +87,7 @@ export default function Popular(): JSX.Element {
         source: SOURCES.find((s) => s.key === source)?.label ?? '',
         seriesId: m.card.url,
         kind: m.card.kind ?? null,
+        adult: m.card.adult === true,
       },
       {
         key: m.lookup?.key ?? null,

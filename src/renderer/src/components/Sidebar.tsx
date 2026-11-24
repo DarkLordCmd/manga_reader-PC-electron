@@ -73,6 +73,7 @@ export default function Sidebar(): JSX.Element {
           key={it.key}
           title={it.label}
           aria-label={it.label}
+          aria-current={screen === it.key ? 'page' : undefined}
           className={`nav-btn${screen === it.key ? ' active' : ''}`}
           onClick={() => setScreen(it.key)}
         >

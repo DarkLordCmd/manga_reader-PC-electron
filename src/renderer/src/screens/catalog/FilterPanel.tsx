@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   EH_CATEGORIES,
   MANGASHI_TAGS,
@@ -20,6 +20,7 @@ import {
 } from '@shared/filters';
 import { MS_AGES, MS_SORTS, MS_STATUS, MS_TYPES, RM_ORDERING, RM_STATUS, RM_TYPES } from './constants';
 import type { CatalogSearch } from './useCatalogSearch';
+import { useBodyScrollLock, useDialogFocus } from '../../lib/use-modal';
 function FilterRow({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
   return (
     <div className="filter-row">
@@ -68,17 +69,24 @@ function TagChecklist({
   items,
   selected,
   onToggle,
+  disabled = [],
 }: {
   items: [string, string][];
   selected: string[];
   onToggle: (v: string) => void;
+  disabled?: string[];
 }): JSX.Element {
   return (
     <div className="tag-checklist">
       {items.map(([val, label]) => {
         const active = selected.includes(val);
         return (
-          <button key={val} className={`tag-check${active ? ' active' : ''}`} onClick={() => onToggle(val)}>
+          <button
+            key={val}
+            className={`tag-check${active ? ' active' : ''}`}
+            disabled={disabled.includes(val)}
+            onClick={() => onToggle(val)}
+          >
             {label}
           </button>
         );
@@ -118,8 +126,75 @@ function SubLabel({ children }: { children: React.ReactNode }): JSX.Element {
   return <div className="fsec-label">{children}</div>;
 }
 
-export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
+function LabelPickerDialog({
+  s,
+  onClose,
+  onToggleLabel,
+}: {
+  s: CatalogSearch;
+  onClose: () => void;
+  onToggleLabel: (slug: string) => void;
+}): JSX.Element {
   const [labelQuery, setLabelQuery] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useDialogFocus(onClose, inputRef);
+  useBodyScrollLock();
+  const q = labelQuery.trim().toLowerCase();
+  const filteredLabels = q
+    ? s.skLabelList.filter((l) => l.name.toLowerCase().includes(q) || l.slug.includes(q)).slice(0, 300)
+    : s.skLabelList;
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div
+        ref={dialogRef}
+        className="overlay-card label-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="label-picker-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="label-modal-head">
+          <strong id="label-picker-title">Лейблы</strong>
+          <span className="filter-note">
+            {s.skLabels.length > 0 ? `выбрано: ${s.skLabels.length}` : `${s.skLabelList.length} доступно`}
+          </span>
+          <button className="overlay-close" aria-label="Закрыть" title="Закрыть" onClick={onClose}>
+            ×
+          </button>
+        </div>
+        <input
+          ref={inputRef}
+          className="filter-input full"
+          placeholder="Поиск лейблов…"
+          value={labelQuery}
+          onChange={(e) => setLabelQuery(e.target.value)}
+        />
+        <div className="label-modal-list">
+          {filteredLabels.length === 0 ? (
+            <div className="filter-note">Ничего не найдено</div>
+          ) : (
+            filteredLabels.map((l) => (
+              <label key={l.slug} className="label-pick">
+                <input type="checkbox" checked={s.skLabels.includes(l.slug)} onChange={() => onToggleLabel(l.slug)} />
+                <span>{l.name}</span>
+              </label>
+            ))
+          )}
+        </div>
+        <div className="label-modal-foot">
+          <button disabled={s.skLabels.length === 0} onClick={() => s.setSkLabels([])}>
+            Очистить
+          </button>
+          <button className="set-primary" onClick={onClose}>
+            Готово
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     status: true,
@@ -130,10 +205,6 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
     labels: false,
   });
   const toggleSection = (key: string): void => setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
-  const q = labelQuery.trim().toLowerCase();
-  const filteredLabels = q
-    ? s.skLabelList.filter((l) => l.name.toLowerCase().includes(q) || l.slug.includes(q)).slice(0, 300)
-    : s.skLabelList;
   const toggleIn = (setter: (fn: (prev: string[]) => string[]) => void) => (v: string) =>
     setter((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
   const skActiveCount =
@@ -420,7 +491,12 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
             open={openSections.rating}
             onToggle={() => toggleSection('rating')}
           >
-            <TagChecklist items={SENKURO_RATING} selected={s.skRatings} onToggle={toggleIn(s.setSkRatings)} />
+            <TagChecklist
+              items={SENKURO_RATING}
+              selected={s.skRatings}
+              onToggle={toggleIn(s.setSkRatings)}
+              disabled={s.settings.show_r34_history ? [] : ['EXPLICIT']}
+            />
           </FilterSection>
 
           <FilterSection
@@ -557,46 +633,7 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
       )}
       </div>
       {labelsOpen && (
-        <div className="overlay" onClick={() => setLabelsOpen(false)}>
-          <div className="overlay-card label-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <div className="label-modal-head">
-              <strong>Лейблы</strong>
-              <span className="filter-note">
-                {s.skLabels.length > 0 ? `выбрано: ${s.skLabels.length}` : `${s.skLabelList.length} доступно`}
-              </span>
-              <button className="overlay-close" aria-label="Закрыть" onClick={() => setLabelsOpen(false)}>
-                ×
-              </button>
-            </div>
-            <input
-              className="filter-input full"
-              placeholder="Поиск лейблов…"
-              value={labelQuery}
-              onChange={(e) => setLabelQuery(e.target.value)}
-              autoFocus
-            />
-            <div className="label-modal-list">
-              {filteredLabels.length === 0 ? (
-                <div className="filter-note">Ничего не найдено</div>
-              ) : (
-                filteredLabels.map((l) => (
-                  <label key={l.slug} className="label-pick">
-                    <input type="checkbox" checked={s.skLabels.includes(l.slug)} onChange={() => toggleIn(s.setSkLabels)(l.slug)} />
-                    <span>{l.name}</span>
-                  </label>
-                ))
-              )}
-            </div>
-            <div className="label-modal-foot">
-              <button disabled={s.skLabels.length === 0} onClick={() => s.setSkLabels([])}>
-                Очистить
-              </button>
-              <button className="set-primary" onClick={() => setLabelsOpen(false)}>
-                Готово
-              </button>
-            </div>
-          </div>
-        </div>
+        <LabelPickerDialog s={s} onClose={() => setLabelsOpen(false)} onToggleLabel={toggleIn(s.setSkLabels)} />
       )}
     </div>
   );

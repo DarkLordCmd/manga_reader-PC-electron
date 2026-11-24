@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Section, { Row, SubHead } from './Section';
 import Toggle from '../../components/Toggle';
 import type { BridgeStatus, SenkuroImportProgress, SiteStatus, TorDiagnostics, TorStatus } from '@shared/ipc';
+import type { Settings } from '@shared/settings';
 import type { SettingsCommon } from './useSettings';
 
 const TOR_SITES: { key: string; label: string }[] = [
@@ -15,8 +16,21 @@ const TOR_SITES: { key: string; label: string }[] = [
   { key: 'mangalib', label: 'Mangalib' },
 ];
 
+type CookieField = 'onion' | 'nhentai' | 'nhentai_onion' | 'senkuro' | 'mangashi' | 'mangalib' | 'comx';
+const COOKIE_KEYS = {
+  onion: 'onion_cookies_raw',
+  nhentai: 'nhentai_cookies_raw',
+  nhentai_onion: 'nhentai_onion_cookies_raw',
+  senkuro: 'senkuro_cookies_raw',
+  mangashi: 'mangashi_cookies_raw',
+  mangalib: 'mangalib_cookies_raw',
+  comx: 'comx_cookies_raw',
+} as const;
+
 export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.Element {
   const [loginMsg, setLoginMsg] = useState<string | null>(null);
+  const [loginBusy, setLoginBusy] = useState<string | null>(null);
+  const [cookieBusy, setCookieBusy] = useState<CookieField | null>(null);
   const [torStatus, setTorStatus] = useState<TorStatus | null>(null);
   const [torChecking, setTorChecking] = useState(false);
   const [bridgeResults, setBridgeResults] = useState<BridgeStatus[] | null>(null);
@@ -48,7 +62,6 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
   useEffect(() => {
     void refreshTorInfo();
     // Diagnostics are cheap; refresh when the section opens once.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const runSkgImport = async (): Promise<void> => {
@@ -58,7 +71,7 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
     try {
       const r = await window.api.senkuroImportBookmarks({ markRead: skgMarkRead });
       setSkgMsg(r.message);
-    } catch (e: any) {
+    } catch (e) {
       setSkgMsg(`Ошибка импорта: ${errorText(e)}`);
     } finally {
       setSkgBusy(false);
@@ -72,7 +85,7 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
     try {
       await window.api.loginSite('https://remanga.org/');
       setRmMsg('Вход в Remanga сохранён. Теперь можно импортировать закладки.');
-    } catch (e: any) {
+    } catch (e) {
       setRmMsg(`Remanga: ${errorText(e)}`);
     } finally {
       setRmBusy(false);
@@ -85,8 +98,8 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
     try {
       const r = await window.api.remangaImportBookmarks();
       setRmImportMsg(r.message);
-    } catch (e: any) {
-      setRmMsg(`Ошибка импорта Remanga: ${errorText(e)}`);
+    } catch (e) {
+      setRmImportMsg(`Ошибка импорта Remanga: ${errorText(e)}`);
     } finally {
       setRmImportBusy(false);
     }
@@ -96,7 +109,7 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
     try {
       await window.api.remangaLogout();
       setRmMsg('Куки Remanga очищены.');
-    } catch (e: any) {
+    } catch (e) {
       setRmMsg(`Remanga: ${errorText(e)}`);
     }
   };
@@ -108,42 +121,66 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
   };
 
   const doLogin = async (url: string, label: string): Promise<void> => {
+    if (loginBusy) return;
+    setLoginBusy(label);
     setLoginMsg(`${label}: открываю окно логина…`);
     try {
       const cookies = await window.api.loginSite(url);
       setLoginMsg(cookies ? `${label}: куки сохранены` : `${label}: отменено`);
-    } catch (e: any) {
+    } catch (e) {
       setLoginMsg(`${label}: ошибка — ${errorText(e)}`);
+    } finally {
+      setLoginBusy(null);
     }
   };
 
-  const clearCookies = async (field: 'onion' | 'nhentai' | 'nhentai_onion' | 'senkuro' | 'mangashi' | 'mangalib' | 'comx', label: string): Promise<void> => {
+  const clearCookies = async (field: CookieField, label: string): Promise<void> => {
+    if (cookieBusy) return;
+    setCookieBusy(field);
     setLoginMsg(`${label}: очищаю куки…`);
     try {
       await window.api.clearSiteCookies(field);
       setLoginMsg(`${label}: куки очищены`);
-    } catch (e: any) {
+    } catch (e) {
       setLoginMsg(`${label}: ошибка — ${errorText(e)}`);
+    } finally {
+      setCookieBusy(null);
     }
+  };
+
+  const updateCookies = (field: CookieField, value: string, label: string): void => {
+    // Empty secrets are deliberately ignored by the main settings handler to
+    // protect fresh login-window cookies from stale renderer snapshots. An
+    // empty editor therefore has to use the explicit logout IPC instead.
+    if (value !== '') {
+      const patch: Partial<Settings> = { [COOKIE_KEYS[field]]: value };
+      upd(patch);
+      return;
+    }
+    void clearCookies(field, label);
   };
 
   return (
     <>
       <Section title="Tor и сеть" desc="Встроенный Tor, мосты и адрес SOCKS-прокси.">
         <Row label="Domain Fronting" note="Доступ к ExHentai без VPN, когда DNS заблокирован.">
-          <Toggle checked={settings.enable_domain_fronting} onChange={(v) => upd({ enable_domain_fronting: v })} />
+          <Toggle ariaLabel="Domain Fronting" checked={settings.enable_domain_fronting} onChange={(v) => upd({ enable_domain_fronting: v })} />
         </Row>
         <Row
           label="Картинки EH напрямую"
           note="Скачивать изображения с CDN (ehgt/hath) без Tor — заметно быстрее, но CDN видит ваш реальный IP. Страницы галереи/каталога всё равно идут через Tor."
         >
-          <Toggle checked={settings.eh_images_direct} onChange={(v) => upd({ eh_images_direct: v })} />
+          <Toggle ariaLabel="Картинки EH напрямую" checked={settings.eh_images_direct} onChange={(v) => upd({ eh_images_direct: v })} />
         </Row>
         <Row
           label="Оригиналы изображений EH"
           note="Читать полноразмерные оригиналы вместо ресайза 1280 px — резче на вебтунах и сканах, но больше трафика."
         >
-          <Toggle checked={settings.eh_original_images} onChange={(v) => upd({ eh_original_images: v })} />
+          <Toggle
+            ariaLabel="Оригиналы изображений EH"
+            checked={settings.eh_original_images}
+            onChange={(v) => upd({ eh_original_images: v })}
+          />
         </Row>
         <Row
           label="Кэш каталога EH"
@@ -163,7 +200,7 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
           label="Встроенный Tor"
           note="Свой демон внутри приложения: адрес Tor Browser не нужен, SOCKS на 127.0.0.1:9153."
         >
-          <Toggle checked={settings.builtin_tor} onChange={(v) => upd({ builtin_tor: v })} />
+          <Toggle ariaLabel="Встроенный Tor" checked={settings.builtin_tor} onChange={(v) => upd({ builtin_tor: v })} />
         </Row>
         <Row label="SOCKS-адрес">
           <input className="text-input" value={settings.tor_socks_addr} onChange={(e) => upd({ tor_socks_addr: e.target.value })} />
@@ -178,6 +215,8 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
               setTorStatus(null);
               try {
                 setTorStatus(await window.api.checkTor());
+              } catch (e) {
+                setLoginMsg(`Ошибка проверки Tor: ${errorText(e)}`);
               } finally {
                 setTorChecking(false);
               }
@@ -257,7 +296,17 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
           >
             Проверить мосты
           </button>
-          <button onClick={async () => setSiteResults(await window.api.checkSites())}>Доступность сайтов</button>
+          <button
+            onClick={async () => {
+              try {
+                setSiteResults(await window.api.checkSites());
+              } catch (e) {
+                setLoginMsg(`Ошибка проверки сайтов: ${errorText(e)}`);
+              }
+            }}
+          >
+            Доступность сайтов
+          </button>
         </Row>
         {bridgeResults && (
           <Row stack>
@@ -319,13 +368,14 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
           <textarea
             className="cookie-input"
             rows={4}
+            aria-label="Куки ExHentai onion"
             value={settings.onion_cookies_raw}
             placeholder="name=value по одной на строку"
-            onChange={(e) => upd({ onion_cookies_raw: e.target.value })}
+            onChange={(e) => updateCookies('onion', e.target.value, 'ExHentai onion')}
           />
         </Row>
         <Row>
-          <button onClick={() => void doLogin('http://exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion', 'ExHentai onion')}>
+          <button disabled={loginBusy != null || cookieBusy != null} onClick={() => void doLogin('http://exhentai55ld2wyap5juskbm67czulomrouspdacjamjeloj7ugjbsad.onion', 'ExHentai onion')}>
             Войти в ExHentai (onion)
           </button>
           <button className="set-danger" onClick={() => void clearCookies('onion', 'ExHentai onion')}>
@@ -345,13 +395,14 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
           <textarea
             className="cookie-input"
             rows={4}
+            aria-label="Куки NHentai onion"
             value={settings.nhentai_onion_cookies_raw}
             placeholder="name=value по одной на строку"
-            onChange={(e) => upd({ nhentai_onion_cookies_raw: e.target.value })}
+            onChange={(e) => updateCookies('nhentai_onion', e.target.value, 'NHentai onion')}
           />
         </Row>
         <Row>
-          <button onClick={() => void doLogin('http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion', 'NHentai onion')}>
+          <button disabled={loginBusy != null || cookieBusy != null} onClick={() => void doLogin('http://nhentaithbeuysdaiiqf6nkxey6qzlbtb5wlwheq22abjfehlzghtgid.onion', 'NHentai onion')}>
             Войти в NHentai (onion)
           </button>
           <button className="set-danger" onClick={() => void clearCookies('nhentai_onion', 'NHentai onion')}>
@@ -364,13 +415,14 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
           <textarea
             className="cookie-input"
             rows={4}
+            aria-label="Куки NHentai"
             value={settings.nhentai_cookies_raw}
             placeholder="name=value по одной на строку"
-            onChange={(e) => upd({ nhentai_cookies_raw: e.target.value })}
+            onChange={(e) => updateCookies('nhentai', e.target.value, 'NHentai')}
           />
         </Row>
         <Row>
-          <button onClick={() => void doLogin('https://nhentai.net', 'NHentai')}>Войти в NHentai</button>
+          <button disabled={loginBusy != null || cookieBusy != null} onClick={() => void doLogin('https://nhentai.net', 'NHentai')}>Войти в NHentai</button>
           <button className="set-danger" onClick={() => void clearCookies('nhentai', 'NHentai')}>
             Очистить куки
           </button>
@@ -413,13 +465,14 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
           <textarea
             className="cookie-input"
             rows={4}
+            aria-label="Куки Senkuro"
             value={settings.senkuro_cookies_raw}
             placeholder="name=value по одной на строку"
-            onChange={(e) => upd({ senkuro_cookies_raw: e.target.value })}
+            onChange={(e) => updateCookies('senkuro', e.target.value, 'Senkuro')}
           />
         </Row>
         <Row>
-          <button onClick={() => void doLogin('https://senkuro.me/', 'Senkuro')}>Войти в Senkuro</button>
+          <button disabled={loginBusy != null || cookieBusy != null} onClick={() => void doLogin('https://senkuro.me/', 'Senkuro')}>Войти в Senkuro</button>
           <button className="set-danger" onClick={() => void clearCookies('senkuro', 'Senkuro')}>
             Очистить куки
           </button>
@@ -451,10 +504,10 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
           label="Аккаунт"
           note={settings.mangashi_cookies_raw ? 'Куки сохранены — используются для каталога и глав.' : 'Куки не заданы. Войдите, чтобы читать с аккаунтом.'}
         >
-          <button onClick={() => void doLogin('https://manga-shi.org/login/', 'Manga-shi')}>Войти в Manga-shi</button>
+          <button disabled={loginBusy != null || cookieBusy != null} onClick={() => void doLogin('https://manga-shi.org/login/', 'Manga-shi')}>Войти в Manga-shi</button>
           <button
             className="set-danger"
-            disabled={!settings.mangashi_cookies_raw}
+            disabled={!settings.mangashi_cookies_raw || cookieBusy != null || loginBusy != null}
             onClick={() => void clearCookies('mangashi', 'Manga-shi')}
           >
             Очистить куки
@@ -466,9 +519,10 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
             <textarea
               className="cookie-input"
               rows={3}
+              aria-label="Куки Manga-shi"
               value={settings.mangashi_cookies_raw}
               placeholder="name=value; …"
-              onChange={(e) => upd({ mangashi_cookies_raw: e.target.value })}
+              onChange={(e) => updateCookies('mangashi', e.target.value, 'Manga-shi')}
             />
           </details>
         </Row>
@@ -481,10 +535,10 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
               : 'Куки не заданы. Если сайт блокирует IP — включите для Mangalib Tor/прокси в разделе «Прокси».'
           }
         >
-          <button onClick={() => void doLogin('https://mangalib.me/ru/front/auth', 'Mangalib')}>Войти в Mangalib</button>
+          <button disabled={loginBusy != null || cookieBusy != null} onClick={() => void doLogin('https://mangalib.me/ru/front/auth', 'Mangalib')}>Войти в Mangalib</button>
           <button
             className="set-danger"
-            disabled={!settings.mangalib_cookies_raw}
+            disabled={!settings.mangalib_cookies_raw || cookieBusy != null || loginBusy != null}
             onClick={() => void clearCookies('mangalib', 'Mangalib')}
           >
             Очистить куки
@@ -496,9 +550,10 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
             <textarea
               className="cookie-input"
               rows={3}
+              aria-label="Куки Mangalib"
               value={settings.mangalib_cookies_raw}
               placeholder="name=value; …"
-              onChange={(e) => upd({ mangalib_cookies_raw: e.target.value })}
+              onChange={(e) => updateCookies('mangalib', e.target.value, 'Mangalib')}
             />
           </details>
         </Row>
@@ -507,10 +562,10 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
           label="Аккаунт"
           note={settings.comx_cookies_raw ? 'Куки сохранены — используются для поиска и глав.' : 'Куки не заданы. Войдите, чтобы читать с аккаунтом.'}
         >
-          <button onClick={() => void doLogin('https://com-x.life/index.php?do=login', 'Com-X')}>Войти в Com-X</button>
+          <button disabled={loginBusy != null || cookieBusy != null} onClick={() => void doLogin('https://com-x.life/index.php?do=login', 'Com-X')}>Войти в Com-X</button>
           <button
             className="set-danger"
-            disabled={!settings.comx_cookies_raw}
+            disabled={!settings.comx_cookies_raw || cookieBusy != null || loginBusy != null}
             onClick={() => void clearCookies('comx', 'Com-X')}
           >
             Очистить куки
@@ -522,9 +577,10 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
             <textarea
               className="cookie-input"
               rows={3}
+              aria-label="Куки Com-X"
               value={settings.comx_cookies_raw}
               placeholder="name=value; …"
-              onChange={(e) => upd({ comx_cookies_raw: e.target.value })}
+              onChange={(e) => updateCookies('comx', e.target.value, 'Com-X')}
             />
           </details>
         </Row>
@@ -561,7 +617,7 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
         )}
         {loginMsg && (
           <Row stack>
-            <span className="set-note">{loginMsg}</span>
+            <span className="set-note" role="status" aria-live="polite">{loginMsg}</span>
           </Row>
         )}
         <SubHead>Библиотека Remanga</SubHead>
@@ -588,7 +644,7 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
         )}
         {rmImportMsg && (
           <Row stack>
-            <span className="set-note">{rmImportMsg}</span>
+            <span className="set-note" role="status" aria-live="polite">{rmImportMsg}</span>
           </Row>
         )}
       </Section>

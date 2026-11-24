@@ -9,22 +9,25 @@ export default function TagBar({ s }: { s: CatalogSearch }): JSX.Element | null 
       <div className="tag-input-wrap">
         <input
           className="tag-input"
+          aria-label="Тег каталога"
           value={s.tagQuery}
           placeholder="Тег (начни вводить)…"
           onChange={(e) => s.setTagQuery(e.target.value)}
         />
-        {(s.ehTags.length > 0 || s.nhTags.length > 0) && (
+        {((s.tagSource && s.ehTags.length > 0) || (s.nhTagSource && s.nhTags.length > 0)) && (
           <div className="tag-suggestions">
-            {s.ehTags.map((t) => (
-              <button key={t.display} className="tag-suggestion" onClick={() => s.appendTag(t.display)}>
-                <span style={{ color: tagNsColor(t.display) }}>●</span> {t.display}
-              </button>
-            ))}
-            {s.nhTags.map((t) => (
-              <button key={t.name} className="tag-suggestion" onClick={() => s.appendTag(t.name)}>
-                <span style={{ color: tagNsColor(t.name) }}>●</span> {t.name} <span className="muted">{t.count}</span>
-              </button>
-            ))}
+            {s.tagSource &&
+              s.ehTags.map((t) => (
+                <button key={t.display} className="tag-suggestion" onClick={() => s.appendTag(t.display)}>
+                  <span style={{ color: tagNsColor(t.display) }}>●</span> {t.display}
+                </button>
+              ))}
+            {s.nhTagSource &&
+              s.nhTags.map((t) => (
+                <button key={t.name} className="tag-suggestion" onClick={() => s.appendTag(t.name)}>
+                  <span style={{ color: tagNsColor(t.name) }}>●</span> {t.name} <span className="muted">{t.count}</span>
+                </button>
+              ))}
           </div>
         )}
       </div>

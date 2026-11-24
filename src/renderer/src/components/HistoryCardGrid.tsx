@@ -3,6 +3,7 @@ import type { ReadingStatus } from '@shared/library';
 import CoverImg from './CoverImg';
 import KindBadge from './KindBadge';
 import StatusBadge from './StatusBadge';
+import { normalizeUrl } from '../lib/status-map';
 
 interface Props {
   entries: HistoryEntry[];
@@ -28,13 +29,18 @@ export default function HistoryCardGrid({ entries, onContinue, onAddToLibrary, o
           <div
             key={e.series_id}
             className="history-card"
-            onClick={() => onContinue(e)}
             onContextMenu={onContextMenu ? (ev) => onContextMenu(ev, e) : undefined}
           >
+            <button
+              type="button"
+              className="card-open"
+              aria-label={`${btnLabel}: ${e.title || 'Без названия'}`}
+              onClick={() => onContinue(e)}
+            />
             <div className="history-cover">
               <CoverImg url={e.cover_url} className={blurAdult && e.category === 'r34' ? 'blur-adult' : undefined} />
               <KindBadge kind={e.kind} />
-              <StatusBadge status={statuses?.[e.url] ?? statuses?.[e.series_id]} />
+              <StatusBadge status={statuses?.[e.url] ?? statuses?.[normalizeUrl(e.url)] ?? statuses?.[e.series_id] ?? statuses?.[normalizeUrl(e.series_id)]} />
             </div>
             <div className="history-title" title={e.title}>
               {e.title || 'Без названия'}
@@ -53,6 +59,7 @@ export default function HistoryCardGrid({ entries, onContinue, onAddToLibrary, o
               {onAddToLibrary && (
                 <button
                   className="continue-btn"
+                  aria-label={`Добавить в библиотеку: ${e.title || 'Без названия'}`}
                   onClick={(ev) => {
                     ev.stopPropagation();
                     onAddToLibrary(e);

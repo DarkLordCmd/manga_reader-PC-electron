@@ -65,13 +65,18 @@ export default function SecuritySection(): JSX.Element {
       setPinMsg('Введи текущий PIN');
       return;
     }
-    const ok = await window.api.pinRemovePin(pinCurrent);
-    if (ok) {
-      setPinHas(false);
-      setPinMsg('PIN удалён');
-      setPinCurrent('');
-    } else {
-      setPinMsg('Неверный текущий PIN');
+    try {
+      const ok = await window.api.pinRemovePin(pinCurrent);
+      if (ok) {
+        setPinHas(false);
+        setPinMsg('PIN удалён');
+        setPinCurrent('');
+      } else {
+        setPinMsg('Неверный текущий PIN');
+        await refreshHasPin();
+      }
+    } catch (e) {
+      setPinMsg(`Ошибка: ${errorText(e)}`);
       await refreshHasPin();
     }
   };
@@ -85,6 +90,7 @@ export default function SecuritySection(): JSX.Element {
         <Row label="Текущий PIN">
           <input
             className="text-input narrow"
+            aria-label="Текущий PIN"
             type="password"
             inputMode="numeric"
             maxLength={8}
@@ -96,6 +102,7 @@ export default function SecuritySection(): JSX.Element {
       <Row label={pinHas ? 'Новый PIN' : 'PIN'} note="6–8 цифр (цифры)">
         <input
           className="text-input narrow"
+          aria-label={pinHas ? 'Новый PIN' : 'PIN'}
           type="password"
           inputMode="numeric"
           maxLength={8}

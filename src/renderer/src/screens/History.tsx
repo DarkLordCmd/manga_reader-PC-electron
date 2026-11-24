@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useStore } from '../state/store';
 import type { HistoryEntry } from '@shared/types';
 import type { ReadingStatus } from '@shared/library';
@@ -6,13 +6,17 @@ import HistoryCardGrid from '../components/HistoryCardGrid';
 import ContextMenu from '../components/ContextMenu';
 import { buildLibraryMenuItems } from '../lib/library-menu';
 import { resolveAdultFlag } from '../lib/adult';
+import { errorText } from '../lib/errors';
 import { useReadingStatuses } from '../lib/use-statuses';
 
 export default function History(): JSX.Element {
   const { settings, setOpened, setScreen } = useStore();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const statuses = useReadingStatuses();
   const [activeTab, setActiveTab] = useState(0);
+  const menuSeq = useRef(0);
   const [menu, setMenu] = useState<{
     x: number;
     y: number;
@@ -21,12 +25,21 @@ export default function History(): JSX.Element {
   } | null>(null);
 
   const refresh = useCallback(() => {
-    window.api.getHistory().then(setEntries);
+    setLoading(true);
+    setError(null);
+    window.api
+      .getHistory()
+      .then(setEntries)
+      .catch((e) => setError(errorText(e)))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(refresh, [refresh]);
 
   useEffect(() => window.api.onLibraryChanged(refresh), [refresh]);
+  useEffect(() => {
+    if (!settings.show_r34_history) setActiveTab(0);
+  }, [settings.show_r34_history]);
 
   const visible =
     activeTab === 1 && settings.show_r34_history
@@ -38,47 +51,63 @@ export default function History(): JSX.Element {
     // filter), so ask first — one stray click used to wipe the main history
     // while the user was standing on the R34 tab.
     if (!window.confirm('Очистить всю историю просмотров (Main и R34)?')) return;
-    await window.api.clearHistory();
-    refresh();
+    try {
+      await window.api.clearHistory();
+      refresh();
+    } catch (e) {
+      setError(errorText(e));
+    }
   };
 
   const onContinue = async (e: HistoryEntry): Promise<void> => {
-    if (e.url.startsWith('file://')) {
-      const g = await window.api.openFolder(e.url.slice('file://'.length));
-      if (g) {
-        setOpened({ kind: 'local', ...g, startPage: Math.max(0, e.current_page - 1) });
-        setScreen('Reader');
+    setError(null);
+    try {
+      if (e.url.startsWith('file://')) {
+        const g = await window.api.openFolder(e.url.slice('file://'.length));
+        if (g) {
+          setOpened({ kind: 'local', ...g, startPage: Math.max(0, e.current_page - 1) });
+          setScreen('Reader');
+        }
+        return;
       }
-      return;
-    }
-    const adult = await resolveAdultFlag(e.url, e.category === 'r34');
-    const r = await window.api.openUrl(e.url, Math.max(0, e.current_page - 1), e.series_id, e.cover_url ?? null, e.kind ?? null, null, adult);
-    if (r) {
-      setOpened({ kind: 'online', ...r, startPage: Math.max(0, e.current_page - 1), coverUrl: e.cover_url ?? null });
-      setScreen('Reader');
-      // Fetch the chapter list so the reader can show chapters and
-      // auto-advance to the next one (mirrors the original app's
-      // background chapter fetch on "Continue").
-      void window.api
-        .fetchChapterList(e.series_id)
-        .then((chapters) => {
-          const idx = chapters.findIndex((c) => c.chapter_id === e.url);
-          setOpened((prev) =>
-            prev && prev.kind === 'online' && prev.url === e.url
-              ? { ...prev, chapterList: chapters, chapterIndex: idx >= 0 ? idx : null }
-              : prev,
-          );
-        })
-        .catch(() => {
-          /* leave as-is */
-        });
+      const adult = await resolveAdultFlag(e.url, e.category === 'r34');
+      const r = await window.api.openUrl(e.url, Math.max(0, e.current_page - 1), e.series_id, e.cover_url ?? null, e.kind ?? null, null, adult);
+      if (r) {
+        setOpened({ kind: 'online', ...r, startPage: Math.max(0, e.current_page - 1), coverUrl: e.cover_url ?? null });
+        setScreen('Reader');
+        // Fetch the chapter list so the reader can show chapters and
+        // auto-advance to the next one (mirrors the original app's
+        // background chapter fetch on "Continue").
+        void window.api
+          .fetchChapterList(e.series_id)
+          .then((chapters) => {
+            const idx = chapters.findIndex((c) => c.chapter_id === e.url);
+            setOpened((prev) =>
+              prev && prev.kind === 'online' && prev.url === e.url
+                ? { ...prev, chapterList: chapters, chapterIndex: idx >= 0 ? idx : null }
+                : prev,
+            );
+          })
+          .catch(() => {
+            /* leave as-is */
+          });
+      } else {
+        setError(`Не удалось открыть «${e.title}»: источник недоступен или не поддерживается`);
+      }
+    } catch (err) {
+      setError(errorText(err));
     }
   };
 
   const openMenu = useCallback(async (e: React.MouseEvent, entry: HistoryEntry) => {
     e.preventDefault();
-    const lookup = await window.api.libraryLookup(entry.url, entry.series_id);
-    setMenu({ x: e.clientX, y: e.clientY, entry, lookup });
+    const seq = ++menuSeq.current;
+    try {
+      const lookup = await window.api.libraryLookup(entry.url, entry.series_id);
+      if (seq === menuSeq.current) setMenu({ x: e.clientX, y: e.clientY, entry, lookup });
+    } catch (e) {
+      if (seq === menuSeq.current) setError(errorText(e));
+    }
   }, []);
 
   return (
@@ -95,7 +124,10 @@ export default function History(): JSX.Element {
         <div className="spacer" />
         <button onClick={() => void clear()}>🗑 Очистить</button>
       </div>
-      {visible.length === 0 ? (
+      {error && <div className="error-text">{error}</div>}
+      {loading ? (
+        <div className="empty muted">Загрузка истории…</div>
+      ) : visible.length === 0 ? (
         <div className="empty muted">Нет истории просмотров</div>
       ) : (
         <HistoryCardGrid
@@ -131,6 +163,7 @@ export default function History(): JSX.Element {
               source: menu.entry.source,
               seriesId: menu.entry.series_id,
               kind: menu.entry.kind,
+              adult: menu.entry.category === 'r34',
             },
             { key: menu.lookup?.key ?? null, favorited: !!menu.lookup?.favorited, status: menu.lookup?.status ?? null },
             [
@@ -138,9 +171,15 @@ export default function History(): JSX.Element {
                 label: 'Удалить из истории',
                 danger: true,
                 onClick: async () => {
-                  const l = menu.lookup?.key ? menu.lookup : await window.api.libraryLookup(menu.entry.url, menu.entry.series_id);
-                  if (l) await window.api.libraryDelete(l.key);
-                  refresh();
+                  try {
+                    const l = menu.lookup?.key
+                      ? menu.lookup
+                      : await window.api.libraryLookup(menu.entry.url, menu.entry.series_id);
+                    if (l) await window.api.libraryDelete(l.key);
+                    refresh();
+                  } catch (e) {
+                    setError(errorText(e));
+                  }
                 },
               },
             ],

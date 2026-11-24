@@ -24,7 +24,7 @@ export default function BackupSection(): JSX.Element {
   return (
     <Section title="Резервная копия">
       <Row label="Секреты в копии" note="Куки, прокси и аккаунты источников — только для личного архива.">
-        <Toggle checked={includeSecrets} onChange={setIncludeSecrets} />
+        <Toggle ariaLabel="Секреты в копии" checked={includeSecrets} onChange={setIncludeSecrets} />
       </Row>
       <Row label="Файл копии">
         <button

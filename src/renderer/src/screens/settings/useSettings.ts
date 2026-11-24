@@ -34,8 +34,8 @@ export function useSettings(): {
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    window.api.googleAuthStatus().then(setGoogle);
-    window.api.syncGetState().then(setSyncState);
+    window.api.googleAuthStatus().then(setGoogle).catch(() => setGoogle({ authed: false, email: null }));
+    window.api.syncGetState().then(setSyncState).catch(() => setSyncMsg('Не удалось загрузить состояние синхронизации'));
     return window.api.onSyncChanged(setSyncState);
   }, []);
 

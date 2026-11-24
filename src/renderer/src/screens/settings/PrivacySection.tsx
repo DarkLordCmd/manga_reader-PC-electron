@@ -9,13 +9,13 @@ export default function PrivacySection({ settings, upd }: SettingsCommon): JSX.E
         label="Контент R34"
         note="Источники каталога, «Популярное» и вкладки R34 в истории, библиотеке и избранном."
       >
-        <Toggle checked={settings.show_r34_history} onChange={(v) => upd({ show_r34_history: v })} />
+        <Toggle ariaLabel="Контент R34" checked={settings.show_r34_history} onChange={(v) => upd({ show_r34_history: v })} />
       </Row>
       <Row
         label="Размывать 18+ обложки"
         note="Показывать обложки 18+ работ (каталог, библиотека, история, подсказки) размытыми. Сами изображения и чтение не меняются."
       >
-        <Toggle checked={settings.blur_adult_covers} onChange={(v) => upd({ blur_adult_covers: v })} />
+        <Toggle ariaLabel="Размывать 18+ обложки" checked={settings.blur_adult_covers} onChange={(v) => upd({ blur_adult_covers: v })} />
       </Row>
     </Section>
   );

@@ -41,11 +41,23 @@ function saveAdultCache(cache: Map<string, boolean>): void {
   }
 }
 
-export function useCatalogSearch() {  const { setScreen, setOpened, settings, setSettings, settingsReady } = useStore();
+export function useCatalogSearch() {
+  const { setScreen, setOpened, settings, setSettings, settingsReady } = useStore();
   const [source, setSource] = useState(() => {
     const s = settings.last_catalog_source || 'mangadex';
     return !settings.show_r34_history && R34_SOURCES.includes(s) ? 'mangadex' : s;
   });
+  const [sourceRestored, setSourceRestored] = useState(false);
+  const restoredSourceRef = useRef(source);
+  const filterTimerRef = useRef<number | null>(null);
+  const filterSearchSeqRef = useRef(0);
+  const cancelPendingFilterSearch = useCallback((): void => {
+    filterSearchSeqRef.current++;
+    if (filterTimerRef.current != null) {
+      window.clearTimeout(filterTimerRef.current);
+      filterTimerRef.current = null;
+    }
+  }, []);
 
   // Senkuro exposes ~1100 labels; fetch the dictionary once per session (it is
   // cached for 12 h in the main process) so the filter panel can offer names.
@@ -59,17 +71,25 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
         skLabelsRequested.current = false;
       });
   }, [source]);
-  const [query, setQuery] = useState('');
+  const [query, setQueryState] = useState('');
+  const setQuery = useCallback(
+    (value: string): void => {
+      cancelPendingFilterSearch();
+      setQueryState(value);
+    },
+    [cancelPendingFilterSearch],
+  );
   const [sort, setSort] = useState('relevance');
   const [page, setPage] = useState(0);
   const [cards, setCards] = useState<CatalogCard[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<CatalogCard | null>(null);
   const [chapters, setChapters] = useState<ChapterListItem[] | null>(null);
   const [chapterError, setChapterError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
   const [tagQuery, setTagQuery] = useState('');
+  const tagSuggestSeqRef = useRef(0);
   const [ehTags, setEhTags] = useState<{ display: string }[]>([]);
   const [nhTags, setNhTags] = useState<{ name: string; count: number }[]>([]);
   const [exAccounts, setExAccounts] = useState<ExAccount[]>([]);
@@ -129,6 +149,8 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
   const [mdLangs, setMdLangs] = useState<string[]>([]);
   const [nhFilterTags, setNhFilterTags] = useState<string[]>([]);
   const [menu, setMenu] = useState<CatalogMenu | null>(null);
+  const menuSeqRef = useRef(0);
+  const exAccountSeqRef = useRef(0);
 
   const sentinelRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -138,6 +160,9 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
   const searchIdRef = useRef(0);
   /** Separate sequence for chapter-list requests (see openChapters). */
   const chaptersSeqRef = useRef(0);
+  const chapterOpenSeqRef = useRef(0);
+  const openingRef = useRef(false);
+  const failedSearchRef = useRef<{ page: number; append: boolean } | null>(null);
   /** Signature of the last SUCCESSFUL non-append search (dedupe of double triggers). */
   const completedSigRef = useRef('');
   /** Cursor actually used to fetch each page, keyed `<sig>|<page>`: Senkuro has
@@ -194,7 +219,7 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
     senkuroStatuses: skStatus,
     senkuroTypes: skType,
     senkuroFormats: skFormat,
-    senkuroRatings: skRatings,
+    senkuroRatings: settings.show_r34_history ? skRatings : skRatings.filter((r) => r !== 'EXPLICIT'),
     senkuroSources: skSources,
     senkuroTranslation: skTranslation,
     senkuroCountries: skCountries,
@@ -226,16 +251,37 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
     : settings.quick_searches.filter((q) => !R34_SOURCES.includes(q.source));
 
   useEffect(() => {
-    if (tagQuery.trim().length < 2) {
-      setEhTags([]);
-      setNhTags([]);
-      return;
-    }
-    const t = setTimeout(async () => {
-      if (tagSource) setEhTags(await window.api.ehTagSuggest(tagQuery));
-      else if (nhTagSource) setNhTags(await window.api.nhentaiTagSuggest(tagQuery));
+    const id = ++tagSuggestSeqRef.current;
+    // Never show the previous source's (or query's) rows during the debounce.
+    setEhTags([]);
+    setNhTags([]);
+    const q = tagQuery.trim();
+    if (q.length < 2) return;
+    const t = window.setTimeout(() => {
+      if (tagSource) {
+        void window.api
+          .ehTagSuggest(q)
+          .then((tags) => {
+            if (id === tagSuggestSeqRef.current) setEhTags(tags);
+          })
+          .catch(() => {
+            if (id === tagSuggestSeqRef.current) setEhTags([]);
+          });
+      } else if (nhTagSource) {
+        void window.api
+          .nhentaiTagSuggest(q)
+          .then((tags) => {
+            if (id === tagSuggestSeqRef.current) setNhTags(tags);
+          })
+          .catch(() => {
+            if (id === tagSuggestSeqRef.current) setNhTags([]);
+          });
+      }
     }, 300);
-    return () => clearTimeout(t);
+    return () => {
+      window.clearTimeout(t);
+      if (id === tagSuggestSeqRef.current) tagSuggestSeqRef.current++;
+    };
   }, [tagQuery, tagSource, nhTagSource]);
 
   useEffect(() => {
@@ -285,12 +331,34 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cards]);
 
+  // Restore the source before the first search. The store starts with defaults;
+  // searching its temporary MangaDex source wasted a request and could race the
+  // real source restored from settings.
+  useEffect(() => {
+    if (!settingsReady || sourceRestored) return;
+    const saved = settings.last_catalog_source;
+    const restored = saved && (!settings.show_r34_history || !R34_SOURCES.includes(saved)) ? saved : source;
+    restoredSourceRef.current = restored;
+    setSourceRestored(true);
+    if (restored !== source) {
+      searchIdRef.current++;
+      completedSigRef.current = '';
+      pageCursorRef.current.clear();
+      cancelPendingFilterSearch();
+      setSkRatings((prev) => prev.filter((r) => r !== 'EXPLICIT'));
+      setSource(restored);
+    }
+    // Source restoration is deliberately a one-time hydration step.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsReady, settings.last_catalog_source, settings.show_r34_history, sourceRestored]);
+
   // ensure_searched: auto-load the feed on open and whenever the source changes.
   // The previous in-flight search is invalidated: search() bumps searchIdRef and
   // discards any response that arrives after a newer search has started.
   // The last rendered list is restored from localStorage first, so the first
   // paint after a launch is instant instead of a spinner + Tor round-trip.
   useEffect(() => {
+    if (!sourceRestored || restoredSourceRef.current !== source) return;
     try {
       const raw = localStorage.getItem(CATALOG_CACHE_KEY);
       if (raw) {
@@ -303,9 +371,8 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
     } catch {
       /* corrupt cache — ignore */
     }
-    void search(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source]);
+    void searchRef.current(0);
+  }, [source, sourceRestored]);
 
   const exIsAccountSource = source === 'exhentai' || source === 'ehentai';
 
@@ -318,6 +385,11 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
 
   const exSource = source === 'exhentai' || source === 'exhentai_onion' || source === 'ehentai';
 
+  const adultTagCache = useRef<Map<string, boolean>>(loadAdultCache());
+  const [adultCacheVersion, setAdultCacheVersion] = useState(0);
+  const [adultResolving, setAdultResolving] = useState(false);
+  const adultRequestsRef = useRef(new Set<string>());
+
   // Instant local filtering: the network round-trip through Tor/onion takes
   // seconds, so the already-loaded list is filtered by category immediately and
   // the authoritative result replaces it when it arrives.
@@ -325,8 +397,17 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
     const base = exSource ? filterCardsByEhKinds(cards, ehExcludedCats) : cards;
     // R34 rule: every 18+ work (adult/hentai/smut OR the age-18 badge) must stay
     // hidden while the privacy toggle is off, not just R34 sources as a whole.
-    return settings.show_r34_history ? base : base.filter((c) => !c.adult && !c.age18);
-  }, [cards, exSource, ehExcludedCats, settings.show_r34_history]);
+    return settings.show_r34_history
+      ? base
+      : base.filter((c) => {
+          if (c.adult || c.age18) return false;
+          // Manga-shi listings do not include a reliable adult flag. Until the
+          // tag lookup resolves, fail closed instead of flashing an 18+ cover.
+          return source !== 'mangashi' || adultTagCache.current.has(c.url);
+        });
+  }, [cards, exSource, ehExcludedCats, settings.show_r34_history, source, adultCacheVersion]);
+  const allAdultHidden =
+    !settings.show_r34_history && cards.length > 0 && cards.every((c) => c.adult === true || c.age18 === true);
   // The 18+ filter is part of R34: when the privacy toggle is turned off, drop
   // it so the catalogue falls back to safe results instead of searching and
   // then hiding every card.
@@ -348,20 +429,34 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
    * flag from the title's tags instead (one lazy request per card, cached). */
   const adultTagCache = useRef<Map<string, boolean>>(loadAdultCache());
   const enrichMangashiAdults = useCallback(async (list: CatalogCard[]): Promise<void> => {
-    const pending = list.filter((c) => !adultTagCache.current.has(c.url));
-    if (pending.length > 0) {
-      try {
-        const resolved = await window.api.catalogAdultBatch(pending.map((c) => c.url));
-        for (const [url, adult] of Object.entries(resolved)) adultTagCache.current.set(url, adult);
-        saveAdultCache(adultTagCache.current);
-      } catch {
-        /* leave unresolved — the next cards update retries */
+    const pending = [...new Set(list.map((c) => c.url))].filter(
+      (url) => !adultTagCache.current.has(url) && !adultRequestsRef.current.has(url),
+    );
+    for (const url of pending) adultRequestsRef.current.add(url);
+    if (pending.length > 0) setAdultResolving(true);
+    try {
+      // The IPC schema caps a batch at 60 URLs. Infinite scroll can accumulate
+      // more than that before enrichment finishes, so chunk and deduplicate.
+      for (let i = 0; i < pending.length; i += 60) {
+        const chunk = pending.slice(i, i + 60);
+        try {
+          const resolved = await window.api.catalogAdultBatch(chunk);
+          for (const [url, adult] of Object.entries(resolved)) adultTagCache.current.set(url, adult);
+        } catch {
+          // Leave this chunk unresolved and hidden while R34 is off.
+        }
       }
+      if (pending.length > 0) {
+        saveAdultCache(adultTagCache.current);
+        // A resolved `false` may not change the card object, but it must make the
+        // fail-closed filter above recompute and reveal the now-known-safe row.
+        setAdultCacheVersion((v) => v + 1);
+      }
+    } finally {
+      for (const url of pending) adultRequestsRef.current.delete(url);
+      if (adultRequestsRef.current.size === 0) setAdultResolving(false);
     }
-    // Apply even when nothing was pending: a fresh page/prefetch replaces the
-    // card objects, and those copies need the cached flag re-applied. Return the
-    // previous array when nothing changed — a new array identity would re-trigger
-    // the effect below and spin the renderer (black window).
+    // Apply cached flags to fresh page/prefetch card objects as well.
     setCards((prev) => {
       let changed = false;
       const next = prev.map((c) => {
@@ -392,9 +487,22 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
       // Two effects can fire for one user action (source switch + tag/filters
       // debounce, quick-search apply): the first result was thrown away by the
       // request-id guard, i.e. a wasted Tor round-trip. An explicit "Найти"
-      // passes force.
-      if (!force && !append && sig === completedSigRef.current && cards.length > 0) return;
+      // passes force and cancels a filter debounce that has not fired yet.
+      if (!force && !append && sig === completedSigRef.current && cards.length > 0) {
+        // Returning to an already completed result must also cancel a different
+        // request still in flight; otherwise its late response replaces the
+        // completed list the dedupe just chose to keep.
+        if (loadingRef.current && sigRef.current !== sig) {
+          searchIdRef.current++;
+          loadingRef.current = false;
+          setLoading(false);
+        }
+        sigRef.current = sig;
+        return;
+      }
+      if (force) cancelPendingFilterSearch();
       const id = ++searchIdRef.current;
+      failedSearchRef.current = null;
       loadingRef.current = true;
       setLoading(true);
       setError(null);
@@ -442,11 +550,16 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
             /* quota — cache is optional */
           }
         }
-        setPage(p);
+        // An empty/duplicate append is the end of the list, not a new page.
+        if (!append || next.length > prev.length) setPage(p);
         // Stop infinite scroll once a page returns nothing new (end of list, or a
-        // source that ignores the offset). Otherwise `page` keeps growing and the
-        // sentinel refetches forever.
-        const more = res.length > 0 && (!append || next.length > prev.length);
+        // source that ignores the offset). Senkuro's free-text endpoint has no
+        // forward cursor: asking for page 1 would only repeat page 0.
+        const nextCursor = cursorFor(next, 'next');
+        const more =
+          res.length > 0 &&
+          (source !== 'senkuro' || !!nextCursor) &&
+          (!append || next.length > prev.length);
         setHasMore(more);
         // Prefetch the NEXT page in the background so it appends instantly when the
         // sentinel is reached — seamless, with no visible "Загрузка…" pause.
@@ -454,8 +567,7 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
         // request rate", and the prefetch doubled the number of listing requests
         // (through a shared Tor exit that trips the ban fast). Pages load on
         // demand there instead, and the main process paces those requests.
-        if (more && !exSource && !pages.has(p + 1)) {
-          const nextCursor = cursorFor(next, 'next');
+        if (more && !exSource && !pages.has(p + 1) && (source !== 'senkuro' || nextCursor)) {
           void window.api
             .searchCatalog(source, effectiveQuery, p + 1, sort, filters, nextCursor)
             .then((cards2) => {
@@ -470,6 +582,7 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
         }
       } catch (e: any) {
         if (id !== searchIdRef.current) return;
+        failedSearchRef.current = { page: p, append };
         if (!append) {
           // A page past the end usually throws "Ничего не найдено"; wiping the
           // cards in pager mode hid the pager itself, so the user was stuck on
@@ -485,11 +598,16 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
         }
       }
     },
-    [source, query, pickedTags, sort, filters, exSource, page, cards],
+    [source, query, pickedTags, sort, filters, exSource, page, cards, cancelPendingFilterSearch],
   );
 
   // Keep the latest search/fn state in refs so the sentinel observer is stable
   // (it must not be recreated on every render — see the effect below).
+  const retrySearch = useCallback(async (): Promise<void> => {
+    const target = failedSearchRef.current ?? { page: 0, append: false };
+    await search(target.page, target.append, true);
+  }, [search]);
+
   searchRef.current = search;
   loadingRef.current = loading;
   pageRef.current = page;
@@ -499,6 +617,8 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
     searchIdRef.current++;
     completedSigRef.current = '';
     pageCursorRef.current.clear();
+    cancelPendingFilterSearch();
+    setSkRatings((prev) => prev.filter((r) => r !== 'EXPLICIT'));
     setSource(s);
     setCards([]);
     setError(null);
@@ -516,20 +636,6 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
     if (!settings.show_r34_history && R34_SOURCES.includes(source)) changeSource('mangadex');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.show_r34_history]);
-
-  // Restore the source the user was last on. `useState` above runs on the very
-  // first render, when the store still holds defaultSettings() (the real file
-  // arrives asynchronously), so reading it there always yielded 'mangadex'.
-  const sourceHydrated = useRef(false);
-  useEffect(() => {
-    if (!settingsReady || sourceHydrated.current) return;
-    sourceHydrated.current = true;
-    const saved = settings.last_catalog_source;
-    if (!saved || saved === source) return;
-    if (!settings.show_r34_history && R34_SOURCES.includes(saved)) return;
-    setSource(saved);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settingsReady, settings.last_catalog_source, settings.show_r34_history]);
 
   const resetFilters = (): void => {
     setEhExcludedCats(0);
@@ -579,13 +685,18 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
       return;
     }
     scrollToTop();
-    const t = setTimeout(() => {
-      void search(0);
+    const id = ++filterSearchSeqRef.current;
+    const t = window.setTimeout(() => {
+      if (filterTimerRef.current === t) filterTimerRef.current = null;
+      if (id !== filterSearchSeqRef.current) return;
+      void searchRef.current(0);
     }, 300);
-    return () => clearTimeout(t);
-    // search is recreated with the fresh filters on each render — the timer
-    // always resolves against the newest state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    filterTimerRef.current = t;
+    return () => {
+      window.clearTimeout(t);
+      if (filterTimerRef.current === t) filterTimerRef.current = null;
+      if (id === filterSearchSeqRef.current) filterSearchSeqRef.current++;
+    };
   }, [filterSig, sort]);
 
   // Quick-search preset launch for the SAME source: [source] won't change, so
@@ -598,8 +709,7 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
       return;
     }
     scrollToTop();
-    void search(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void searchRef.current(0);
   }, [quickSearchSeq]);
 
   // Infinite scroll: load the next page when the scroll container approaches
@@ -656,6 +766,9 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
     // opening B let A's chapter list land under B's header (and `openChapter`
     // then opened the wrong work / wrote progress for the wrong chapters).
     const seq = ++chaptersSeqRef.current;
+    chapterOpenSeqRef.current++;
+    openingRef.current = false;
+    setOpening(false);
     setPicked(card);
     setChapters(null);
     setChapterError(null);
@@ -669,6 +782,19 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
     }
   }, []);
 
+  const closeChapters = useCallback((): void => {
+    chaptersSeqRef.current++;
+    chapterOpenSeqRef.current++;
+    openingRef.current = false;
+    setOpening(false);
+    setChapterError(null);
+    setPicked(null);
+  }, []);
+
+  const retryChapters = useCallback((): void => {
+    if (picked) void openChapters(picked);
+  }, [picked, openChapters]);
+
   const onSelectCard = useCallback(
     (c: CatalogCard): void => {
       void openChapters(c);
@@ -677,16 +803,19 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
   );
 
   const openChapter = async (chapterId: string, chapterIndex: number): Promise<void> => {
-    const mangaId = picked?.url ?? null;
-    const coverUrl = picked?.coverUrl ?? null;
+    if (!picked || openingRef.current) return;
+    const mangaId = picked.url;
+    const coverUrl = picked.coverUrl;
+    const seq = ++chapterOpenSeqRef.current;
+    openingRef.current = true;
     setOpening(true);
     setChapterError(null);
     try {
       // The badge enrichment is asynchronous: a card clicked before it finishes
       // has no `adult` yet. Resolve it here so the history/library row still
       // lands in the correct tab.
-      let adult = picked?.adult;
-      if (adult === undefined && mangaId) {
+      let adult = picked.adult;
+      if (adult === undefined) {
         try {
           const resolved = await window.api.catalogAdultBatch([mangaId]);
           adult = resolved[mangaId] === true;
@@ -694,9 +823,11 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
           /* keep undefined */
         }
       }
-      const r = await window.api.openUrl(chapterId, 0, mangaId, coverUrl, picked?.kind ?? null, chapterIndex, adult === true);
+      if (seq !== chapterOpenSeqRef.current) return;
+      const r = await window.api.openUrl(chapterId, 0, mangaId, coverUrl, picked.kind ?? null, chapterIndex, adult === true);
+      if (seq !== chapterOpenSeqRef.current) return;
       if (r) {
-        if (source === 'mangadex' && mangaId && chapters) {
+        if (source === 'mangadex' && chapters) {
           const total = chapters.length;
           const progress = { ...settings.read_progress, [mangaId]: [chapterIndex + 1, total] as [number, number] };
           setSettings({ ...settings, read_progress: progress });
@@ -708,9 +839,12 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
         setChapterError('Не удалось открыть главу: неверный URL или источник не поддерживается');
       }
     } catch (e: any) {
-      setChapterError(errorText(e));
+      if (seq === chapterOpenSeqRef.current) setChapterError(errorText(e));
     } finally {
-      setOpening(false);
+      if (seq === chapterOpenSeqRef.current) {
+        openingRef.current = false;
+        setOpening(false);
+      }
     }
   };
 
@@ -720,26 +854,42 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
 
   const openCardMenu = useCallback(async (e: React.MouseEvent, card: CatalogCard) => {
     e.preventDefault();
-    const lookup = await window.api.libraryLookup(card.url, card.url);
-    setMenu({ x: e.clientX, y: e.clientY, card, lookup });
+    const seq = ++menuSeqRef.current;
+    try {
+      const lookup = await window.api.libraryLookup(card.url, card.url);
+      if (seq === menuSeqRef.current) setMenu({ x: e.clientX, y: e.clientY, card, lookup });
+    } catch (err) {
+      if (seq === menuSeqRef.current) setExNotice(errorText(err));
+    }
   }, []);
 
   const setExAccount = (id: number): void => {
-    void window.api.setExAccount(id).then((r) => {
-      setExAccounts(r.accounts);
-      setExCurrentId(r.currentId);
-    });
+    const seq = ++exAccountSeqRef.current;
+    void (async () => {
+      try {
+        const r = await window.api.setExAccount(id);
+        if (seq !== exAccountSeqRef.current) return;
+        setExAccounts(r.accounts);
+        setExCurrentId(r.currentId);
+        // Results fetched with the previous account must not stay on screen.
+        await searchRef.current(0, false, true);
+      } catch (err) {
+        if (seq === exAccountSeqRef.current) setExNotice(errorText(err));
+      }
+    })();
   };
 
   const entryOf = (
     card: CatalogCard,
-  ): { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; kind: string | null } => ({
+  ): { url: string; title: string; coverUrl: string | null; source: string; seriesId: string; kind: string | null; adult: boolean } => ({
     url: card.url,
     title: card.title,
     coverUrl: card.coverUrl,
     source: SOURCES.find((s) => s.key === source)?.label ?? '',
     seriesId: card.url,
     kind: card.kind ?? null,
+    // R34 categorisation uses the adult flag only; an age-18 badge is not R34.
+    adult: card.adult === true,
   });
 
   const menuItems = (m: NonNullable<typeof menu>): MenuItem[] =>
@@ -766,6 +916,7 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
     sort,
     setSort,
     search,
+    retrySearch,
     qsOpen,
     setQsOpen,
     visibleQuickSearches,
@@ -784,6 +935,8 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
     loading,
     cards,
     displayCards,
+    allAdultHidden,
+    adultResolving,
     statuses,
     onSelectCard,
     openCardMenu,
@@ -873,6 +1026,8 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
     chapterError,
     opening,
     openChapter,
+    closeChapters,
+    retryChapters,
     menu,
     setMenu,
     menuItems,

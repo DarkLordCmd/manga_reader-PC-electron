@@ -53,6 +53,28 @@ export default function EhAccountsSection(): JSX.Element {
       .catch(() => {});
   }, []);
 
+  const recognizeCookies = async (text: string, clearText: boolean): Promise<void> => {
+    setCkMsg(null);
+    try {
+      const p = await window.api.parseCookieText(text);
+      if (!p.ipbMemberId && !p.ipbPassHash && !p.igneous) {
+        setCkMsg('Куки E-Hentai не распознаны. Проверьте текст и попробуйте ещё раз.');
+        return;
+      }
+      if (p.ipbMemberId) setCkMember(p.ipbMemberId);
+      if (p.ipbPassHash) setCkHash(p.ipbPassHash);
+      if (p.igneous) setCkIgneous(p.igneous);
+      if (clearText) setCkText('');
+      setCkMsg('Куки распознаны.');
+    } catch (e) {
+      setCkMsg(`Ошибка распознавания: ${errorText(e)}`);
+    }
+  };
+
+  const canCookieLogin = !!ckMember.trim() && !!ckHash.trim() && !ckBusy;
+  const canPasswordLogin = !!pwUser.trim() && !!pwPass && !pwBusy;
+  const canAddAccount = !!exMemberId.trim() && !!exPassHash.trim();
+
   return (
     <Section title="Аккаунты ExHentai" desc="Активный аккаунт используется для всех запросов к ExHentai в обычном режиме.">
       <Row
@@ -129,6 +151,7 @@ export default function EhAccountsSection(): JSX.Element {
       <Row stack>
         <textarea
           className="cookie-input"
+          aria-label="Куки E-Hentai для распознавания"
           rows={2}
           value={ckText}
           placeholder="Вставь куки (например, из буфера обмена) и нажми «Распознать»"
@@ -136,30 +159,20 @@ export default function EhAccountsSection(): JSX.Element {
         />
       </Row>
       <Row>
-        <button
-          onClick={async () => {
-            if (!ckText.trim()) return;
-            const p = await window.api.parseCookieText(ckText);
-            if (p.ipbMemberId) setCkMember(p.ipbMemberId);
-            if (p.ipbPassHash) setCkHash(p.ipbPassHash);
-            if (p.igneous) setCkIgneous(p.igneous);
-            setCkText('');
-          }}
-        >
+        <button disabled={!ckText.trim()} onClick={() => void recognizeCookies(ckText, true)}>
           Распознать
         </button>
         <button
           onClick={async () => {
             try {
               const t = await navigator.clipboard?.readText?.();
-              if (t) {
-                const p = await window.api.parseCookieText(t);
-                if (p.ipbMemberId) setCkMember(p.ipbMemberId);
-                if (p.ipbPassHash) setCkHash(p.ipbPassHash);
-                if (p.igneous) setCkIgneous(p.igneous);
+              if (!t) {
+                setCkMsg('Буфер обмена пуст.');
+                return;
               }
+              await recognizeCookies(t, false);
             } catch {
-              /* clipboard blocked */
+              setCkMsg('Не удалось прочитать буфер обмена.');
             }
           }}
         >
@@ -170,19 +183,20 @@ export default function EhAccountsSection(): JSX.Element {
         </Toggle>
       </Row>
       <Row label="ipb_member_id">
-        <input className="text-input" value={ckMember} onChange={(e) => setCkMember(e.target.value)} />
+        <input aria-label="ipb_member_id" className="text-input" value={ckMember} onChange={(e) => setCkMember(e.target.value)} />
       </Row>
       <Row label="ipb_pass_hash">
-        <input className="text-input" value={ckHash} onChange={(e) => setCkHash(e.target.value)} />
+        <input aria-label="ipb_pass_hash" className="text-input" value={ckHash} onChange={(e) => setCkHash(e.target.value)} />
       </Row>
       <Row label="igneous" note="Необязательно, только для ExHentai.">
-        <input className="text-input" value={ckIgneous} onChange={(e) => setCkIgneous(e.target.value)} />
+        <input aria-label="igneous" className="text-input" value={ckIgneous} onChange={(e) => setCkIgneous(e.target.value)} />
       </Row>
       <Row label="Вход">
         <button
           className="set-primary"
-          disabled={ckBusy}
+          disabled={!canCookieLogin}
           onClick={async () => {
+            if (!ckMember.trim() || !ckHash.trim()) return;
             setCkBusy(true);
             setCkMsg(null);
             try {
@@ -194,14 +208,14 @@ export default function EhAccountsSection(): JSX.Element {
               });
               setCkMsg(r.message);
               if (r.ok) setExAcc(await window.api.getExAccounts());
-            } catch (e: any) {
+            } catch (e) {
               setCkMsg(`Ошибка: ${errorText(e)}`);
             } finally {
               setCkBusy(false);
             }
           }}
         >
-          Войти по куки
+          {ckBusy ? 'Вхожу…' : 'Войти по куки'}
         </button>
         <button
           disabled={ignBusy}
@@ -213,19 +227,24 @@ export default function EhAccountsSection(): JSX.Element {
               const r = await window.api.refreshIgneous();
               setIgnMsg(r.message);
               if (r.ok) setExAcc(await window.api.getExAccounts());
-            } catch (e: any) {
+            } catch (e) {
               setIgnMsg(`Ошибка: ${errorText(e)}`);
             } finally {
               setIgnBusy(false);
             }
           }}
         >
-          Получить igneous
+          {ignBusy ? 'Получаю…' : 'Получить igneous'}
         </button>
       </Row>
-      {(ckMsg || ignMsg) && (
+      {ckMsg && (
         <Row stack>
-          <span className="set-note">{ckMsg ?? ignMsg}</span>
+          <span className="set-note" role="status" aria-live="polite">{ckMsg}</span>
+        </Row>
+      )}
+      {ignMsg && (
+        <Row stack>
+          <span className="set-note" role="status" aria-live="polite">{ignMsg}</span>
         </Row>
       )}
 
@@ -233,20 +252,23 @@ export default function EhAccountsSection(): JSX.Element {
       <Row label="E-Hentai">
         <input
           className="text-input short"
+          aria-label="Логин E-Hentai"
           placeholder="Логин"
           value={pwUser}
           onChange={(e) => setPwUser(e.target.value)}
         />
         <input
           className="text-input short"
+          aria-label="Пароль E-Hentai"
           type="password"
           placeholder="Пароль"
           value={pwPass}
           onChange={(e) => setPwPass(e.target.value)}
         />
         <button
-          disabled={pwBusy}
+          disabled={!canPasswordLogin}
           onClick={async () => {
+            if (!pwUser.trim() || !pwPass) return;
             setPwBusy(true);
             setPwMsg(null);
             try {
@@ -256,14 +278,14 @@ export default function EhAccountsSection(): JSX.Element {
                 setPwPass('');
                 setExAcc(await window.api.getExAccounts());
               }
-            } catch (e: any) {
+            } catch (e) {
               setPwMsg(`Ошибка: ${errorText(e)}`);
             } finally {
               setPwBusy(false);
             }
           }}
         >
-          Войти
+          {pwBusy ? 'Вхожу…' : 'Войти'}
         </button>
       </Row>
       {pwMsg && (
@@ -322,28 +344,34 @@ export default function EhAccountsSection(): JSX.Element {
 
       <SubHead>Новый аккаунт</SubHead>
       <Row label="Название" note="Необязательно.">
-        <input className="text-input" value={exName} onChange={(e) => setExName(e.target.value)} />
+        <input aria-label="Название аккаунта" className="text-input" value={exName} onChange={(e) => setExName(e.target.value)} />
       </Row>
       <Row label="ipb_member_id">
-        <input className="text-input" value={exMemberId} onChange={(e) => setExMemberId(e.target.value)} />
+        <input aria-label="ipb_member_id нового аккаунта" className="text-input" value={exMemberId} onChange={(e) => setExMemberId(e.target.value)} />
       </Row>
       <Row label="ipb_pass_hash">
-        <input className="text-input" value={exPassHash} onChange={(e) => setExPassHash(e.target.value)} />
+        <input aria-label="ipb_pass_hash нового аккаунта" className="text-input" value={exPassHash} onChange={(e) => setExPassHash(e.target.value)} />
       </Row>
       <Row label="igneous" note="Только для ExHentai.">
-        <input className="text-input" value={exIgneous} onChange={(e) => setExIgneous(e.target.value)} />
+        <input aria-label="igneous нового аккаунта" className="text-input" value={exIgneous} onChange={(e) => setExIgneous(e.target.value)} />
       </Row>
       <Row>
         <button
           className="set-primary"
+          disabled={!canAddAccount}
           onClick={async () => {
-            const r = await window.api.addExAccount(exName, exMemberId, exPassHash, exIgneous);
-            setExAcc(r);
-            setExNotice(`Добавлен аккаунт (${r.currentId ? r.accounts.find((a) => a.id === r.currentId)?.name : ''})`);
-            setExName('');
-            setExMemberId('');
-            setExPassHash('');
-            setExIgneous('');
+            if (!exMemberId.trim() || !exPassHash.trim()) return;
+            try {
+              const r = await window.api.addExAccount(exName, exMemberId, exPassHash, exIgneous);
+              setExAcc(r);
+              setExNotice(`Добавлен аккаунт (${r.currentId ? r.accounts.find((a) => a.id === r.currentId)?.name : ''})`);
+              setExName('');
+              setExMemberId('');
+              setExPassHash('');
+              setExIgneous('');
+            } catch (e) {
+              setExNotice(`Ошибка добавления: ${errorText(e)}`);
+            }
           }}
         >
           Добавить аккаунт

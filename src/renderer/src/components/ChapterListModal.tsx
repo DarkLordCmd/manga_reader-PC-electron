@@ -4,7 +4,7 @@ import { useStore } from '../state/store';
 import type { ChapterListItem } from '@shared/ipc';
 import ChapterDownloadButton from './ChapterDownloadButton';
 import { useChapterDownloads } from '../lib/use-chapter-downloads';
-import { useBodyScrollLock } from '../lib/use-modal';
+import { useBodyScrollLock, useDialogFocus } from '../lib/use-modal';
 
 interface Props {
   mangaId: string;
@@ -23,21 +23,8 @@ export default function ChapterListModal({ mangaId, currentUrl, onOpenChapter, o
   const downloads = useChapterDownloads();
   const listRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useDialogFocus(onClose, closeRef);
   useBodyScrollLock();
-
-  // Escape closes; focus moves into the dialog so Tab does not walk the hidden
-  // sidebar/toolbar behind the overlay.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    closeRef.current?.focus();
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,9 +64,16 @@ export default function ChapterListModal({ mangaId, currentUrl, onOpenChapter, o
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="overlay-card chapters" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="overlay-card chapters"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="chapter-list-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="overlay-head">
-          <h3 className="overlay-title">Главы</h3>
+          <h3 id="chapter-list-title" className="overlay-title">Главы</h3>
           <button ref={closeRef} className="overlay-close" aria-label="Закрыть" title="Закрыть" onClick={onClose}>
             ×
           </button>

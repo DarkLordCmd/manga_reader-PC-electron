@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { CatalogCard } from '@shared/ipc';
 import { SOURCES } from './constants';
 import type { CatalogSearch } from './useCatalogSearch';
 import { tagChipStyle } from '../../lib/tag-colors';
 import { errorText } from '../../lib/errors';
+import { useBodyScrollLock, useDialogFocus } from '../../lib/use-modal';
 
 /** Tags for the current work. MangaDex/E-Hentai deliver them with the listing;
  * nhentai only has them on the gallery page, so they are fetched once when the
@@ -39,8 +41,10 @@ function OverlayTags({ url, initial }: { url: string; initial?: string[] }): JSX
   );
 }
 
-export default function ChaptersOverlay({ s }: { s: CatalogSearch }): JSX.Element | null {
-  const { picked } = s;
+function ChaptersDialog({ s, picked }: { s: CatalogSearch; picked: CatalogCard }): JSX.Element {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useDialogFocus(() => s.closeChapters(), closeRef);
+  useBodyScrollLock();
   // Feedback lives in the overlay: the toolbar notice was rendered UNDER the
   // overlay (z-index) and stuck there forever after closing it.
   const [addBusy, setAddBusy] = useState(false);
@@ -50,9 +54,8 @@ export default function ChaptersOverlay({ s }: { s: CatalogSearch }): JSX.Elemen
     setAddBusy(false);
     setAdded(false);
     setAddError(null);
-  }, [picked?.url]);
+  }, [picked.url]);
 
-  if (!picked) return null;
   const sourceLabel = SOURCES.find((x) => x.key === s.source)?.label ?? '';
   const chapters = s.chapters;
 
@@ -87,13 +90,20 @@ export default function ChaptersOverlay({ s }: { s: CatalogSearch }): JSX.Elemen
   };
 
   return (
-    <div className="overlay" onClick={() => s.setPicked(null)}>
-      <div className="overlay-card chapters" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+    <div className="overlay" onClick={() => s.closeChapters()}>
+      <div
+        ref={dialogRef}
+        className="overlay-card chapters"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="chapters-dialog-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="overlay-head">
-          <h3 className="overlay-title" title={picked.title}>
+          <h3 id="chapters-dialog-title" className="overlay-title" title={picked.title}>
             {picked.title}
           </h3>
-          <button className="overlay-close" aria-label="Закрыть" title="Закрыть" onClick={() => s.setPicked(null)}>
+          <button ref={closeRef} className="overlay-close" aria-label="Закрыть" title="Закрыть" onClick={() => s.closeChapters()}>
             ×
           </button>
         </div>
@@ -101,13 +111,26 @@ export default function ChaptersOverlay({ s }: { s: CatalogSearch }): JSX.Elemen
         <div className="overlay-meta">
           {sourceLabel && <span className="overlay-chip">{sourceLabel}</span>}
           {picked.status && <span className="overlay-chip overlay-status">{picked.status}</span>}
-          {chapters ? <span>Глав: {chapters.length}</span> : <span>Загружаю список…</span>}
+          {chapters ? (
+            <span>Глав: {chapters.length}</span>
+          ) : s.chapterError ? (
+            <span>Не удалось загрузить главы</span>
+          ) : (
+            <span>Загружаю список…</span>
+          )}
         </div>
 
         <OverlayTags url={picked.url} initial={picked.tags} />
         <div className="chapter-list">
           {s.opening && <div className="overlay-note">Открываю главу…</div>}
-          {s.chapterError && <div className="error-text">{s.chapterError}</div>}
+          {s.chapterError && (
+            <div className="overlay-note">
+              <div className="error-text">{s.chapterError}</div>
+              <button className="btn-secondary" onClick={() => void s.retryChapters()}>
+                Повторить
+              </button>
+            </div>
+          )}
           {!chapters && !s.chapterError && !s.opening && <div className="overlay-note">Загрузка глав…</div>}
           {chapters &&
             chapters.map((c, i) => {
@@ -115,7 +138,12 @@ export default function ChaptersOverlay({ s }: { s: CatalogSearch }): JSX.Elemen
               const label = c.title ? `${c.chapter_num} — ${c.title}` : c.chapter_num;
               return (
                 <div key={c.chapter_id} className={`chapter-row${isRead ? ' read' : ''}`}>
-                  <button className="chapter-item" title={label} onClick={() => void s.openChapter(c.chapter_id, i)}>
+                  <button
+                    className="chapter-item"
+                    title={label}
+                    disabled={s.opening}
+                    onClick={() => void s.openChapter(c.chapter_id, i)}
+                  >
                     <span className="chapter-num">{c.chapter_num}</span>
                     {c.title ? <span className="chapter-name">{c.title}</span> : null}
                   </button>
@@ -137,11 +165,16 @@ export default function ChaptersOverlay({ s }: { s: CatalogSearch }): JSX.Elemen
             {added ? '✓ В библиотеке' : addBusy ? 'Добавляю…' : '+ В библиотеку'}
           </button>
           {addError && <span className="error-text">{addError}</span>}
-          <button className="btn-ghost" onClick={() => s.setPicked(null)}>
+          <button className="btn-ghost" onClick={() => s.closeChapters()}>
             Закрыть
           </button>
         </div>
       </div>
     </div>
   );
+}
+
+export default function ChaptersOverlay({ s }: { s: CatalogSearch }): JSX.Element | null {
+  if (!s.picked) return null;
+  return <ChaptersDialog s={s} picked={s.picked} />;
 }

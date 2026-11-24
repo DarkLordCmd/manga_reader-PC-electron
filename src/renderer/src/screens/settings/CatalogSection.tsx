@@ -6,10 +6,14 @@ export default function CatalogSection({ settings, upd }: SettingsCommon): JSX.E
   return (
     <Section title="Каталог">
       <Row label="Бесконечная прокрутка">
-        <Toggle checked={settings.infinite_scroll} onChange={(v) => upd({ infinite_scroll: v })} />
+        <Toggle ariaLabel="Бесконечная прокрутка" checked={settings.infinite_scroll} onChange={(v) => upd({ infinite_scroll: v })} />
       </Row>
       <Row label="Количество страниц NHentai" note="Показывать число страниц на карточках в каталоге NHentai.">
-        <Toggle checked={settings.nhentai_show_page_counts} onChange={(v) => upd({ nhentai_show_page_counts: v })} />
+        <Toggle
+          ariaLabel="Количество страниц NHentai"
+          checked={settings.nhentai_show_page_counts}
+          onChange={(v) => upd({ nhentai_show_page_counts: v })}
+        />
       </Row>
     </Section>
   );

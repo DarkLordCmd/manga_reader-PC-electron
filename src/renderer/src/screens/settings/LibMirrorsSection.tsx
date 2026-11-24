@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { errorText } from '../../lib/errors';
 import Section, { Row } from './Section';
 import type { LibMirrorStatus } from '@shared/ipc';
 import type { SettingsCommon } from './useSettings';
@@ -33,8 +34,9 @@ export default function LibMirrorsSection({ settings, upd }: SettingsCommon): JS
             setLibMirrorMsg('Проверяю зеркала…');
             try {
               setLibMirrorResults(await window.api.libMirrorsCheck());
-            } finally {
               setLibMirrorMsg(null);
+            } catch (e) {
+              setLibMirrorMsg(`Ошибка проверки зеркал: ${errorText(e)}`);
             }
           }}
         >

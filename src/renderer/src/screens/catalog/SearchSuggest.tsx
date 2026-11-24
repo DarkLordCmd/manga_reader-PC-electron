@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SearchSuggestion } from '@shared/ipc';
 import type { CatalogSearch } from './useCatalogSearch';
 
@@ -16,40 +16,61 @@ const FAST_SOURCES = new Set([
 ]);
 
 const DEBOUNCE_MS = 300;
+const EMPTY_SUGGESTIONS: SearchSuggestion[] = [];
+
+function visibleSuggestions(list: SearchSuggestion[], showR34: boolean): SearchSuggestion[] {
+  return showR34 ? list : list.filter((it) => !it.age18);
+}
 
 /** Search field with per-source suggestions (covers + titles), like the sites'
  * own search overlays. Enter opens the highlighted row, Escape closes. */
 export default function SearchSuggest({ s }: { s: CatalogSearch }): JSX.Element {
-  const [items, setItems] = useState<SearchSuggestion[]>([]);
+  const [result, setResult] = useState<{ key: string; items: SearchSuggestion[] }>({ key: '', items: [] });
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(-1);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [loading, setLoading] = useState(false);
   const seqRef = useRef(0);
-  const blurTimerRef = useRef<number | null>(null);
+  const timerRef = useRef<number | null>(null);
   const query = s.query;
+  const requestKey = `${s.source}\u0000${query}\u0000${s.settings.show_r34_history ? '1' : '0'}`;
+  // A result belonging to the previous query/source/privacy mode is not
+  // renderable, even before the effect gets a chance to clear local state.
+  const currentItems = result.key === requestKey ? result.items : EMPTY_SUGGESTIONS;
+  const items = useMemo(
+    () => visibleSuggestions(currentItems, s.settings.show_r34_history),
+    [currentItems, s.settings.show_r34_history],
+  );
+  const active = activeIndex >= 0 && activeIndex < items.length ? activeIndex : -1;
+  const listOpen = (open && items.length > 0) || (loading && query.trim().length >= 2);
 
-  // A pending blur-close timer must not fire after the field unmounts.
-  useEffect(
-    () => () => {
-      if (blurTimerRef.current != null) {
-        window.clearTimeout(blurTimerRef.current);
-        blurTimerRef.current = null;
+  const invalidate = useCallback(
+    (clearItems = false): void => {
+      seqRef.current++;
+      if (timerRef.current != null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
       }
+      setLoading(false);
+      setActiveIndex(-1);
+      setOpen(false);
+      if (clearItems) setResult({ key: requestKey, items: [] });
     },
-    [],
+    [requestKey],
   );
 
   useEffect(() => {
+    const id = ++seqRef.current;
+    setResult({ key: requestKey, items: [] });
+    setActiveIndex(-1);
+    setOpen(false);
     const q = query.trim();
     if (q.length < 2) {
-      setItems([]);
-      setOpen(false);
       setLoading(false);
       return;
     }
     setLoading(true);
-    const id = ++seqRef.current;
     const timer = window.setTimeout(() => {
+      if (timerRef.current === timer) timerRef.current = null;
       void (async () => {
         let list: SearchSuggestion[] = [];
         try {
@@ -63,33 +84,46 @@ export default function SearchSuggest({ s }: { s: CatalogSearch }): JSX.Element 
           // still asks that site, and show its first rows.
           try {
             const cards = await window.api.searchCatalog(s.source, q, 0, 'default', {}, undefined);
-            list = cards.slice(0, 6).map((c) => ({
+            let fallback = cards.slice(0, 6);
+            let resolvedAdults: Record<string, boolean> = {};
+            if (s.source === 'mangashi' && !s.settings.show_r34_history) {
+              try {
+                resolvedAdults = await window.api.catalogAdultBatch(fallback.map((c) => c.url));
+                fallback = fallback.filter((c) => resolvedAdults[c.url] === false);
+              } catch {
+                fallback = [];
+              }
+            }
+            list = fallback.map((c) => ({
               kind: 'work' as const,
               title: c.title,
               url: c.url,
               coverUrl: c.coverUrl,
               meta: [c.kind, c.score != null ? `★ ${c.score.toFixed(1)}` : null].filter(Boolean).join(' · ') || null,
-              age18: c.adult === true || c.age18 === true,
+              age18: c.adult === true || c.age18 === true || resolvedAdults[c.url] === true,
             }));
           } catch {
             list = [];
           }
         }
         if (id !== seqRef.current) return;
-        // R34 off also hides 18+ suggestions, not just catalogue cards.
-        if (!s.settings.show_r34_history) list = list.filter((it) => !it.age18);
-        setItems(list.slice(0, 8));
-        setActive(-1);
-        setOpen(list.length > 0);
+        const nextItems = list.slice(0, 8);
+        setResult({ key: requestKey, items: nextItems });
+        setActiveIndex(-1);
+        setOpen(visibleSuggestions(nextItems, s.settings.show_r34_history).length > 0);
         setLoading(false);
       })();
     }, DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [query, s.source, s.settings.show_r34_history]);
+    timerRef.current = timer;
+    return () => {
+      window.clearTimeout(timer);
+      if (timerRef.current === timer) timerRef.current = null;
+      if (id === seqRef.current) seqRef.current++;
+    };
+  }, [query, s.source, s.settings.show_r34_history, requestKey]);
 
   const choose = (it: SearchSuggestion): void => {
-    setOpen(false);
-    setItems([]);
+    invalidate(true);
     if (it.kind === 'tag' && it.tag) {
       // Tags belong to the tag bar (its own chips), not the title search box:
       // append a chip exactly like picking a suggestion in the tag input does.
@@ -113,37 +147,32 @@ export default function SearchSuggest({ s }: { s: CatalogSearch }): JSX.Element 
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Escape') {
-      setOpen(false);
+      e.preventDefault();
+      invalidate(true);
       return;
     }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      if (items.length === 0) return;
       e.preventDefault();
+      if (loading || items.length === 0) return;
       if (!open) {
         setOpen(true);
+        setActiveIndex(e.key === 'ArrowDown' ? 0 : items.length - 1);
         return;
       }
-      setActive((prev) => {
-        const next = e.key === 'ArrowDown' ? prev + 1 : prev - 1;
-        return (next + items.length) % items.length;
+      setActiveIndex((prev) => {
+        if (e.key === 'ArrowDown') return (prev + 1) % items.length;
+        return prev <= 0 ? items.length - 1 : prev - 1;
       });
       return;
     }
     if (e.key === 'Enter') {
+      e.preventDefault();
       if (open && active >= 0 && items[active]) {
-        e.preventDefault();
         choose(items[active]);
         return;
       }
-      setOpen(false);
+      invalidate(true);
       void s.search(0, false, true);
-    }
-  };
-
-  const cancelBlurClose = (): void => {
-    if (blurTimerRef.current != null) {
-      window.clearTimeout(blurTimerRef.current);
-      blurTimerRef.current = null;
     }
   };
 
@@ -158,17 +187,13 @@ export default function SearchSuggest({ s }: { s: CatalogSearch }): JSX.Element 
         onChange={(e) => s.setQuery(e.target.value)}
         onKeyDown={onKeyDown}
         onFocus={() => {
-          cancelBlurClose();
           if (items.length > 0) setOpen(true);
         }}
-        onBlur={() => {
-          cancelBlurClose();
-          blurTimerRef.current = window.setTimeout(() => setOpen(false), 160);
-        }}
+        onBlur={() => invalidate()}
         aria-autocomplete="list"
-        aria-expanded={open}
+        aria-expanded={listOpen}
       />
-      {open && (
+      {listOpen && (
         <div className="ss-list" role="listbox">
           {loading && items.length === 0 && <div className="ss-note">Ищу…</div>}
           {items.map((it, i) => (
@@ -179,7 +204,7 @@ export default function SearchSuggest({ s }: { s: CatalogSearch }): JSX.Element 
               aria-selected={i === active}
               className={`ss-item${i === active ? ' active' : ''}`}
               onMouseDown={(e) => e.preventDefault()}
-              onMouseEnter={() => setActive(i)}
+              onMouseEnter={() => setActiveIndex(i)}
               onClick={() => choose(it)}
             >
               {it.coverUrl ? (

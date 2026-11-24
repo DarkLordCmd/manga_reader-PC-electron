@@ -52,7 +52,7 @@ export default function Catalog(): JSX.Element {
                         const r = await window.api.refreshIgneous();
                         if (!r.ok) throw new Error(r.message);
                       }
-                      await s.search(0, false);
+                      await s.retrySearch();
                     } catch (e) {
                       alert(`Вход: ${errorText(e)}`);
                     } finally {
@@ -63,18 +63,16 @@ export default function Catalog(): JSX.Element {
                   {ehLoginBusy ? 'Вход…' : 'Войти'}
                 </button>
               )}
-              <button
-                disabled={s.loading}
-                onClick={() => void s.search(s.displayCards.length > 0 ? s.page : 0, s.displayCards.length > 0)}
-              >
+              <button disabled={s.loading} onClick={() => void s.retrySearch()}>
                 Повторить
               </button>
             </div>
           )}
           {s.loading && s.displayCards.length === 0 && <div className="muted">Поиск…</div>}
-          {!s.loading && !s.error && s.displayCards.length === 0 && (
+          {!s.loading && s.adultResolving && s.displayCards.length === 0 && <div className="muted">Проверяю возрастной рейтинг…</div>}
+          {!s.loading && !s.adultResolving && !s.error && s.displayCards.length === 0 && (
             <div className="muted">
-              {s.filters.senkuroRatings?.includes('EXPLICIT') && !s.settings.show_r34_history
+              {s.allAdultHidden
                 ? '18+ скрыто: включи «Контент R34» в настройках.'
                 : 'Ничего не найдено — ослабь фильтры.'}
             </div>
@@ -92,17 +90,19 @@ export default function Catalog(): JSX.Element {
 
           {s.displayCards.length > 0 && s.infiniteScroll && (
             <div ref={s.sentinelRef} className="catalog-sentinel">
-              {s.loading ? <span className="muted">Загрузка…</span> : null}
+              {s.loading ? <span className="muted">Загрузка…</span> : !s.hasMore ? <span className="muted">Это все результаты</span> : null}
             </div>
           )}
 
           {s.displayCards.length > 0 && !s.infiniteScroll && (
             <div className="catalog-pager">
-              <button disabled={s.page === 0 || s.loading} onClick={() => void s.search(s.page - 1)}>
+              <button disabled={s.page === 0 || s.loading} onClick={() => void s.search(s.page - 1, false, true)}>
                 Пред.
               </button>
-              <span className="muted">Стр. {s.page + 1}</span>
-              <button disabled={s.loading || !s.hasMore} onClick={() => void s.search(s.page + 1)}>
+              <span className="muted">
+                {s.loading ? 'Загрузка…' : `Стр. ${s.page + 1}${!s.hasMore ? ' · Это все результаты' : ''}`}
+              </span>
+              <button disabled={s.loading || !s.hasMore} onClick={() => void s.search(s.page + 1, false, true)}>
                 След.
               </button>
             </div>
