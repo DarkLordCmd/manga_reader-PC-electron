@@ -675,7 +675,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
                   var el = Array.prototype.find.call(document.querySelectorAll('a[href], button'), function(x) {
                     var t = (x.textContent || '').trim();
                     var h = x.getAttribute && (x.getAttribute('href') || '');
-                    return /^Вход\s*\|\s*Регистрация$/i.test(t) || (t === 'Войти' && !/regin|register/i.test(h));
+                    return /^Вход\\s*\\|\\s*Регистрация$/i.test(t) || (t === 'Войти' && !/regin|register/i.test(h));
                   });
                   if (el) { el.click(); clearInterval(timer); }
                 } catch (e) {}
