@@ -53,6 +53,8 @@ export default function Library(): JSX.Element {
   useEffect(refresh, [refresh]);
   useEffect(() => window.api.onLibraryChanged(refresh), [refresh]);
 
+  const dupDisplayRef = useRef<Map<string, { best: LibraryItem; count: number }>>(new Map());
+
   const open = async (item: LibraryItem): Promise<void> => {
     setError(null);
     try {
@@ -60,7 +62,7 @@ export default function Library(): JSX.Element {
       // progress of the group (the card shows that number too), not from this
       // row's smaller progress. The chapter list still comes from the selected
       // source, so switching source keeps the resume point.
-      const resume = duplicateDisplay.get(item.key)?.best ?? item;
+      const resume = dupDisplayRef.current.get(item.key)?.best ?? item;
       if (resume.chapterIndex != null) {
         try {
           const [list] = await Promise.all([window.api.fetchChapterList(item.url), window.api.getSettings()]);
@@ -120,11 +122,23 @@ export default function Library(): JSX.Element {
     [items, sources],
   );
   const filteredCounts = useMemo(() => {
+    // Count unique works, not source rows: duplicates now share one card.
+    const groups = new Map<string, Set<string>>();
+    for (const it of filteredAll) {
+      if (!it.status) continue;
+      const key = normalizeWorkTitle(it.title) || `key:${it.key}`;
+      const set = groups.get(it.status) ?? new Set<string>();
+      set.add(key);
+      groups.set(it.status, set);
+    }
     const c: Record<string, number> = {};
-    for (const it of filteredAll) if (it.status) c[it.status] = (c[it.status] ?? 0) + 1;
+    for (const [status, set] of groups) c[status] = set.size;
     return c;
   }, [filteredAll]);
-  const filteredTotal = filteredAll.length;
+  const filteredTotal = useMemo(
+    () => new Set(filteredAll.map((it) => normalizeWorkTitle(it.title) || `key:${it.key}`)).size,
+    [filteredAll],
+  );
 
   // A source can disappear when switching Main/R34; drop stale selections so
   // the grid does not stay empty with no matching chip.
@@ -148,6 +162,10 @@ export default function Library(): JSX.Element {
 
   // Same work on several sources: keep both rows (so the user can choose where
   // to read), but show the greatest read-chapter progress of the group.
+  const progressOf = (i: LibraryItem): number => {
+    const label = chapterLabelNumber(i.chapterLabel);
+    return Math.max(label != null ? Number(label) : -1, i.chapterIndex ?? -1, i.currentPage || 0);
+  };
   const duplicateDisplay = useMemo(() => {
     const groups = new Map<string, LibraryItem[]>();
     for (const it of allItems) {
@@ -157,10 +175,7 @@ export default function Library(): JSX.Element {
       list.push(it);
       groups.set(key, list);
     }
-    const progressNumber = (i: LibraryItem): number => {
-      const label = chapterLabelNumber(i.chapterLabel);
-      return Math.max(label != null ? Number(label) : -1, i.chapterIndex ?? -1, i.currentPage || 0);
-    };
+    const progressNumber = progressOf;
     const score = progressNumber;
     const out = new Map<string, { best: LibraryItem; count: number }>();
     for (const group of groups.values()) {
@@ -178,6 +193,23 @@ export default function Library(): JSX.Element {
     }
     return out;
   }, [allItems]);
+  dupDisplayRef.current = duplicateDisplay;
+  // One card per work even when several sources have the same normalized title.
+  // The card's source picker keeps access to every edition.
+  const groupedItems = useMemo(() => {
+    const groups = new Map<string, { first: LibraryItem; members: LibraryItem[] }>();
+    for (const it of visibleItems) {
+      const key = normalizeWorkTitle(it.title) || `key:${it.key}`;
+      const g = groups.get(key) ?? { first: it, members: [] };
+      g.members.push(it);
+      groups.set(key, g);
+    }
+    return [...groups.entries()].map(([key, g]) => {
+      const best = g.members.reduce((a, b) => (progressOf(b) > progressOf(a) ? b : a));
+      const dup = duplicateDisplay.get(best.key);
+      return { key, item: dup?.best ?? best, count: dup?.count ?? g.members.length };
+    });
+  }, [visibleItems, duplicateDisplay]);
 
   const alternatives = useMemo(() => {
     if (!selected) return [];
@@ -240,15 +272,15 @@ export default function Library(): JSX.Element {
       </div>
 
       {error && <div className="error-text">{error}</div>}
-      {visibleItems.length === 0 && (
+      {groupedItems.length === 0 && (
         <div className="muted">{search.trim() || status !== 'all' ? 'Ничего не найдено' : 'В библиотеке пока пусто'}</div>
       )}
       <div className="history-grid">
-        {visibleItems.map((it) => {
+        {groupedItems.map(({ key, item: it, count }) => {
           const best = duplicateDisplay.get(it.key);
           return (
           <div
-            key={it.key}
+            key={key}
             className="history-card"
             onClick={() => setSelected(it)}
             onContextMenu={(e) => {
@@ -279,7 +311,7 @@ export default function Library(): JSX.Element {
                       : '';
                 })()}
                 {it.rating != null ? ` · ★ ${it.rating}` : ''}
-                {best && best.count > 1 ? ` · источников: ${best.count}` : ''}
+                {best && count > 1 ? ` · источников: ${count}` : ''}
               </span>
               <button
                 className="continue-btn"
@@ -304,6 +336,7 @@ export default function Library(): JSX.Element {
       {selected && (
         <LibraryItemModal
           item={selected}
+          progressIndex={selected ? (duplicateDisplay.get(selected.key)?.best.chapterIndex ?? selected.chapterIndex) : null}
           alternatives={alternatives}
           onSwitchSource={(next) => setSelected(next)}
           onClose={() => setSelected(null)}

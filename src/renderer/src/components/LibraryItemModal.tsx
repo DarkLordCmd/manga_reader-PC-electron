@@ -24,6 +24,8 @@ const normUrl = (u: string): string => u.trim().replace(/\/+$/, '').toLowerCase(
 
 interface Props {
   item: LibraryItem;
+  /** Greatest read chapter across duplicate sources; marks earlier chapters read. */
+  progressIndex?: number | null;
   /** Other library rows with the same normalized title (different sources). */
   alternatives?: LibraryItem[];
   onSwitchSource?: (item: LibraryItem) => void;
@@ -35,7 +37,7 @@ interface Props {
   onChanged: () => void;
 }
 
-export default function LibraryItemModal({ item, alternatives = [], onSwitchSource, onClose, onOpen, onOpenChapter, onChanged }: Props): JSX.Element {
+export default function LibraryItemModal({ item, progressIndex, alternatives = [], onSwitchSource, onClose, onOpen, onOpenChapter, onChanged }: Props): JSX.Element {
   const { settings } = useStore();
   const [status, setStatus] = useState<ReadingStatus | ''>(item.status ?? '');
   const [rating, setRating] = useState(item.rating ?? 0);
@@ -117,10 +119,11 @@ export default function LibraryItemModal({ item, alternatives = [], onSwitchSour
   // Scroll the list to the chapter the row points at (long titles open on
   // chapter 1 otherwise). Layout effect: rAF is throttled while the window is
   // occluded, which would leave the list at the top.
+  const readUpTo = progressIndex ?? item.chapterIndex;
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!list || !chapters) return;
-    const current = list.querySelector<HTMLElement>('.chapter-item.current');
+    const current = list.querySelector<HTMLElement>('.chapter-item.resume, .chapter-item.current');
     if (!current) return;
     const r = current.getBoundingClientRect();
     const l = list.getBoundingClientRect();
@@ -128,7 +131,7 @@ export default function LibraryItemModal({ item, alternatives = [], onSwitchSour
     // Snap to a row boundary so the list never starts with half a chapter.
     const rowH = (list.querySelector('.chapter-row') as HTMLElement | null)?.offsetHeight ?? 0;
     if (rowH > 0) list.scrollTop = Math.round(list.scrollTop / rowH) * rowH;
-  }, [chapters]);
+  }, [chapters, readUpTo]);
 
   const save = async (): Promise<void> => {
     await window.api.librarySetStatus(item.key, status === '' ? null : status);
@@ -235,15 +238,17 @@ export default function LibraryItemModal({ item, alternatives = [], onSwitchSour
               {chapters &&
                 chapters.map((c, i) => {
                   const isCurrent = normUrl(c.chapter_id) === currentUrl;
-                  const isRead = settings.read_chapters.includes(c.chapter_id);
+                  const isRead = settings.read_chapters.includes(c.chapter_id) || (readUpTo != null && i <= readUpTo);
+                  const isResume = readUpTo != null && i === readUpTo;
+                  const chapterNum = chapterLabelNumber(c.chapter_num) ?? c.chapter_num;
                   return (
-                    <div key={c.chapter_id} className={`chapter-row${isRead ? ' read' : ''}`}>
+                    <div key={c.chapter_id} className={`chapter-row${isRead ? ' read' : ''}${isResume ? ' resume' : ''}`}>
                       <button
-                        className={`chapter-item${isCurrent ? ' current' : ''}`}
-                        title={c.title ? `${c.chapter_num} — ${c.title}` : c.chapter_num}
+                        className={`chapter-item${isCurrent ? ' current' : ''}${isResume ? ' resume' : ''}`}
+                        title={c.title ? `${chapterNum} — ${c.title}` : chapterNum}
                         onClick={() => onOpenChapter(c.chapter_id, i, chapters)}
                       >
-                        <span className="chapter-num">{c.chapter_num}</span>
+                        <span className="chapter-num">{chapterNum}</span>
                         {c.title ? <span className="chapter-name">{c.title}</span> : null}
                       </button>
                       <ChapterDownloadButton
