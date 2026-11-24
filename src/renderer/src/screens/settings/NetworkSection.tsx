@@ -117,7 +117,7 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
     }
   };
 
-  const clearCookies = async (field: 'onion' | 'nhentai' | 'nhentai_onion' | 'senkuro', label: string): Promise<void> => {
+  const clearCookies = async (field: 'onion' | 'nhentai' | 'nhentai_onion' | 'senkuro' | 'mangashi' | 'mangalib' | 'comx', label: string): Promise<void> => {
     setLoginMsg(`${label}: очищаю куки…`);
     try {
       await window.api.clearSiteCookies(field);
@@ -446,6 +446,54 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
             <span className="set-note">{rmMsg}</span>
           </Row>
         )}
+        <SubHead>Manga-shi</SubHead>
+        <Row stack note="Войдите на сайте в открывшемся окне, затем нажмите «Готово, забрать куки» или закройте окно. Куки можно вставить и вручную.">
+          <textarea
+            className="cookie-input"
+            rows={3}
+            value={settings.mangashi_cookies_raw}
+            placeholder="name=value; …"
+            onChange={(e) => upd({ mangashi_cookies_raw: e.target.value })}
+          />
+        </Row>
+        <Row>
+          <button onClick={() => void doLogin('https://manga-shi.org/', 'Manga-shi')}>Войти в Manga-shi</button>
+          <button className="set-danger" onClick={() => void clearCookies('mangashi', 'Manga-shi')}>
+            Очистить куки
+          </button>
+        </Row>
+        <SubHead>Mangalib</SubHead>
+        <Row stack note="Войдите на mangalib.me в окне, затем нажмите «Готово, забрать куки» или закройте окно. Если сайт блокирует IP — включите для Mangalib Tor/прокси в разделе «Прокси».">
+          <textarea
+            className="cookie-input"
+            rows={3}
+            value={settings.mangalib_cookies_raw}
+            placeholder="name=value; …"
+            onChange={(e) => upd({ mangalib_cookies_raw: e.target.value })}
+          />
+        </Row>
+        <Row>
+          <button onClick={() => void doLogin('https://mangalib.me/', 'Mangalib')}>Войти в Mangalib</button>
+          <button className="set-danger" onClick={() => void clearCookies('mangalib', 'Mangalib')}>
+            Очистить куки
+          </button>
+        </Row>
+        <SubHead>Com-X</SubHead>
+        <Row stack note="Войдите на com-x.life в окне, затем нажмите «Готово, забрать куки» или закройте окно. Куки также можно вставить вручную.">
+          <textarea
+            className="cookie-input"
+            rows={3}
+            value={settings.comx_cookies_raw}
+            placeholder="name=value; …"
+            onChange={(e) => upd({ comx_cookies_raw: e.target.value })}
+          />
+        </Row>
+        <Row>
+          <button onClick={() => void doLogin('https://com-x.life/', 'Com-X')}>Войти в Com-X</button>
+          <button className="set-danger" onClick={() => void clearCookies('comx', 'Com-X')}>
+            Очистить куки
+          </button>
+        </Row>
         <SubHead>Библиотека Senkuro (Senkognito)</SubHead>
         <Row
           stack

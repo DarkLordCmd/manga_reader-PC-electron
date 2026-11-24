@@ -363,7 +363,7 @@ export interface Api {
   /** Clears a stored session explicitly. Editing the cookie textarea cannot do
    * this: an empty echo is restored to protect a fresh login from a stale
    * snapshot, so there was no way to log out of a site. */
-  clearSiteCookies(field: 'onion' | 'nhentai' | 'nhentai_onion' | 'senkuro'): Promise<void>;
+  clearSiteCookies(field: 'onion' | 'nhentai' | 'nhentai_onion' | 'senkuro' | 'mangashi' | 'mangalib' | 'comx'): Promise<void>;
   setReadingPosition(id: string, index: number): Promise<void>;
   ehTagSuggest(text: string): Promise<EhTagSuggestion[]>;
   /** Per-source search autocomplete (each source asks its own site/API). */

@@ -17,6 +17,11 @@ interface Jar {
 }
 
 let jar: Jar | null = null;
+let userCookies = '';
+/** Auth cookies captured by the Mangalib login window (merged with the DDoS jar). */
+export function setMangalibUserCookies(value: string): void {
+  userCookies = value.trim();
+}
 const JAR_TTL = 30 * 60_000;
 
 function collectCookies(setCookies: string[]): string[] {
@@ -28,7 +33,7 @@ async function primeCookieJar(): Promise<Jar> {
   if (jar && Date.now() - jar.ts < JAR_TTL) return jar;
   const r = await httpFetch({
     url: 'https://mangalib.me/',
-    headers: { 'User-Agent': UA, Accept: 'text/html' },
+    headers: { 'User-Agent': UA, Accept: 'text/html', ...(userCookies ? { Cookie: userCookies } : {}) },
     timeoutMs: 30_000,
   });
   const c = collectCookies(r.setCookies);
@@ -50,7 +55,8 @@ function apiHeaders(cookies: string): Record<string, string> {
     Origin: 'https://mangalib.me',
     Referer: 'https://mangalib.me/',
   };
-  if (cookies) h.Cookie = cookies;
+  const merged = [userCookies, cookies].filter(Boolean).join('; ');
+  if (merged) h.Cookie = merged;
   return h;
 }
 

@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { comxFetchText } from '../comx-gate';
+import { comxFetchText, cookieForHost } from '../comx-gate';
 import { fetchHtmlViaBrowser } from '../browser-fetch';
 import { type ChapterInfo } from './remanga';
 import { type CatalogItem, type SimpleSiteConfig } from './catalog-types';
@@ -66,7 +66,12 @@ export async function searchComx(
  * Chapters are sorted ascending by their chapter ids (their ids grow).
  */
 export async function fetchComxChapters(mangaUrl: string, proxy?: string): Promise<ChapterInfo[]> {
-  const html = await fetchHtmlViaBrowser(mangaUrl, { timeoutMs: 60_000, proxy });
+  const html = await fetchHtmlViaBrowser(mangaUrl, {
+    timeoutMs: 60_000,
+    proxy,
+    cookie: cookieForHost('com-x.life') || undefined,
+    cookieHost: 'com-x.life',
+  });
   const $ = cheerio.load(html);
   const out: ChapterInfo[] = [];
   const seen = new Set<string>();

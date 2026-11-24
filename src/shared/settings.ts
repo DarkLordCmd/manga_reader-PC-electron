@@ -23,6 +23,9 @@ export interface Settings {
   onion_cookies_raw: string;
   nhentai_cookies_raw: string;
   senkuro_cookies_raw: string;
+  mangashi_cookies_raw: string;
+  mangalib_cookies_raw: string;
+  comx_cookies_raw: string;
   /** Remanga bearer token (secret; renderer sees an empty value). */
   remanga_token: string;
   remanga_cookies_raw: string;
@@ -82,6 +85,9 @@ export function defaultSettings(): Settings {
     nhentai_onion_cookies_raw: '',
     nhentai_onion_base: '',
     senkuro_cookies_raw: '',
+    mangashi_cookies_raw: '',
+    mangalib_cookies_raw: '',
+    comx_cookies_raw: '',
     remanga_token: '',
     remanga_cookies_raw: '',
     remanga_user_id: null,
@@ -169,6 +175,9 @@ export function parseSettings(raw: unknown): Settings {
     onion_cookies_raw: str(o.onion_cookies_raw, ''),
     nhentai_cookies_raw: str(o.nhentai_cookies_raw, ''),
     senkuro_cookies_raw: str(o.senkuro_cookies_raw, ''),
+    mangashi_cookies_raw: str(o.mangashi_cookies_raw, ''),
+    mangalib_cookies_raw: str(o.mangalib_cookies_raw, ''),
+    comx_cookies_raw: str(o.comx_cookies_raw, ''),
     remanga_token: str(o.remanga_token, ''),
     remanga_cookies_raw: str(o.remanga_cookies_raw, ''),
     remanga_user_id: nullableInt(o.remanga_user_id),

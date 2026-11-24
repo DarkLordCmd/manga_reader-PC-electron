@@ -77,6 +77,24 @@ interface CookieStore {
 let cookieStore: CookieStore = {};
 let cookieStorePath: string | null = null;
 
+/** Auth cookies captured by the Com-X login window; merged into the PoW jar. */
+let lastComxUserCookies: string | null = null;
+export function setComxUserCookies(value: string): void {
+  const v = value.trim();
+  if (v === lastComxUserCookies) return;
+  lastComxUserCookies = v;
+  // Drop stale auth/PoW pairs on change; the gate will re-solve clearance.
+  cookieStore['com-x.life'] = '';
+  cookieStore['www.com-x.life'] = '';
+  const pairs = v.split(';').map((s) => s.trim()).filter((s) => s.includes('='));
+  if (pairs.length > 0) {
+    storeCookies('com-x.life', pairs);
+    storeCookies('www.com-x.life', pairs);
+  } else {
+    saveCookieStore();
+  }
+}
+
 export function initCookieStore(userDataDir: string): void {
   cookieStorePath = join(userDataDir, 'comx-cookie.json');
   try {

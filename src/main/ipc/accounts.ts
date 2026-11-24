@@ -57,7 +57,13 @@ export function registerAccounts(deps: AccountsDeps): void {
     // session with guest cookies.
     const next = { ...settings.get() };
     const merge = (prev: string): string => mergeCookieHeaders(prev, result.cookies);
-    if (url.includes('remanga')) {
+    if (url.includes('manga-shi')) {
+      next.mangashi_cookies_raw = merge(next.mangashi_cookies_raw);
+    } else if (url.includes('mangalib')) {
+      next.mangalib_cookies_raw = merge(next.mangalib_cookies_raw);
+    } else if (url.includes('com-x')) {
+      next.comx_cookies_raw = merge(next.comx_cookies_raw);
+    } else if (url.includes('remanga')) {
       const auth = remangaAuthFromCookies(result.cookies);
       const current = await remangaCurrentUser(auth);
       if (!current) {

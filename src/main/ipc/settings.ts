@@ -308,14 +308,17 @@ export function registerSettings(deps: {
   // this handler is the only way to drop a session.
   handleSafe(
     CH.clearSiteCookies,
-    z.tuple([z.enum(['onion', 'nhentai', 'nhentai_onion', 'senkuro'])]),
-    (_e, field: 'onion' | 'nhentai' | 'nhentai_onion' | 'senkuro') => {
+    z.tuple([z.enum(['onion', 'nhentai', 'nhentai_onion', 'senkuro', 'mangashi', 'mangalib', 'comx'])]),
+    (_e, field: 'onion' | 'nhentai' | 'nhentai_onion' | 'senkuro' | 'mangashi' | 'mangalib' | 'comx') => {
       const key = (
         {
           onion: 'onion_cookies_raw',
           nhentai: 'nhentai_cookies_raw',
           nhentai_onion: 'nhentai_onion_cookies_raw',
           senkuro: 'senkuro_cookies_raw',
+          mangashi: 'mangashi_cookies_raw',
+          mangalib: 'mangalib_cookies_raw',
+          comx: 'comx_cookies_raw',
         } as const
       )[field];
       const next: Settings = { ...settings.get(), [key]: '' };

@@ -30,6 +30,9 @@ export function hasAuthenticatedSession(target: string, cookies: { name: string;
   if (/nhentai.*\.onion/i.test(target)) return has('access_token') || has('refresh_token');
   if (/exhentai|e-hentai/i.test(target)) return has('onikakushi') || has('ipb_member_id');
   if (/senkuro/i.test(target)) return has('remixsid') || has('session_id') || has('access_token');
+  if (/mangalib/i.test(target)) return has('mangalib_session') || has('token') || has('access_token') || has('_identity');
+  if (/com-x/i.test(target)) return has('dle_user_id') || has('dle_password');
+  if (/manga-shi/i.test(target)) return cookies.some((c) => !!c.value && /^remember_web_/i.test(c.name));
   if (/remanga/i.test(target)) {
     if (has('sessionid') || has('access_token') || has('mr_rm_token') || has('token') || has('auth_token')) return true;
     // Django/Remanga may name the session cookie differently; ignore CSRF and
@@ -580,6 +583,22 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
           `)
           .catch(() => {});
       }
+      if (/manga-shi|mangalib|com-x/i.test(loginUrl)) {
+        void win.webContents
+          .executeJavaScript(`
+            setTimeout(function() {
+              try {
+                var el = Array.prototype.find.call(document.querySelectorAll('a[href], button'), function(x) {
+                  var t = (x.textContent || '').trim();
+                  var h = x.getAttribute && (x.getAttribute('href') || '');
+                  return /^(Войти|Вход|Авторизация|Login)$/i.test(t) || /(^|\\/)login|\\/auth|do=login/i.test(h);
+                });
+                if (el) el.click();
+              } catch (e) {}
+            }, 1500);
+          `)
+          .catch(() => {});
+      }
       const script = `
         (function() {
           var btn = document.createElement('button');
@@ -593,7 +612,13 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
               var eq = c.indexOf('=');
               if (eq > 0) all.push(c.trim());
             });
-            fetch('manga-cookies://done?cookies=' + encodeURIComponent(all.join('; ')));
+            // The custom scheme is blocked by some sites' CSP. A window flag is
+            // read by the main-process poll, which collects HttpOnly cookies
+            // itself and closes the window.
+            window.__mr_done = '1';
+            try {
+              fetch('manga-cookies://done?cookies=' + encodeURIComponent(all.join('; ')));
+            } catch (e) {}
           };
           (document.body || document.documentElement).appendChild(btn);
           ${
@@ -698,6 +723,16 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
       const ws = win.webContents;
       void (async () => {
         try {
+          const manualDone = await ws.executeJavaScript('window.__mr_done === "1"').catch(() => false);
+          if (!done && manualDone) {
+            clearInterval(poll);
+            statusEl = 'Вход подтверждён — собираю куки…';
+            void injectStatus();
+            setTimeout(() => {
+              if (!done) grabCookies('done-button');
+            }, 200);
+            return;
+          }
           const url = ws.getURL();
           const onLoginOrSso = /\/login|sso\.|act=login/i.test(url);
           if (onLoginOrSso) seenLogin = true;

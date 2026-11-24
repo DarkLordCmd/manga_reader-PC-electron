@@ -4,6 +4,12 @@ import { type CatalogItem, type CatalogFilters, resolve } from './catalog-types'
 import type { ChapterInfo } from './remanga';
 import { assertLayout } from '../layout-watcher';
 
+let userCookies = '';
+/** Auth cookies captured by the Manga-shi login window. */
+export function setMangaShiCookies(value: string): void {
+  userCookies = value.trim();
+}
+
 export async function searchMangaShi(
   query: string,
   proxy?: string,
@@ -27,7 +33,7 @@ export async function searchMangaShi(
   const url = `${base}/catalog/${params.length ? `?${params.join('&')}` : ''}`;
   let text: string;
   try {
-    text = await fetchHtmlSmart(url, { proxy });
+    text = await fetchHtmlSmart(url, { proxy, cookieHeader: userCookies || undefined });
   } catch (e) {
     // Laravel paginator answers 404 when the requested page is past the last
     // one. That is the normal end of the list, not a user-facing error.
@@ -135,7 +141,7 @@ function mangashiChapterNumFromUrl(full: string, text: string): string {
 
 export async function fetchMangaShiChapters(mangaUrl: string, proxy?: string): Promise<ChapterInfo[]> {
   const base = mangaUrl.trim().replace(/\/+$/, '');
-  const page1 = await fetchHtmlSmart(mangaUrl, { proxy, timeoutMs: 30_000 });
+  const page1 = await fetchHtmlSmart(mangaUrl, { proxy, timeoutMs: 30_000, cookieHeader: userCookies || undefined });
   assertLayout(['glava-'], page1, 'Manga-shi chapters');
 
   const allChapters: ChapterInfo[] = [];
@@ -164,7 +170,7 @@ export async function fetchMangaShiChapters(mangaUrl: string, proxy?: string): P
   let page = findNextPage(page1, 1);
   while (page != null && page <= 200) {
     const target = `${base}/chapters/?chapter_sort=latest&page=${page}`;
-    const r = await fetchHtmlSmart(target, { proxy, timeoutMs: 30_000 });
+    const r = await fetchHtmlSmart(target, { proxy, timeoutMs: 30_000, cookieHeader: userCookies || undefined });
     parseChapters(r);
     const next = findNextPage(r, page);
     if (next == null || next <= page) break;

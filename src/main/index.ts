@@ -31,7 +31,9 @@ import { rememberSettingsSecrets } from './services/settings-snapshot';
 import { seriesKeyForUrl } from './services/series-key';
 import { fetchSenkuroMangaTitle, senkuroMangaSlugFromUrl } from './services/sources';
 import { proxyForUrl } from './services/proxy-policy';
-import { initCookieStore } from './services/comx-gate';
+import { initCookieStore, setComxUserCookies } from './services/comx-gate';
+import { setMangaShiCookies } from './services/sources/mangashi';
+import { setMangalibUserCookies } from './services/sources/mangalib';
 import { initPageCache } from './services/page-cache';
 import { DownloadManager } from './services/download-manager';
 import { GoogleAuth } from './services/google-auth';
@@ -214,6 +216,12 @@ app.whenReady().then(() => {
   installAppCsp(process.env['ELECTRON_RENDERER_URL']);
   installDefaultPermissions(session.defaultSession);
   settings = new SettingsService(app.getPath('userData'));
+  const applySourceCookies = (s: Settings): void => {
+    setMangaShiCookies(s.mangashi_cookies_raw ?? '');
+    setMangalibUserCookies(s.mangalib_cookies_raw ?? '');
+    setComxUserCookies(s.comx_cookies_raw ?? '');
+  };
+  applySourceCookies(settings.get());
   // Covers must use the daemon that is actually running (the embedded one
   // listens on its own port even when tor_socks_addr still says 9150).
   setCoverTorResolver(() => effectiveTorSocks());
@@ -394,6 +402,7 @@ app.whenReady().then(() => {
    * it optimistically): echoing the whole settings object back caused a full
    * re-render of the app on every toggle/zoom click. */
   const broadcastSettingsChanged = (s: Settings, exceptId?: number): void => {
+    applySourceCookies(s);
     rememberSettingsSecrets(s);
     for (const w of BrowserWindow.getAllWindows()) {
       if (exceptId !== undefined && w.webContents.id === exceptId) continue;
