@@ -94,6 +94,9 @@ const groupleIdxMap = { readmanga: 0, mintmanga: 1, mangapoisk: 2 } as const;
 // for Cloudflare-fronted hosts like nhentai), hiding it from SNI-based DPI.
 // QUIC/HTTP-3 is already on by default in the network service.
 app.commandLine.appendSwitch('enable-features', 'EncryptedClientHello');
+// Windows Security/WebAuthn prompts (passkeys) are unwanted in login windows;
+// the sources support ordinary login/password too.
+app.commandLine.appendSwitch('disable-features', 'WebAuthentication,WebAuthenticationPasskeys,WebAuthenticationNewPrompt');
 
 function downloadsDirBase(dir: string | null | undefined): string {
   return dir?.trim() || join(app.getPath('userData'), 'downloads');

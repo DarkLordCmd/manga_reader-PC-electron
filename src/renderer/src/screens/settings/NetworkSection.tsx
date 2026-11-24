@@ -457,7 +457,7 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
           />
         </Row>
         <Row>
-          <button onClick={() => void doLogin('https://manga-shi.org/', 'Manga-shi')}>Войти в Manga-shi</button>
+          <button onClick={() => void doLogin('https://manga-shi.org/login/', 'Manga-shi')}>Войти в Manga-shi</button>
           <button className="set-danger" onClick={() => void clearCookies('mangashi', 'Manga-shi')}>
             Очистить куки
           </button>
@@ -489,7 +489,7 @@ export default function NetworkSection({ settings, upd }: SettingsCommon): JSX.E
           />
         </Row>
         <Row>
-          <button onClick={() => void doLogin('https://com-x.life/', 'Com-X')}>Войти в Com-X</button>
+          <button onClick={() => void doLogin('https://com-x.life/index.php?do=login', 'Com-X')}>Войти в Com-X</button>
           <button className="set-danger" onClick={() => void clearCookies('comx', 'Com-X')}>
             Очистить куки
           </button>

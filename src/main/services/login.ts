@@ -60,6 +60,8 @@ const LOGIN_AD_HOSTS = [
   /(^|\.)taboola\.com$/i,
   /(^|\.)outbrain\.com$/i,
   /(^|\.)adnxs\.com$/i,
+  /(^|\.)flocktory\.com$/i,
+  /(^|\.)share\.flocktory\.com$/i,
 ];
 
 function isLoginAdUrl(raw: string): boolean {
@@ -179,6 +181,8 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
     });
 
     denyAllPermissions(ses);
+    // Promo/ad popups (Mangalib gift wheel) must stay out of the login flow.
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
     let done = false;
     const loadAttempt = 0;
@@ -465,7 +469,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
     };
 
     ses.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
-      if (isLoginAdUrl(details.url)) {
+      if (!/com-x/i.test(loginUrl) && isLoginAdUrl(details.url)) {
         callback({ cancel: true });
         return;
       }
@@ -592,6 +596,31 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
       });
     }
 
+    // Com-X offers passkeys; the OS credential picker would cover the login
+    // form. Passwords/email work, so reject WebAuthn inside this window.
+    if (/com-x/i.test(loginUrl)) {
+      const disablePasskeys = (): void => {
+        void win.webContents
+          .executeJavaScript(`
+            (function() {
+              try {
+                var deny = function() { return Promise.reject(new DOMException('Passkey disabled', 'NotAllowedError')); };
+                if (navigator.credentials) {
+                  navigator.credentials.get = deny;
+                  navigator.credentials.create = deny;
+                }
+                if (window.PublicKeyCredential && PublicKeyCredential.isConditionalMediationAvailable) {
+                  PublicKeyCredential.isConditionalMediationAvailable = function() { return Promise.resolve(false); };
+                }
+              } catch (e) {}
+            })();
+          `)
+          .catch(() => {});
+      };
+      win.webContents.on('dom-ready', disablePasskeys);
+      win.webContents.on('did-finish-load', disablePasskeys);
+    }
+
     // Inject a floating "Готово, забрать куки" button + a fetch handler
     win.webContents.on('did-finish-load', () => {
       if (done) return;
@@ -617,19 +646,42 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
           `)
           .catch(() => {});
       }
-      if (/manga-shi|mangalib|com-x/i.test(loginUrl)) {
+      if (/com-x/i.test(loginUrl)) {
+        // Com-X opens its login form from a div (not a link/button); clicking a
+        // generic "Войти" resolved to the registration link. Use the exact
+        // `.js-show-login` trigger.
         void win.webContents
           .executeJavaScript(`
-            setTimeout(function() {
-              try {
-                var el = Array.prototype.find.call(document.querySelectorAll('a[href], button'), function(x) {
-                  var t = (x.textContent || '').trim();
-                  var h = x.getAttribute && (x.getAttribute('href') || '');
-                  return /^(Войти|Вход|Авторизация|Login)$/i.test(t) || /(^|\\/)login|\\/auth|do=login/i.test(h);
-                });
-                if (el) el.click();
-              } catch (e) {}
-            }, 1500);
+            (function() {
+              var tries = 0;
+              var timer = setInterval(function() {
+                try {
+                  var el = document.querySelector('.js-show-login, .header__btn-login');
+                  if (el) { el.click(); clearInterval(timer); }
+                } catch (e) {}
+                if (++tries > 30) clearInterval(timer);
+              }, 300);
+            })();
+          `)
+          .catch(() => {});
+      }
+      if (/mangalib/i.test(loginUrl)) {
+        void win.webContents
+          .executeJavaScript(`
+            (function() {
+              var tries = 0;
+              var timer = setInterval(function() {
+                try {
+                  var el = Array.prototype.find.call(document.querySelectorAll('a[href], button'), function(x) {
+                    var t = (x.textContent || '').trim();
+                    var h = x.getAttribute && (x.getAttribute('href') || '');
+                    return /^Вход\s*\|\s*Регистрация$/i.test(t) || (t === 'Войти' && !/regin|register/i.test(h));
+                  });
+                  if (el) { el.click(); clearInterval(timer); }
+                } catch (e) {}
+                if (++tries > 30) clearInterval(timer);
+              }, 300);
+            })();
           `)
           .catch(() => {});
       }
