@@ -323,11 +323,17 @@ export function useCatalogSearch() {  const { setScreen, setOpened, settings, se
   // the authoritative result replaces it when it arrives.
   const displayCards = useMemo(() => {
     const base = exSource ? filterCardsByEhKinds(cards, ehExcludedCats) : cards;
-    // R34 rule: an 18+ work from ANY source (Senkuro explicit, MangaDex
-    // erotica, Remanga forbidden, Manga-shi tags) must stay hidden while the
-    // privacy toggle is off, not just R34 sources as a whole.
-    return settings.show_r34_history ? base : base.filter((c) => !c.adult);
+    // R34 rule: every 18+ work (adult/hentai/smut OR the age-18 badge) must stay
+    // hidden while the privacy toggle is off, not just R34 sources as a whole.
+    return settings.show_r34_history ? base : base.filter((c) => !c.adult && !c.age18);
   }, [cards, exSource, ehExcludedCats, settings.show_r34_history]);
+  // The 18+ filter is part of R34: when the privacy toggle is turned off, drop
+  // it so the catalogue falls back to safe results instead of searching and
+  // then hiding every card.
+  useEffect(() => {
+    if (settings.show_r34_history) return;
+    setSkRatings((prev) => (prev.includes('EXPLICIT') ? prev.filter((r) => r !== 'EXPLICIT') : prev));
+  }, [settings.show_r34_history]);
   // Auto-scroll must not keep fetching pages that local filters hide (18+ with
   // R34 off, excluded EH categories): the visible list stays empty, the
   // "near bottom" test is always true, and the catalog used to download page

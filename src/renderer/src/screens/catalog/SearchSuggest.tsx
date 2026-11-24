@@ -69,12 +69,15 @@ export default function SearchSuggest({ s }: { s: CatalogSearch }): JSX.Element 
               url: c.url,
               coverUrl: c.coverUrl,
               meta: [c.kind, c.score != null ? `★ ${c.score.toFixed(1)}` : null].filter(Boolean).join(' · ') || null,
+              age18: c.adult === true || c.age18 === true,
             }));
           } catch {
             list = [];
           }
         }
         if (id !== seqRef.current) return;
+        // R34 off also hides 18+ suggestions, not just catalogue cards.
+        if (!s.settings.show_r34_history) list = list.filter((it) => !it.age18);
         setItems(list.slice(0, 8));
         setActive(-1);
         setOpen(list.length > 0);
@@ -82,7 +85,7 @@ export default function SearchSuggest({ s }: { s: CatalogSearch }): JSX.Element 
       })();
     }, DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [query, s.source]);
+  }, [query, s.source, s.settings.show_r34_history]);
 
   const choose = (it: SearchSuggestion): void => {
     setOpen(false);
