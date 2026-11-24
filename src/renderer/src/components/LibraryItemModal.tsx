@@ -19,10 +19,14 @@ const STATUS_LABELS: Record<ReadingStatus, string> = {
   dropped: 'Брошено',
 };
 
-interface ExternalSource {
+export interface ExternalSource {
   source: string;
   title: string;
   url: string;
+  coverUrl: string | null;
+  kind: string | null;
+  adult: boolean;
+  age18: boolean;
 }
 const externalCache = new Map<string, { at: number; items: ExternalSource[] }>();
 const EXTERNAL_TTL_MS = 10 * 60_000;
@@ -37,6 +41,8 @@ interface Props {
   /** Other library rows with the same normalized title (different sources). */
   alternatives?: LibraryItem[];
   onSwitchSource?: (item: LibraryItem) => void;
+  /** Add/switch to a work found in another catalogue. */
+  onUseExternal?: (ext: ExternalSource) => Promise<void> | void;
   onClose: () => void;
   onOpen: () => void;
   /** The full chapter list travels with the click: the reader needs it for the
@@ -45,7 +51,7 @@ interface Props {
   onChanged: () => void;
 }
 
-export default function LibraryItemModal({ item, progressIndex, alternatives = [], onSwitchSource, onClose, onOpen, onOpenChapter, onChanged }: Props): JSX.Element {
+export default function LibraryItemModal({ item, progressIndex, alternatives = [], onSwitchSource, onUseExternal, onClose, onOpen, onOpenChapter, onChanged }: Props): JSX.Element {
   const { settings } = useStore();
   const [status, setStatus] = useState<ReadingStatus | ''>(item.status ?? '');
   const [rating, setRating] = useState(item.rating ?? 0);
@@ -55,6 +61,8 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
   const [chapterError, setChapterError] = useState<string | null>(null);
   const [workTags, setWorkTags] = useState<string[]>([]);
   const [externalSources, setExternalSources] = useState<ExternalSource[]>([]);
+  const [externalBusy, setExternalBusy] = useState<string | null>(null);
+  const [externalError, setExternalError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const downloads = useChapterDownloads();
@@ -68,9 +76,15 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
     const known = new Set(alternatives.map((a) => a.source));
     const current = item.source.toLowerCase();
     const targets = [
-      { key: 'senkuro', label: 'Senkuro' },
       { key: 'remanga', label: 'Remanga' },
-    ].filter((t) => !current.includes(t.key) && !known.has(t.label));
+      { key: 'senkuro', label: 'Senkuro' },
+      { key: 'mangashi', label: 'Manga-shi' },
+      { key: 'mangalib', label: 'Mangalib' },
+      { key: 'comx', label: 'Com-X' },
+      { key: 'readmanga', label: 'Readmanga' },
+      { key: 'mintmanga', label: 'Mintmanga' },
+      { key: 'mangapoisk', label: 'Mangapoisk' },
+    ].filter((t) => !current.includes(t.key.replace('mangashi', 'manga-shi').replace('comx', 'com-x')) && !known.has(t.label));
     if (targets.length === 0) {
       setExternalSources([]);
       return;
@@ -84,19 +98,35 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
     setExternalSources([]);
     void (async () => {
       const found: ExternalSource[] = [];
-      for (const t of targets) {
-        try {
-          const cards = await window.api.searchCatalog(t.key, item.title, 0, 'default', {}, undefined);
-          const match = cards.find(
-            (c) =>
-              (settings.show_r34_history || (!c.adult && !c.age18)) &&
-              likelySameWork({ url: item.url, title: item.title }, { url: c.url, title: c.title }),
-          );
-          if (match && !known.has(t.label)) found.push({ source: t.label, title: match.title, url: match.url });
-        } catch {
-          /* source search is best-effort */
-        }
-      }
+      await Promise.all(
+        targets.map(async (t) => {
+          try {
+            const cards = await window.api.searchCatalog(t.key, item.title, 0, 'default', {}, undefined);
+            const match = cards.find(
+              (c) =>
+                (settings.show_r34_history || (!c.adult && !c.age18)) &&
+                likelySameWork({ url: item.url, title: item.title }, { url: c.url, title: c.title }),
+            );
+            if (match && !known.has(t.label)) {
+              const ext: ExternalSource = {
+                source: t.label,
+                title: match.title,
+                url: match.url,
+                coverUrl: match.coverUrl ?? null,
+                kind: match.kind ?? null,
+                adult: match.adult === true,
+                age18: match.age18 === true,
+              };
+              found.push(ext);
+              if (!cancelled) {
+                setExternalSources((prev) => [...prev.filter((x) => x.source !== ext.source), ext]);
+              }
+            }
+          } catch {
+            /* source search is best-effort */
+          }
+        }),
+      );
       if (cancelled) return;
       externalCache.set(cacheKey, { at: Date.now(), items: found });
       setExternalSources(found.filter((x) => !known.has(x.source)));
@@ -105,6 +135,19 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
       cancelled = true;
     };
   }, [item.key, item.url, item.title, item.source, alternatives, settings.show_r34_history]);
+
+  const switchExternalSource = async (ext: ExternalSource): Promise<void> => {
+    if (!onUseExternal || externalBusy) return;
+    setExternalBusy(ext.url);
+    setExternalError(null);
+    try {
+      await onUseExternal(ext);
+    } catch (e) {
+      setExternalError(errorText(e));
+    } finally {
+      setExternalBusy(null);
+    }
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -238,12 +281,20 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
               </button>
             ))}
             {externalSources.map((e) => (
-              <span key={`${e.source}:${e.url}`} className="source-chip external" title={`Есть на ${e.source}: ${e.title}`}>
-                {e.source} · есть
-              </span>
+              <button
+                key={`${e.source}:${e.url}`}
+                type="button"
+                className="source-chip external"
+                disabled={externalBusy !== null}
+                title={`Переключиться на ${e.source}: ${e.title}`}
+                onClick={() => void switchExternalSource(e)}
+              >
+                {externalBusy === e.url ? 'Переключаю…' : `${e.source} · есть`}
+              </button>
             ))}
           </div>
         )}
+        {externalError && <div className="overlay-note error-text">{externalError}</div>}
 
         <div className="overlay-meta">
           {item.source && <span className="overlay-chip">{item.source}</span>}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../state/store';
 import type { LibraryItem, LibrarySort, ReadingStatus } from '@shared/library';
 import { READING_STATUSES } from '@shared/library';
-import LibraryItemModal from '../components/LibraryItemModal';
+import LibraryItemModal, { type ExternalSource } from '../components/LibraryItemModal';
 import CoverImg from '../components/CoverImg';
 import KindBadge from '../components/KindBadge';
 import StatusBadge from '../components/StatusBadge';
@@ -66,6 +66,26 @@ export default function Library(): JSX.Element {
   }, [workGroups]);
 
   const dupDisplayRef = useRef<Map<string, { best: LibraryItem; count: number }>>(new Map());
+
+  const useExternalSource = async (ext: ExternalSource): Promise<void> => {
+    const norm = (u: string): string => u.replace(/\/+$/, '').toLowerCase();
+    const existing = allItems.find((i) => norm(i.url) === norm(ext.url));
+    if (existing) {
+      setSelected(existing);
+      return;
+    }
+    const added = await window.api.libraryAdd({
+      url: ext.url,
+      title: ext.title,
+      coverUrl: ext.coverUrl,
+      source: ext.source,
+      seriesId: ext.url,
+      kind: ext.kind ?? null,
+      adult: ext.adult || ext.age18,
+    });
+    if (selected?.status) await window.api.librarySetStatus(added.key, selected.status);
+    setSelected(added);
+  };
 
   const open = async (item: LibraryItem): Promise<void> => {
     setError(null);
@@ -366,6 +386,7 @@ export default function Library(): JSX.Element {
           progressIndex={selected ? (duplicateDisplay.get(selected.key)?.best.chapterIndex ?? selected.chapterIndex) : null}
           alternatives={alternatives}
           onSwitchSource={(next) => setSelected(next)}
+          onUseExternal={useExternalSource}
           onClose={() => setSelected(null)}
           onOpen={async () => {
             await open(selected);
