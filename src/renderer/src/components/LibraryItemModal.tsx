@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ChapterListItem } from '@shared/ipc';
 import type { LibraryItem, ReadingStatus } from '@shared/library';
 import { READING_STATUSES } from '@shared/library';
+import { chapterLabelNumber } from '@shared/work-title';
 import { tagChipStyle } from '../lib/tag-colors';
 import { mangashiTitleUrl } from '../lib/adult';
 import { useStore } from '../state/store';
@@ -177,7 +178,7 @@ export default function LibraryItemModal({ item, alternatives = [], onSwitchSour
                 onClick={() => onSwitchSource?.(a)}
               >
                 {a.source}
-                {a.chapterLabel ? ` · гл. ${a.chapterLabel}` : ''}
+                {a.chapterLabel ? ` · гл. ${chapterLabelNumber(a.chapterLabel) ?? a.chapterLabel}` : ''}
               </button>
             ))}
           </div>

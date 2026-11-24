@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mapRemangaBookmark, remangaAuthFromCookies } from '../src/main/services/remanga-import';
-import { normalizeWorkTitle } from '../src/shared/work-title';
+import { normalizeWorkTitle, chapterLabelNumber } from '../src/shared/work-title';
 import { hasAuthenticatedSession } from '../src/main/services/login';
 
 describe('Remanga bookmark mapping', () => {
@@ -106,5 +106,13 @@ describe('Remanga browser login helpers', () => {
     expect(hasAuthenticatedSession('https://remanga.org/', [{ name: 'sessionid', value: 'x' }], false)).toBe(true);
     expect(hasAuthenticatedSession('https://remanga.org/', [{ name: 'mr_rm_token', value: 'x' }], false)).toBe(true);
     expect(hasAuthenticatedSession('https://remanga.org/', [], false)).toBe(false);
+  });
+});
+describe('chapter label display', () => {
+  it('strips volume prefixes used by the reader', () => {
+    expect(chapterLabelNumber('1 / 148')).toBe('148');
+    expect(chapterLabelNumber('Том 1 Глава 2')).toBe('2');
+    expect(chapterLabelNumber('12.5')).toBe('12.5');
+    expect(chapterLabelNumber('')).toBeNull();
   });
 });

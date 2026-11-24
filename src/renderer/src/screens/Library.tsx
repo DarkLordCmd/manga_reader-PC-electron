@@ -10,8 +10,7 @@ import ContextMenu, { type MenuItem } from '../components/ContextMenu';
 import { buildLibraryMenuItems, STATUS_LABELS } from '../lib/library-menu';
 import { resolveAdultFlag } from '../lib/adult';
 import { errorText } from '../lib/errors';
-import { startPageFor } from '@shared/settings';
-import { normalizeWorkTitle } from '@shared/work-title';
+import { normalizeWorkTitle, chapterLabelNumber } from '@shared/work-title';
 
 const TABS: (ReadingStatus | 'all')[] = ['all', ...READING_STATUSES];
 
@@ -57,16 +56,18 @@ export default function Library(): JSX.Element {
   const open = async (item: LibraryItem): Promise<void> => {
     setError(null);
     try {
-      // Imported series store the chapter they stopped at. Reopen THAT chapter
-      // (with its saved page) instead of the bare series URL, which for online
-      // sources starts at the first chapter.
-      if (item.chapterIndex != null) {
+      // For a work present on several sources, continue from the GREATEST
+      // progress of the group (the card shows that number too), not from this
+      // row's smaller progress. The chapter list still comes from the selected
+      // source, so switching source keeps the resume point.
+      const resume = duplicateDisplay.get(item.key)?.best ?? item;
+      if (resume.chapterIndex != null) {
         try {
-          const [list, s] = await Promise.all([window.api.fetchChapterList(item.url), window.api.getSettings()]);
-          const idx = Math.min(Math.max(0, item.chapterIndex), Math.max(0, list.length - 1));
+          const [list] = await Promise.all([window.api.fetchChapterList(item.url), window.api.getSettings()]);
+          const idx = Math.min(Math.max(0, resume.chapterIndex), Math.max(0, list.length - 1));
           const chapter = list[idx];
           if (chapter) {
-            const start = startPageFor(chapter.chapter_id, s.read_progress);
+            const start = Math.max(0, resume.currentPage - 1);
             const r = await window.api.openUrl(
               chapter.chapter_id,
               start,
@@ -86,7 +87,7 @@ export default function Library(): JSX.Element {
           /* fall back to the series entry below */
         }
       }
-      const start = Math.max(0, item.currentPage - 1);
+      const start = Math.max(0, resume.currentPage - 1);
       const r = await window.api.openUrl(item.url, start, item.seriesId, item.coverUrl, item.kind ?? null, null, await resolveAdultFlag(item.url, item.category === 'r34'));
       if (r) {
         setOpened({ kind: 'online', ...r, startPage: start, coverUrl: item.coverUrl });
@@ -156,11 +157,23 @@ export default function Library(): JSX.Element {
       list.push(it);
       groups.set(key, list);
     }
-    const score = (i: LibraryItem): number => (i.chapterIndex != null ? i.chapterIndex : 0) * 100000 + i.currentPage;
+    const progressNumber = (i: LibraryItem): number => {
+      const label = chapterLabelNumber(i.chapterLabel);
+      return Math.max(label != null ? Number(label) : -1, i.chapterIndex ?? -1, i.currentPage || 0);
+    };
+    const score = progressNumber;
     const out = new Map<string, { best: LibraryItem; count: number }>();
     for (const group of groups.values()) {
       if (group.length < 2) continue;
-      const best = group.reduce((a, b) => (score(b) > score(a) ? b : a));
+      const best = group.reduce((a, b) => {
+        const diff = score(b) - score(a);
+        if (diff !== 0) return diff > 0 ? b : a;
+        // Same position but one label is "1 / 148" and another is a stale "2":
+        // keep the one whose numeric label is higher so the card shows 148.
+        const la = chapterLabelNumber(a.chapterLabel);
+        const lb = chapterLabelNumber(b.chapterLabel);
+        return (lb != null ? Number(lb) : -1) > (la != null ? Number(la) : -1) ? b : a;
+      });
       for (const it of group) out.set(it.key, { best, count: group.length });
     }
     return out;
@@ -256,11 +269,15 @@ export default function Library(): JSX.Element {
                 {/* One compact line: chapter progress or page progress, never a
                     second counter row (that left a mostly empty row + gap on
                     R34 cards). */}
-                {(best?.best.chapterLabel ?? it.chapterLabel)
-                  ? `Глава ${best?.best.chapterLabel ?? it.chapterLabel}${(best?.best.chapterTotal ?? it.chapterTotal) ? ` из ${best?.best.chapterTotal ?? it.chapterTotal}` : ''}`
-                  : it.totalPages > 0
-                    ? `стр. ${it.currentPage}/${it.totalPages}`
-                    : ''}
+                {(() => {
+                  const raw = best?.best.chapterLabel ?? it.chapterLabel;
+                  const label = chapterLabelNumber(raw) ?? raw;
+                  return label
+                    ? `Глава ${label}${(best?.best.chapterTotal ?? it.chapterTotal) ? ` из ${best?.best.chapterTotal ?? it.chapterTotal}` : ''}`
+                    : it.totalPages > 0
+                      ? `стр. ${it.currentPage}/${it.totalPages}`
+                      : '';
+                })()}
                 {it.rating != null ? ` · ★ ${it.rating}` : ''}
                 {best && best.count > 1 ? ` · источников: ${best.count}` : ''}
               </span>

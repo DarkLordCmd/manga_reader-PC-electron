@@ -146,6 +146,10 @@ export class HistoryManager {
         return;
       }
       const next = toUpsert(update, existing.key, existing.seriesId);
+      // Opening a chapter writes a chapter URL/title ("Remanga: Глава 2"), but
+      // the existing row is the SERIES the user saved. Keep its title so the
+      // library card / duplicate source picker still shows the work's name.
+      if (existing.url !== update.url && existing.title) next.title = existing.title;
       next.kind = update.kind ?? existing.kind ?? null;
       // Never downgrade an R34 row to "main" just because a later open did not
       // pass the adult flag (chapter-to-chapter navigation does not know it).

@@ -127,7 +127,7 @@ npm run dev           # или npm run dist
 
 ## Тесты
 
-`npm test` (~522 unit-теста, чистый Node): парсеры источников (включая
+`npm test` (~523 unit-теста, чистый Node): парсеры источников (включая
 Senkognito 18+ и R34-метки), галереи/zip, репозиторий SQLite, кэши
 (SWR/каталог/листинги), Tor-конфигурация и изоляция, шифрование секретов
 (safeStorage/secret-box), PIN (scrypt), валидация IPC (zod), математика

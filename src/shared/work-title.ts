@@ -12,3 +12,12 @@ export function normalizeWorkTitle(title: string): string {
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+/** Human chapter label, stripped of volume prefixes: "1 / 148" → "148",
+ * "Том 1 Глава 2" → "2". Returns null when no number is present. */
+export function chapterLabelNumber(label: unknown): string | null {
+  const text = String(label ?? '').trim();
+  if (!text) return null;
+  const m = text.match(/(\d+(?:[.,]\d+)?)\s*$/);
+  return m ? m[1].replace(',', '.') : null;
+}
