@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupLikelyWorks, likelySameWork } from '../src/shared/work-title';
+import { displayWorkTitle, groupLikelyWorks, likelySameWork } from '../src/shared/work-title';
 
 const facultyRemanga = {
   url: 'https://remanga.org/manga/hero-high-school-dungeon-attack-department_/',
@@ -13,6 +13,15 @@ const facultySenkuro = {
 describe('cross-source work grouping', () => {
   it('matches different Russian titles by similar source slugs', () => {
     expect(likelySameWork(facultyRemanga, facultySenkuro)).toBe(true);
+  });
+
+  it('matches a title with a slash subtitle', () => {
+    expect(
+      likelySameWork(
+        { url: 'https://mangalib.me/1--legendary-mechanic', title: 'Легендарный механик' },
+        { url: 'https://remanga.org/manga/legendary-mechanic/', title: 'Легендарный механик / Chao Shi Legendary Mechanic' },
+      ),
+    ).toBe(true);
   });
 
   it('does not merge unrelated works', () => {
@@ -32,5 +41,12 @@ describe('cross-source work grouping', () => {
     ]);
     expect(groups).toHaveLength(2);
     expect(groups[0]).toHaveLength(2);
+  });
+});
+
+describe('displayWorkTitle', () => {
+  it('drops source suffixes and romanization', () => {
+    expect(displayWorkTitle('Легендарный механик / Chao shen jixie shi читать мангу онлайн')).toBe('Легендарный механик');
+    expect(displayWorkTitle('Обычное название')).toBe('Обычное название');
   });
 });

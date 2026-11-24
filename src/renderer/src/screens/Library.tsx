@@ -10,7 +10,7 @@ import ContextMenu, { type MenuItem } from '../components/ContextMenu';
 import { buildLibraryMenuItems, STATUS_LABELS } from '../lib/library-menu';
 import { resolveAdultFlag } from '../lib/adult';
 import { errorText } from '../lib/errors';
-import { chapterLabelNumber, groupLikelyWorks } from '@shared/work-title';
+import { chapterLabelNumber, displayWorkTitle, groupLikelyWorks } from '@shared/work-title';
 
 const TABS: (ReadingStatus | 'all')[] = ['all', ...READING_STATUSES];
 
@@ -341,7 +341,7 @@ export default function Library(): JSX.Element {
               <StatusBadge status={it.status} />
             </div>
             <div className="history-title" title={it.title}>
-              {it.title || 'Без названия'}
+              {displayWorkTitle(it.title) || 'Без названия'}
             </div>
             <div className="history-meta">
               <span>

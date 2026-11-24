@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ChapterListItem } from '@shared/ipc';
 import type { LibraryItem, ReadingStatus } from '@shared/library';
 import { READING_STATUSES } from '@shared/library';
-import { chapterLabelNumber, likelySameWork } from '@shared/work-title';
+import { chapterLabelNumber, displayWorkTitle, likelySameWork } from '@shared/work-title';
 import { tagChipStyle } from '../lib/tag-colors';
 import { mangashiTitleUrl } from '../lib/adult';
 import { useStore } from '../state/store';
@@ -258,7 +258,7 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
       <div className="overlay-card library-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         <div className="overlay-head">
           <h3 className="overlay-title" title={item.title}>
-            {item.title || 'Без названия'}
+            {displayWorkTitle(item.title) || 'Без названия'}
           </h3>
           <button ref={closeRef} className="overlay-close" aria-label="Закрыть" title="Закрыть" onClick={onClose}>
             ×

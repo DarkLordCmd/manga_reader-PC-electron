@@ -2,7 +2,10 @@
  * Senkuro/Remanga/MangaDex/etc.). Deliberately conservative: only the title
  * itself, volume/chapter suffixes and bracketed metadata are stripped. */
 export function normalizeWorkTitle(title: string): string {
-  return title
+  // Cross-source titles often append an alternative name: 'Легендарный
+  // механик / Chao Shi...'. Compare the base title before the separator.
+  const base = String(title ?? '').split(/\s+[/|]\s+/)[0]?.trim() || String(title ?? '');
+  return base
     .toLowerCase()
     .replace(/\[[^\]]*\]|\{[^}]*\}/g, ' ')
     .replace(/\((?:[^)]*(?:ремейк|remake|новелла|novel|манхва|манга|manhwa|manga)[^)]*)\)/gi, ' ')
@@ -53,6 +56,12 @@ export function likelySameWork(a: { url: string; title: string }, b: { url: stri
   const ta = normalizeWorkTitle(a.title);
   const tb = normalizeWorkTitle(b.title);
   if (ta.length >= 4 && ta === tb) return true;
+  // One source may keep an extra subtitle/romanization in the same field:
+  // "Легендарный механик" vs "Легендарный механик / Chao Shi...".
+  if (ta.length >= 8 && tb.length >= 8) {
+    const [shorter, longer] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+    if (shorter.split(' ').length >= 2 && longer.startsWith(`${shorter} `)) return true;
+  }
   const sa = workSlugTokens(a.url);
   const sb = workSlugTokens(b.url);
   if (sa.length < 4 || sb.length < 4) return false;
@@ -78,4 +87,11 @@ export function groupLikelyWorks<T extends { url: string; title: string }>(items
     }
   }
   return groups;
+}
+/** Clean title for display: drops an appended "/ romanization" and common
+ * site suffixes (Mangalib search titles end with "читать мангу онлайн"). */
+export function displayWorkTitle(title: string): string {
+  const raw = String(title ?? '').trim();
+  const base = raw.split(/\s+[/|]\s+/)[0]?.trim() || raw;
+  return base.replace(/\s+читать\s+.*?(онлайн|сайт).*$/i, '').trim() || raw;
 }
