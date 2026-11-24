@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ChapterListItem } from '@shared/ipc';
 import type { LibraryItem, ReadingStatus } from '@shared/library';
 import { READING_STATUSES } from '@shared/library';
-import { chapterLabelNumber } from '@shared/work-title';
+import { chapterLabelNumber, likelySameWork } from '@shared/work-title';
 import { tagChipStyle } from '../lib/tag-colors';
 import { mangashiTitleUrl } from '../lib/adult';
 import { useStore } from '../state/store';
@@ -18,6 +18,14 @@ const STATUS_LABELS: Record<ReadingStatus, string> = {
   on_hold: 'Отложено',
   dropped: 'Брошено',
 };
+
+interface ExternalSource {
+  source: string;
+  title: string;
+  url: string;
+}
+const externalCache = new Map<string, { at: number; items: ExternalSource[] }>();
+const EXTERNAL_TTL_MS = 10 * 60_000;
 
 /** Chapter URLs differ only by a trailing slash between calls. */
 const normUrl = (u: string): string => u.trim().replace(/\/+$/, '').toLowerCase();
@@ -46,13 +54,58 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
   const [chapters, setChapters] = useState<ChapterListItem[] | null>(null);
   const [chapterError, setChapterError] = useState<string | null>(null);
   const [workTags, setWorkTags] = useState<string[]>([]);
+  const [externalSources, setExternalSources] = useState<ExternalSource[]>([]);
   const listRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const downloads = useChapterDownloads();
   useBodyScrollLock();
 
-  // Escape closes and focus moves into the dialog (Tab used to walk the hidden
-  // sidebar/grid behind the overlay).
+  // The work may exist on another source even if it was never imported there.
+  // Ask the other catalogue(s) by title and match the source slug, so the card
+  // can list "есть на Senkuro/Remanga" instead of showing only the active one.
+  useEffect(() => {
+    let cancelled = false;
+    const known = new Set(alternatives.map((a) => a.source));
+    const current = item.source.toLowerCase();
+    const targets = [
+      { key: 'senkuro', label: 'Senkuro' },
+      { key: 'remanga', label: 'Remanga' },
+    ].filter((t) => !current.includes(t.key) && !known.has(t.label));
+    if (targets.length === 0) {
+      setExternalSources([]);
+      return;
+    }
+    const cacheKey = `${item.url}|${item.title}`;
+    const cached = externalCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < EXTERNAL_TTL_MS) {
+      setExternalSources(cached.items.filter((x) => !known.has(x.source)));
+      return;
+    }
+    setExternalSources([]);
+    void (async () => {
+      const found: ExternalSource[] = [];
+      for (const t of targets) {
+        try {
+          const cards = await window.api.searchCatalog(t.key, item.title, 0, 'default', {}, undefined);
+          const match = cards.find(
+            (c) =>
+              (settings.show_r34_history || (!c.adult && !c.age18)) &&
+              likelySameWork({ url: item.url, title: item.title }, { url: c.url, title: c.title }),
+          );
+          if (match && !known.has(t.label)) found.push({ source: t.label, title: match.title, url: match.url });
+        } catch {
+          /* source search is best-effort */
+        }
+      }
+      if (cancelled) return;
+      externalCache.set(cacheKey, { at: Date.now(), items: found });
+      setExternalSources(found.filter((x) => !known.has(x.source)));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [item.key, item.url, item.title, item.source, alternatives, settings.show_r34_history]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
@@ -169,7 +222,7 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
           </button>
         </div>
 
-        {alternatives.length > 1 && (
+        {(alternatives.length > 1 || externalSources.length > 0) && (
           <div className="modal-sources">
             <span className="field-label">Источник</span>
             {alternatives.map((a) => (
@@ -183,6 +236,11 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
                 {a.source}
                 {a.chapterLabel ? ` · гл. ${chapterLabelNumber(a.chapterLabel) ?? a.chapterLabel}` : ''}
               </button>
+            ))}
+            {externalSources.map((e) => (
+              <span key={`${e.source}:${e.url}`} className="source-chip external" title={`Есть на ${e.source}: ${e.title}`}>
+                {e.source} · есть
+              </span>
             ))}
           </div>
         )}

@@ -2093,6 +2093,11 @@ input[type='checkbox'].toggle-input {
   gap: 6px;
   margin: 8px 0 4px;
 }
+.source-chip.external {
+  cursor: default;
+  border-style: dashed;
+  opacity: 0.8;
+}
 
 .library-toolbar {
   display: flex;
