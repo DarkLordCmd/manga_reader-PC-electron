@@ -164,6 +164,17 @@ describe('Mangalib catalog pagination', () => {
     await expect(searchMangalib('', 1, PROXY)).resolves.toEqual([]);
   });
 
+  it('filters Mangalib age restrictions locally when the API ignores caution', async () => {
+    mockMangalibApi([
+      { ...apiManga, slug_url: '1--adult', rus_name: 'Adult', ageRestriction: { id: 4, label: '18+' } },
+      { ...apiManga, slug_url: '2--teen', rus_name: 'Teen', ageRestriction: { id: 3, label: '16+' } },
+    ]);
+
+    const result = await searchMangalib('', 0, PROXY, { mangalibAgeRatings: ['4'] });
+
+    expect(result.map((x) => x.title)).toEqual(['Adult']);
+    expect(result[0]?.age18).toBe(true);
+  });
   it('passes Mangalib filters to the lib.social API', async () => {
     mockMangalibApi([apiManga]);
 

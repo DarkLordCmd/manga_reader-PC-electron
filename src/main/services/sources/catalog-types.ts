@@ -8,8 +8,10 @@ export interface CatalogItem {
   chapterCount?: number | null;
   /** Adult-only work (18+ badge on the cover) for non-R34 sources. */
   adult?: boolean;
-  /** Age rating is 18+ (Senkuro EXPLICIT) — the badge, not the R34 category. */
+  /** Age rating is 18+ (Senkuro EXPLICIT / Mangalib 18+) — the badge, not the R34 category. */
   age18?: boolean;
+  /** Numeric age rating where the source exposes one (Mangalib 1=6+ … 4=18+). */
+  ageRestriction?: number | null;
   /** Publication status when the listing provides it (Senkuro search). */
   status?: string | null;
 }

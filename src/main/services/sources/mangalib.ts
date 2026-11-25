@@ -101,6 +101,7 @@ interface ApiManga {
   chap_count?: string | number;
   rate_avg?: number;
   type?: { label?: string };
+  ageRestriction?: { id?: number; label?: string };
 }
 
 function toItem(m: ApiManga): CatalogItem {
@@ -116,6 +117,8 @@ function toItem(m: ApiManga): CatalogItem {
     chapterCount: chap,
     score: typeof m.rate_avg === 'number' && m.rate_avg > 0 ? Number(m.rate_avg.toFixed(1)) : null,
     kind: m.type?.label ?? null,
+    ageRestriction: m.ageRestriction?.id ?? null,
+    age18: m.ageRestriction?.id === 4,
   };
 }
 
@@ -157,7 +160,12 @@ export async function searchMangalib(
   }
   const path = `/manga?${params.toString()}`;
   const j = await mangalibApi<{ data: ApiManga[] }>(path, proxy);
-  const list = Array.isArray(j?.data) ? j.data : [];
+  const rawList = Array.isArray(j?.data) ? j.data : [];
+  // The lib.social endpoint accepts `caution[]` but does not consistently
+  // filter by it (the site itself returns mixed ratings). Apply the selected
+  // age ratings locally so the control is deterministic.
+  const ageFilter = new Set((filters.mangalibAgeRatings ?? []).map(Number).filter((n) => Number.isFinite(n)));
+  const list = ageFilter.size > 0 ? rawList.filter((m) => m.ageRestriction?.id != null && ageFilter.has(Number(m.ageRestriction.id))) : rawList;
   const seen = new Set<string>();
   const out: CatalogItem[] = [];
   for (const m of list) {
@@ -169,6 +177,7 @@ export async function searchMangalib(
   }
   if (list.length === 0 && page > 0) return [];
   if (out.length === 0) {
+    if (ageFilter.size > 0 && rawList.length > 0) return [];
     throw new Error(query.trim() ? 'Mangalib: поиск не дал результатов' : 'Mangalib: пустой каталог (проверь VPN/прокси)');
   }
   return out;
