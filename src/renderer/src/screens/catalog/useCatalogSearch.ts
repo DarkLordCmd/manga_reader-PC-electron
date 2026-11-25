@@ -199,7 +199,13 @@ export function useCatalogSearch() {
   const [skLabelList, setSkLabelList] = useState<{ slug: string; name: string }[]>([]);
   const skLabelsRequested = useRef(false);
   const [cxCategory, setCxCategory] = useState('');
-  const [cxGenre, setCxGenre] = useState('');
+  const [cxGenres, setCxGenres] = useState<string[]>([]);
+  const [cxExcludeGenres, setCxExcludeGenres] = useState<string[]>([]);
+  const [cxTypes, setCxTypes] = useState<string[]>([]);
+  const [cxStatuses, setCxStatuses] = useState<string[]>([]);
+  const [cxAges, setCxAges] = useState<string[]>([]);
+  const [cxYearFrom, setCxYearFrom] = useState('');
+  const [cxYearTo, setCxYearTo] = useState('');
   // E-Hentai/ExHentai (onion + clearnet) and NHentai keep picked tags as
   // chips instead of stuffing them into the search string. The chip cycles
   // on repeated clicks, like the Tags Autocomplete userscript:
@@ -317,7 +323,13 @@ export function useCatalogSearch() {
     senkuroYearFrom: skYearFrom || undefined,
     senkuroYearTo: skYearTo || undefined,
     comxCategory: cxCategory,
-    comxGenre: cxGenre,
+    comxGenres: cxGenres,
+    comxExcludeGenres: cxExcludeGenres,
+    comxTypes: cxTypes,
+    comxStatuses: cxStatuses,
+    comxAges: cxAges,
+    comxYearFrom: cxYearFrom,
+    comxYearTo: cxYearTo,
     nhentaiTags: nhFilterTags,
   };
 
@@ -778,7 +790,13 @@ export function useCatalogSearch() {
     setSkYearFrom(0);
     setSkYearTo(0);
     setCxCategory('');
-    setCxGenre('');
+    setCxGenres([]);
+    setCxExcludeGenres([]);
+    setCxTypes([]);
+    setCxStatuses([]);
+    setCxAges([]);
+    setCxYearFrom('');
+    setCxYearTo('');
   };
 
   // Auto-apply: whenever filters/sort (or their text fields) change, re-run
@@ -1135,8 +1153,20 @@ export function useCatalogSearch() {
     skLabelList,
     cxCategory,
     setCxCategory,
-    cxGenre,
-    setCxGenre,
+    cxGenres,
+    setCxGenres,
+    cxExcludeGenres,
+    setCxExcludeGenres,
+    cxTypes,
+    setCxTypes,
+    cxStatuses,
+    setCxStatuses,
+    cxAges,
+    setCxAges,
+    cxYearFrom,
+    setCxYearFrom,
+    cxYearTo,
+    setCxYearTo,
     picked,
     setPicked,
     chapters,

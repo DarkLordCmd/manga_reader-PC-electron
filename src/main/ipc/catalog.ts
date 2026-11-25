@@ -379,7 +379,19 @@ export function registerCatalog(deps: CatalogDeps): {
           { name: 'Com-X', base: COMX_BASE, catalogPath: '/comix-read/', searchPath: '/search/', linkMarker: '.html' },
           query,
           page,
-          { proxy, category: filters.comxCategory, genre: filters.comxGenre },
+          {
+            proxy,
+            category: filters.comxCategory,
+            genre: filters.comxGenre,
+            genres: filters.comxGenres,
+            excludeGenres: filters.comxExcludeGenres,
+            types: filters.comxTypes,
+            statuses: filters.comxStatuses,
+            ages: filters.comxAges,
+            yearFrom: filters.comxYearFrom,
+            yearTo: filters.comxYearTo,
+            hideMine: filters.comxHideMine,
+          },
         );
       }
       if (source === 'mangalib' || source === 'hentailib') {

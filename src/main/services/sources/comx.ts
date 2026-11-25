@@ -35,20 +35,50 @@ export async function searchComx(
   _cfg: SimpleSiteConfig,
   query: string,
   page = 0,
-  opts: { proxy?: string; category?: string; genre?: string } = {},
+  opts: {
+    proxy?: string;
+    category?: string;
+    genre?: string;
+    genres?: string[];
+    excludeGenres?: string[];
+    types?: string[];
+    statuses?: string[];
+    ages?: string[];
+    yearFrom?: string;
+    yearTo?: string;
+    hideMine?: boolean;
+  } = {},
 ): Promise<CatalogItem[]> {
   const cat = (opts.category ?? '').trim();
-  const genre = (opts.genre ?? '').trim();
+  const genres = (opts.genres ?? []).filter(Boolean);
+  const excludeGenres = (opts.excludeGenres ?? []).filter(Boolean);
+  const types = (opts.types ?? []).filter(Boolean);
+  const statuses = (opts.statuses ?? []).filter(Boolean);
+  const ages = (opts.ages ?? []).filter(Boolean);
+  const yearFrom = (opts.yearFrom ?? '').trim();
+  const yearTo = (opts.yearTo ?? '').trim();
+  const hasFilters =
+    !!cat || genres.length > 0 || excludeGenres.length > 0 || types.length > 0 || statuses.length > 0 || ages.length > 0 || !!yearFrom || !!yearTo || opts.hideMine === true;
   let target: string;
   if (query.trim()) {
     // DLE pagination also applies to the search listing: without page/N every
     // "След." request returned page 1 again.
     const p = page > 0 ? `page/${page + 1}/` : '';
     target = `${COMX_BASE}/search/${encodeURIComponent(query.trim())}/${p}`;
-  } else if (cat && genre && cat === 'manga-2025-read') {
-    // жанровые страницы сайта подтверждены только в разделе «Манга»
-    const p = page > 0 ? `page/${page + 1}/` : '';
-    target = `${COMX_BASE}/manga-2025-read/genre/${genre}/${p}`;
+  } else if (hasFilters) {
+    // The site's own xfilter builds /ComicList/<field>=<ids>/…/.
+    const parts: string[] = [];
+    if (cat) parts.push(`p.cat=${encodeURIComponent(cat)}`);
+    if (genres.length) parts.push(`g=${genres.map(encodeURIComponent).join(',')}`);
+    if (excludeGenres.length) parts.push(`exc_g=${excludeGenres.map(encodeURIComponent).join(',')}`);
+    if (types.length) parts.push(`t=${types.map(encodeURIComponent).join(',')}`);
+    if (statuses.length) parts.push(`st=${statuses.map(encodeURIComponent).join(',')}`);
+    if (ages.length) parts.push(`adult=${ages.map(encodeURIComponent).join(',')}`);
+    if (yearFrom) parts.push(`y[from]=${encodeURIComponent(yearFrom)}`);
+    if (yearTo) parts.push(`y[to]=${encodeURIComponent(yearTo)}`);
+    if (opts.hideMine) parts.push('mine=1');
+    if (page > 0) parts.push(`page/${page + 1}`);
+    target = `${COMX_BASE}/ComicList/${parts.join('/')}/`;
   } else if (cat) {
     const p = page > 0 ? `page/${page + 1}/` : '';
     target = `${COMX_BASE}/comix-read/${cat}/${p}`;

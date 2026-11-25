@@ -175,6 +175,14 @@ export interface CatalogFilters {
   senkuroYearFrom?: number;
   senkuroYearTo?: number;
   comxCategory?: string;
+  comxGenres?: string[];
+  comxExcludeGenres?: string[];
+  comxTypes?: string[];
+  comxStatuses?: string[];
+  comxAges?: string[];
+  comxYearFrom?: string;
+  comxYearTo?: string;
+  comxHideMine?: boolean;
   comxGenre?: string;
 }
 

@@ -15,8 +15,11 @@ import {
   SENKURO_COUNTRY,
   SENKURO_CHAPTER_PRESETS,
   SENKURO_ORDERING,
+  COMX_AGES,
   COMX_CATEGORY,
-  COMX_GENRE,
+  COMX_GENRES,
+  COMX_STATUSES,
+  COMX_TYPES,
 } from '@shared/filters';
 import {
   ML_AGES,
@@ -235,11 +238,17 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
     mlTags: false,
     mlCountry: false,
     mlLists: false,
+    cxMain: true,
+    cxClass: false,
+    cxGenres: false,
+    cxExclude: false,
   });
   const [msTagQuery, setMsTagQuery] = useState('');
   const [msExcludeTagQuery, setMsExcludeTagQuery] = useState('');
   const [mlGenreQuery, setMlGenreQuery] = useState('');
   const [mlTagQuery, setMlTagQuery] = useState('');
+  const [cxGenreQuery, setCxGenreQuery] = useState('');
+  const [cxExcludeGenreQuery, setCxExcludeGenreQuery] = useState('');
   const toggleSection = (key: string): void => setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   const toggleIn = (setter: (fn: (prev: string[]) => string[]) => void) => (v: string) =>
     setter((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
@@ -256,7 +265,24 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
     (s.skChaptersTo ? 1 : 0) +
     (s.skYearFrom ? 1 : 0) +
     (s.skYearTo ? 1 : 0);
-  const selectedLabels = s.skLabelList.filter((l) => s.skLabels.includes(l.slug));
+  const cxMainCount = (s.cxCategory ? 1 : 0) + [s.cxYearFrom, s.cxYearTo].filter(Boolean).length;
+  const cxClassCount = s.cxTypes.length + s.cxStatuses.length + s.cxAges.length;
+  const cxGenreList = useMemo(() => {
+    const q = cxGenreQuery.trim().toLowerCase();
+    const selected = new Set(s.cxGenres);
+    return [
+      ...COMX_GENRES.filter(([v]) => selected.has(v)),
+      ...COMX_GENRES.filter(([v, label]) => !selected.has(v) && (!q || label.toLowerCase().includes(q))),
+    ];
+  }, [cxGenreQuery, s.cxGenres]);
+  const cxExcludeGenreList = useMemo(() => {
+    const q = cxExcludeGenreQuery.trim().toLowerCase();
+    const selected = new Set(s.cxExcludeGenres);
+    return [
+      ...COMX_GENRES.filter(([v]) => selected.has(v)),
+      ...COMX_GENRES.filter(([v, label]) => !selected.has(v) && (!q || label.toLowerCase().includes(q))),
+    ];
+  }, [cxExcludeGenreQuery, s.cxExcludeGenres]);  const selectedLabels = s.skLabelList.filter((l) => s.skLabels.includes(l.slug));
   const msTagList = useMemo(() => {
     const q = msTagQuery.trim().toLowerCase();
     const selected = new Set(s.msTags);
@@ -1017,16 +1043,113 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
 
       {s.source === 'comx' && (
         <>
-          <FilterRow label="Раздел">
-            <SelectFilter options={COMX_CATEGORY} value={s.cxCategory} onChange={s.setCxCategory} />
-          </FilterRow>
-          {s.cxCategory === 'manga-2025-read' && (
-            <>
-              <FilterRow label="Жанр (Манга)">
-                <SelectFilter options={[['', 'Все'], ...COMX_GENRE]} value={s.cxGenre} onChange={s.setCxGenre} />
-              </FilterRow>
-            </>
-          )}
+          <FilterSection
+            title="Параметры"
+            count={cxMainCount}
+            open={!!openSections.cxMain}
+            onToggle={() => toggleSection('cxMain')}
+          >
+            <FilterRow label="Раздел">
+              <SelectFilter options={COMX_CATEGORY} value={s.cxCategory} onChange={s.setCxCategory} />
+            </FilterRow>
+            <FilterRow label="Год выпуска">
+              <div className="filter-range">
+                <input
+                  className="filter-input narrow"
+                  inputMode="numeric"
+                  placeholder="От"
+                  aria-label="Год от"
+                  value={s.cxYearFrom}
+                  onChange={(e) => s.setCxYearFrom(e.target.value.replace(/\D/g, ''))}
+                />
+                <span>—</span>
+                <input
+                  className="filter-input narrow"
+                  inputMode="numeric"
+                  placeholder="До"
+                  aria-label="Год до"
+                  value={s.cxYearTo}
+                  onChange={(e) => s.setCxYearTo(e.target.value.replace(/\D/g, ''))}
+                />
+              </div>
+            </FilterRow>
+          </FilterSection>
+
+          <FilterSection
+            title="Классификация"
+            count={cxClassCount}
+            open={!!openSections.cxClass}
+            onToggle={() => toggleSection('cxClass')}
+          >
+            <SubLabel>Тип выпуска</SubLabel>
+            <TagChecklist
+              items={COMX_TYPES}
+              selected={s.cxTypes}
+              onToggle={(v) =>
+                s.setCxTypes((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))
+              }
+            />
+            <SubLabel>Статус</SubLabel>
+            <TagChecklist
+              items={COMX_STATUSES}
+              selected={s.cxStatuses}
+              onToggle={(v) =>
+                s.setCxStatuses((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))
+              }
+            />
+            <SubLabel>Возрастное ограничение</SubLabel>
+            <TagChecklist
+              items={COMX_AGES}
+              selected={s.cxAges}
+              onToggle={(v) => s.setCxAges((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))}
+            />
+          </FilterSection>
+
+          <FilterSection
+            title="Жанры"
+            count={s.cxGenres.length}
+            open={!!openSections.cxGenres}
+            onToggle={() => toggleSection('cxGenres')}
+          >
+            <input
+              className="filter-input full"
+              placeholder="Поиск жанра…"
+              value={cxGenreQuery}
+              onChange={(e) => setCxGenreQuery(e.target.value)}
+            />
+            <TagChecklist
+              items={cxGenreList}
+              selected={s.cxGenres}
+              onToggle={(v) => {
+                s.setCxExcludeGenres((prev) => prev.filter((x) => x !== v));
+                s.setCxGenres((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+              }}
+            />
+          </FilterSection>
+
+          <FilterSection
+            title="Исключить жанры"
+            count={s.cxExcludeGenres.length}
+            open={!!openSections.cxExclude}
+            onToggle={() => toggleSection('cxExclude')}
+          >
+            <input
+              className="filter-input full"
+              placeholder="Найти исключаемый жанр…"
+              value={cxExcludeGenreQuery}
+              onChange={(e) => setCxExcludeGenreQuery(e.target.value)}
+            />
+            <TagChecklist
+              items={cxExcludeGenreList}
+              selected={s.cxExcludeGenres}
+              onToggle={(v) => {
+                s.setCxGenres((prev) => prev.filter((x) => x !== v));
+                s.setCxExcludeGenres((prev) =>
+                  prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v],
+                );
+              }}
+            />
+          </FilterSection>
         </>
       )}
       </div>
