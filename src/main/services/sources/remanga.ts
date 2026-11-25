@@ -1,5 +1,6 @@
 import { httpGetJson } from '../http';
 import { SwrCache } from '../swr-cache';
+import { DEFAULT_REMANGA_ORDERING, isValidDecimal } from '@shared/filters';
 import { type CatalogItem, type CatalogFilters } from './catalog-types';
 
 export interface ChapterInfo {
@@ -79,9 +80,9 @@ function remangaAuthKey(): string {
 export async function searchRemanga(query: string, page: number, filters: CatalogFilters = {}, proxy?: string): Promise<CatalogItem[]> {
   const key = ['rm', query, page, JSON.stringify(filters), remangaAuthKey()].join('|');
   return searchCache.get(key, async () => {
-  // UI sends '' for the default sort — `'' || 'views'` (a nullish coalescing
-  // would keep the empty string) → invalid ordering crashes the API.
-  const params = new URLSearchParams({ page: String(page + 1), count: '20', ordering: filters.remangaOrdering || 'views' });
+  // Empty/whitespace ordering falls back to the same popularity sort the UI
+  // shows by default; an empty string itself is not a valid API ordering.
+  const params = new URLSearchParams({ page: String(page + 1), count: '20', ordering: filters.remangaOrdering?.trim() || DEFAULT_REMANGA_ORDERING });
   if (query.trim()) params.set('query', query.trim());
   if (filters.remangaStatus) params.set('status', filters.remangaStatus);
   for (const t of filters.remangaTypes ?? []) params.append('types', t);
@@ -94,8 +95,8 @@ export async function searchRemanga(query: string, page: number, filters: Catalo
   if (filters.remangaChaptersMax) params.set('count_chapters_lte', filters.remangaChaptersMax);
   if (filters.remangaYearMin) params.set('issue_year_gte', filters.remangaYearMin);
   if (filters.remangaYearMax) params.set('issue_year_lte', filters.remangaYearMax);
-  if (filters.remangaRatingMin) params.set('rating_gte', filters.remangaRatingMin);
-  if (filters.remangaRatingMax) params.set('rating_lte', filters.remangaRatingMax);
+  if (isValidDecimal(filters.remangaRatingMin)) params.set('rating_gte', filters.remangaRatingMin!.trim());
+  if (isValidDecimal(filters.remangaRatingMax)) params.set('rating_lte', filters.remangaRatingMax!.trim());
   const json = (await httpGetJson(
     `https://api.remanga.org/api/v2/search/catalog/?${params.toString()}`,
     {

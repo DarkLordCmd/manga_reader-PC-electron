@@ -37,4 +37,21 @@ describe('Com-X catalogue filters', () => {
     await searchComx({} as any, '', 0, {});
     expect(mocks.comxFetchText.mock.calls[0][0]).toBe('https://com-x.life/comix-read/');
   });
+
+  it('keeps filters on follow-up pages', async () => {
+    await searchComx({} as any, '', 1, { category: '44', genres: ['29'], excludeGenres: ['64'] });
+    expect(mocks.comxFetchText.mock.calls[0][0]).toBe(
+      'https://com-x.life/ComicList/p.cat=44/g=29/exc_g=64/page/2/',
+    );
+  });
+
+  it('treats a filtered 404 past the last page as an empty result', async () => {
+    mocks.comxFetchText.mockRejectedValueOnce(new Error('HTTP 404 for https://com-x.life/ComicList/p.cat=44/page/2/'));
+    await expect(searchComx({} as any, '', 1, { category: '44' })).resolves.toEqual([]);
+  });
+
+  it('treats a zero-match first page as an empty result', async () => {
+    mocks.comxFetchText.mockRejectedValueOnce(new Error('HTTP 404 for https://com-x.life/ComicList/g=29/t=3/'));
+    await expect(searchComx({} as any, '', 0, { genres: ['29'], types: ['3'] })).resolves.toEqual([]);
+  });
 });

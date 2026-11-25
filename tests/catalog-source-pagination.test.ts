@@ -13,7 +13,7 @@ vi.mock('../src/main/services/http', () => ({
 }));
 
 import { fetchMangaShiChapters, searchMangaShi, setMangaShiCookies } from '../src/main/services/sources/mangashi';
-import { mangalibChapterUrl } from '../src/main/services/sources/mangalib';
+import { mangalibChapterPages, mangalibChapterUrl, parseMangalibChapterUrl } from '../src/main/services/sources/mangalib';
 import { resetMangalibJar, searchMangalib, setMangalibUserCookies } from '../src/main/services/sources/mangalib';
 import { fetchRemangaChapters } from '../src/main/services/sources/remanga';
 
@@ -177,8 +177,47 @@ describe('Mangalib catalog pagination', () => {
     const url = new URL(mocks.httpFetch.mock.calls[1][0].url);
     expect(url.searchParams.get('site_id[]')).toBe('2');
     expect(mangalibChapterUrl('7580--berserk', { id: 1, volume: '1', number: '1', numberSecondary: null, name: '' }, 2)).toBe(
-      'https://hentailib.me/ru/manga/7580--berserk/read/v1/c1',
+      'https://hentailib.me/ru/7580--berserk/read/v1/c1',
     );
+  });
+  it('parses canonical HentaiLIB reader URLs without losing fractional chapters', () => {
+    const url = mangalibChapterUrl(
+      '19009--the-little-trashmaid',
+      { id: 428152, volume: '1', number: '18.5', numberSecondary: '1', name: 'арты' },
+      2,
+    );
+    expect(url).toBe('https://hentailib.me/ru/19009--the-little-trashmaid/read/v1/c18.5');
+    expect(parseMangalibChapterUrl(url)).toEqual({ slug: '19009--the-little-trashmaid', volume: '1', number: '18.5' });
+  });
+  it('requests genuine HentaiLIB fractional chapter numbers unchanged', async () => {
+    resetMangalibJar();
+    mocks.httpFetch.mockImplementation(async (opts: { url: string }) => {
+      if (opts.url === 'https://mangalib.me/') {
+        return { status: 200, text: '<html></html>', setCookies: ['__ddg1=primed; Path=/; HttpOnly'] };
+      }
+      const url = new URL(opts.url);
+      if (url.pathname.endsWith('/chapter')) {
+        return {
+          status: 200,
+          text: JSON.stringify({ data: { name: 'арты', pages: [{ url: '//manga/x/chapters/428152/1.jpeg' }] } }),
+          setCookies: [],
+        };
+      }
+      if (url.pathname.endsWith('/constants')) {
+        return {
+          status: 200,
+          text: JSON.stringify({ data: { imageServers: [{ id: 'compress', url: 'https://img3.hentaicdn.org/', site_ids: [2] }] } }),
+          setCookies: [],
+        };
+      }
+      return { status: 200, text: JSON.stringify({ data: [] }), setCookies: [] };
+    });
+
+    const pages = await mangalibChapterPages('19009--the-little-trashmaid', '1', '18.5', PROXY, 2);
+
+    const chapterUrl = mocks.httpFetch.mock.calls.map((call) => new URL(call[0].url)).find((url) => url.pathname.endsWith('/chapter'))!;
+    expect(chapterUrl.searchParams.get('number')).toBe('18.5');
+    expect(pages.pageUrls).toEqual(['https://img3.hentaicdn.org/manga/x/chapters/428152/1.jpeg']);
   });
   it('keeps regular Mangalib age ratings in Main, not R34', async () => {
     mockMangalibApi([{ ...apiManga, ageRestriction: { id: 4, label: '18+' } }]);
@@ -245,6 +284,15 @@ describe('Mangalib catalog pagination', () => {
     ]) {
       expect(url.searchParams.get(key)).toBe(value);
     }
+  });
+  it('omits malformed Mangalib decimal ratings from API requests', async () => {
+    mockMangalibApi([apiManga]);
+
+    await searchMangalib('', 0, PROXY, { mangalibRatingMin: '.', mangalibRatingMax: '8..5' });
+
+    const url = new URL(mocks.httpFetch.mock.calls[1][0].url);
+    expect(url.searchParams.has('rating_min')).toBe(false);
+    expect(url.searchParams.has('rating_max')).toBe(false);
   });
   it('does not mistake malformed follow-up entries for an empty page', async () => {
     mockMangalibApi([{ name: 'Missing slug' }]);

@@ -1,3 +1,19 @@
+export const DEFAULT_REMANGA_ORDERING = '-views';
+
+/** Keep editable decimal fields well-formed while the user is typing. */
+export function sanitizeDecimalInput(raw: string): string {
+  let value = raw.replace(/,/g, '.').replace(/[^\d.]/g, '');
+  const dot = value.indexOf('.');
+  if (dot >= 0) value = `${value.slice(0, dot + 1)}${value.slice(dot + 1).replace(/\./g, '')}`;
+  if (value === '.') return '';
+  if (value.startsWith('.')) value = `0${value}`;
+  return value;
+}
+
+export function isValidDecimal(value: string | undefined): boolean {
+  return typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value.trim());
+}
+
 export const MANGASHI_TAGS: [string, string][] = [
   ['18', '18+'],
   ['tag-cff7dad5', 'Азартные игры'],

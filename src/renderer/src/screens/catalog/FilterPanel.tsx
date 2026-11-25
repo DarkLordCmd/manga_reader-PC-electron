@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { sanitizeDecimalInput } from '@shared/filters';
 import {
   EH_CATEGORIES,
   MANGASHI_TAGS,
@@ -42,7 +43,7 @@ import {
   RM_STATUS,
   RM_TYPES,
 } from './constants';
-import type { CatalogSearch, MangalibFilterState } from './useCatalogSearch';
+import type { CatalogSearch } from './useCatalogSearch';
 import { useBodyScrollLock, useDialogFocus } from '../../lib/use-modal';
 function FilterRow({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
   return (
@@ -349,34 +350,34 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
     key: 'types' | 'statuses' | 'formats' | 'ages' | 'genres' | 'tags' | 'countries' | 'bookmarks',
     value: string,
   ): void => {
-    s.setMl((prev) => {
+    s.setLibFilters((prev) => {
       const list = prev[key];
       return { ...prev, [key]: list.includes(value) ? list.filter((v) => v !== value) : [...list, value] };
     });
   };
   const mlMainCount =
-    s.ml.types.length +
-    s.ml.statuses.length +
-    s.ml.formats.length +
-    s.ml.ages.length +
-    [s.ml.chaptersMin, s.ml.chaptersMax, s.ml.ratingMin, s.ml.ratingMax, s.ml.votesMin, s.ml.votesMax, s.ml.yearMin, s.ml.yearMax].filter(Boolean).length;
-  const mlListCount = s.ml.bookmarks.length;
+    s.libFilters.types.length +
+    s.libFilters.statuses.length +
+    s.libFilters.formats.length +
+    s.libFilters.ages.length +
+    [s.libFilters.chaptersMin, s.libFilters.chaptersMax, s.libFilters.ratingMin, s.libFilters.ratingMax, s.libFilters.votesMin, s.libFilters.votesMax, s.libFilters.yearMin, s.libFilters.yearMax].filter(Boolean).length;
+  const mlListCount = s.libFilters.bookmarks.length;
   const mlGenreList = useMemo(() => {
     const q = mlGenreQuery.trim().toLowerCase();
-    const selected = new Set(s.ml.genres);
+    const selected = new Set(s.libFilters.genres);
     return [
       ...ML_GENRES.filter(([v]) => selected.has(v)),
       ...ML_GENRES.filter(([v, label]) => !selected.has(v) && (!q || label.toLowerCase().includes(q))),
     ];
-  }, [mlGenreQuery, s.ml.genres]);
+  }, [mlGenreQuery, s.libFilters.genres]);
   const mlTagList = useMemo(() => {
     const q = mlTagQuery.trim().toLowerCase();
-    const selected = new Set(s.ml.tags);
+    const selected = new Set(s.libFilters.tags);
     return [
       ...ML_TAGS.filter(([v]) => selected.has(v)),
       ...ML_TAGS.filter(([v, label]) => !selected.has(v) && (!q || label.toLowerCase().includes(q))),
     ];
-  }, [mlTagQuery, s.ml.tags]);
+  }, [mlTagQuery, s.libFilters.tags]);
   return (
     <div className="filter-panel">
       <div className="filter-panel-head">
@@ -637,7 +638,7 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
         <>
           <FilterSection
             title="Сортировка"
-            count={s.ml.sortBy ? 1 : 0}
+            count={s.libFilters.sortBy ? 1 : 0}
             open={!!openSections.mlSort}
             onToggle={() => toggleSection('mlSort')}
           >
@@ -645,15 +646,15 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
               <FilterRow label="Поле сортировки">
                 <SelectFilter
                   options={ML_SORTS}
-                  value={s.ml.sortBy}
-                  onChange={(v) => s.setMl((prev) => ({ ...prev, sortBy: v }))}
+                  value={s.libFilters.sortBy}
+                  onChange={(v) => s.setLibFilters((prev) => ({ ...prev, sortBy: v }))}
                 />
               </FilterRow>
               <FilterRow label="Порядок">
                 <SelectFilter
                   options={ML_ORDERS}
-                  value={s.ml.order}
-                  onChange={(v) => s.setMl((prev) => ({ ...prev, order: v }))}
+                  value={s.libFilters.order}
+                  onChange={(v) => s.setLibFilters((prev) => ({ ...prev, order: v }))}
                 />
               </FilterRow>
             </div>
@@ -666,21 +667,21 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
             onToggle={() => toggleSection('mlMain')}
           >
             <SubLabel>Тип</SubLabel>
-            <TagChecklist items={ML_TYPES} selected={s.ml.types} onToggle={(v) => toggleMlArray('types', v)} />
+            <TagChecklist items={ML_TYPES} selected={s.libFilters.types} onToggle={(v) => toggleMlArray('types', v)} />
             <SubLabel>Статус тайтла</SubLabel>
             <TagChecklist
               items={ML_STATUSES}
-              selected={s.ml.statuses}
+              selected={s.libFilters.statuses}
               onToggle={(v) => toggleMlArray('statuses', v)}
             />
             <SubLabel>Формат выпуска</SubLabel>
             <TagChecklist
               items={ML_FORMATS}
-              selected={s.ml.formats}
+              selected={s.libFilters.formats}
               onToggle={(v) => toggleMlArray('formats', v)}
             />
             <SubLabel>Возрастной рейтинг</SubLabel>
-            <TagChecklist items={ML_AGES} selected={s.ml.ages} onToggle={(v) => toggleMlArray('ages', v)} />
+            <TagChecklist items={ML_AGES} selected={s.libFilters.ages} onToggle={(v) => toggleMlArray('ages', v)} />
             <div className="filter-grid">
               <FilterRow label="Количество глав">
                 <div className="filter-range">
@@ -689,9 +690,9 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
                     inputMode="numeric"
                     placeholder="От"
                     aria-label="Минимум глав"
-                    value={s.ml.chaptersMin}
+                    value={s.libFilters.chaptersMin}
                     onChange={(e) =>
-                      s.setMl((prev) => ({ ...prev, chaptersMin: e.target.value.replace(/\D/g, '') }))
+                      s.setLibFilters((prev) => ({ ...prev, chaptersMin: e.target.value.replace(/\D/g, '') }))
                     }
                   />
                   <span>—</span>
@@ -700,9 +701,9 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
                     inputMode="numeric"
                     placeholder="До"
                     aria-label="Максимум глав"
-                    value={s.ml.chaptersMax}
+                    value={s.libFilters.chaptersMax}
                     onChange={(e) =>
-                      s.setMl((prev) => ({ ...prev, chaptersMax: e.target.value.replace(/\D/g, '') }))
+                      s.setLibFilters((prev) => ({ ...prev, chaptersMax: e.target.value.replace(/\D/g, '') }))
                     }
                   />
                 </div>
@@ -714,8 +715,8 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
                     inputMode="numeric"
                     placeholder="От"
                     aria-label="Год от"
-                    value={s.ml.yearMin}
-                    onChange={(e) => s.setMl((prev) => ({ ...prev, yearMin: e.target.value.replace(/\D/g, '') }))}
+                    value={s.libFilters.yearMin}
+                    onChange={(e) => s.setLibFilters((prev) => ({ ...prev, yearMin: e.target.value.replace(/\D/g, '') }))}
                   />
                   <span>—</span>
                   <input
@@ -723,8 +724,8 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
                     inputMode="numeric"
                     placeholder="До"
                     aria-label="Год до"
-                    value={s.ml.yearMax}
-                    onChange={(e) => s.setMl((prev) => ({ ...prev, yearMax: e.target.value.replace(/\D/g, '') }))}
+                    value={s.libFilters.yearMax}
+                    onChange={(e) => s.setLibFilters((prev) => ({ ...prev, yearMax: e.target.value.replace(/\D/g, '') }))}
                   />
                 </div>
               </FilterRow>
@@ -735,9 +736,9 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
                     inputMode="decimal"
                     placeholder="От"
                     aria-label="Оценка от"
-                    value={s.ml.ratingMin}
+                    value={s.libFilters.ratingMin}
                     onChange={(e) =>
-                      s.setMl((prev) => ({ ...prev, ratingMin: e.target.value.replace(/[^\d.]/g, '') }))
+                      s.setLibFilters((prev) => ({ ...prev, ratingMin: sanitizeDecimalInput(e.target.value) }))
                     }
                   />
                   <span>—</span>
@@ -746,9 +747,9 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
                     inputMode="decimal"
                     placeholder="До"
                     aria-label="Оценка до"
-                    value={s.ml.ratingMax}
+                    value={s.libFilters.ratingMax}
                     onChange={(e) =>
-                      s.setMl((prev) => ({ ...prev, ratingMax: e.target.value.replace(/[^\d.]/g, '') }))
+                      s.setLibFilters((prev) => ({ ...prev, ratingMax: sanitizeDecimalInput(e.target.value) }))
                     }
                   />
                 </div>
@@ -760,9 +761,9 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
                     inputMode="numeric"
                     placeholder="От"
                     aria-label="Оценок от"
-                    value={s.ml.votesMin}
+                    value={s.libFilters.votesMin}
                     onChange={(e) =>
-                      s.setMl((prev) => ({ ...prev, votesMin: e.target.value.replace(/\D/g, '') }))
+                      s.setLibFilters((prev) => ({ ...prev, votesMin: e.target.value.replace(/\D/g, '') }))
                     }
                   />
                   <span>—</span>
@@ -771,9 +772,9 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
                     inputMode="numeric"
                     placeholder="До"
                     aria-label="Оценок до"
-                    value={s.ml.votesMax}
+                    value={s.libFilters.votesMax}
                     onChange={(e) =>
-                      s.setMl((prev) => ({ ...prev, votesMax: e.target.value.replace(/\D/g, '') }))
+                      s.setLibFilters((prev) => ({ ...prev, votesMax: e.target.value.replace(/\D/g, '') }))
                     }
                   />
                 </div>
@@ -783,7 +784,7 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
 
           <FilterSection
             title="Жанры"
-            count={s.ml.genres.length}
+            count={s.libFilters.genres.length}
             open={!!openSections.mlGenres}
             onToggle={() => toggleSection('mlGenres')}
           >
@@ -795,14 +796,14 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
             />
             <TagChecklist
               items={mlGenreList}
-              selected={s.ml.genres}
+              selected={s.libFilters.genres}
               onToggle={(v) => toggleMlArray('genres', v)}
             />
           </FilterSection>
 
           <FilterSection
             title="Теги"
-            count={s.ml.tags.length}
+            count={s.libFilters.tags.length}
             open={!!openSections.mlTags}
             onToggle={() => toggleSection('mlTags')}
           >
@@ -812,18 +813,18 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
               value={mlTagQuery}
               onChange={(e) => setMlTagQuery(e.target.value)}
             />
-            <TagChecklist items={mlTagList} selected={s.ml.tags} onToggle={(v) => toggleMlArray('tags', v)} />
+            <TagChecklist items={mlTagList} selected={s.libFilters.tags} onToggle={(v) => toggleMlArray('tags', v)} />
           </FilterSection>
 
           <FilterSection
             title="Страна"
-            count={s.ml.countries.length}
+            count={s.libFilters.countries.length}
             open={!!openSections.mlCountry}
             onToggle={() => toggleSection('mlCountry')}
           >
             <TagChecklist
               items={ML_COUNTRIES}
-              selected={s.ml.countries}
+              selected={s.libFilters.countries}
               onToggle={(v) => toggleMlArray('countries', v)}
             />
           </FilterSection>
@@ -837,7 +838,7 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
             {s.settings.mangalib_cookies_raw ? (
               <TagChecklist
                 items={ML_BOOKMARKS}
-                selected={s.ml.bookmarks}
+                selected={s.libFilters.bookmarks}
                 onToggle={(v) => toggleMlArray('bookmarks', v)}
               />
             ) : (
@@ -931,7 +932,7 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
                   placeholder="От"
                   aria-label="Оценка от"
                   value={s.rmRatingMin}
-                  onChange={(e) => s.setRmRatingMin(e.target.value.replace(/[^\d.]/g, ''))}
+                  onChange={(e) => s.setRmRatingMin(sanitizeDecimalInput(e.target.value))}
                 />
                 <span>—</span>
                 <input
@@ -940,7 +941,7 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
                   placeholder="До"
                   aria-label="Оценка до"
                   value={s.rmRatingMax}
-                  onChange={(e) => s.setRmRatingMax(e.target.value.replace(/[^\d.]/g, ''))}
+                  onChange={(e) => s.setRmRatingMax(sanitizeDecimalInput(e.target.value))}
                 />
               </div>
             </FilterRow>

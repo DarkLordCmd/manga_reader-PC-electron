@@ -1,4 +1,5 @@
 import { httpFetch } from '../http';
+import { isValidDecimal } from '@shared/filters';
 import { type CatalogFilters, type CatalogItem } from './catalog-types';
 
 // Mangalib's SPA talks to a shared lib.social JSON API on api.cdnlibs.org.
@@ -158,8 +159,8 @@ export async function searchMangalib(
   addMany(params, 'bookmarks', filters.mangalibBookmarks);
   if (filters.mangalibChaptersMin) params.set('chap_count_min', filters.mangalibChaptersMin);
   if (filters.mangalibChaptersMax) params.set('chap_count_max', filters.mangalibChaptersMax);
-  if (filters.mangalibRatingMin) params.set('rating_min', filters.mangalibRatingMin);
-  if (filters.mangalibRatingMax) params.set('rating_max', filters.mangalibRatingMax);
+  if (isValidDecimal(filters.mangalibRatingMin)) params.set('rating_min', filters.mangalibRatingMin!.trim());
+  if (isValidDecimal(filters.mangalibRatingMax)) params.set('rating_max', filters.mangalibRatingMax!.trim());
   if (filters.mangalibVotesMin) params.set('rate_min', filters.mangalibVotesMin);
   if (filters.mangalibVotesMax) params.set('rate_max', filters.mangalibVotesMax);
   if (filters.mangalibYearMin) params.set('year_min', filters.mangalibYearMin);
@@ -199,6 +200,7 @@ export interface MangalibChapterRef {
   id: number;
   volume: string;
   number: string;
+  /** Mirrors the volume in lib.social responses; not a fractional chapter suffix. */
   numberSecondary: string | null;
   name: string;
 }
@@ -231,19 +233,18 @@ export async function mangalibChapters(slugUrl: string, proxy?: string, siteId =
 function chapterLabel(c: MangalibChapterRef): string {
   const vol = c.volume !== '' ? `Том ${c.volume} ` : '';
   const num = c.number ?? '';
-  const secondary = c.numberSecondary ? `.${c.numberSecondary}` : '';
-  const base = `${vol}Глава ${num}${secondary}`;
+  const base = `${vol}Глава ${num}`;
   return c.name && c.name.trim() ? `${base} — ${c.name.trim()}` : base;
 }
 
-/** Reader URL used as chapter_id throughout the app: `https://mangalib.me/<slug>/read/v<V>/c<C>`. */
+/** Reader URL used as chapter_id throughout the app.
+ * Regular Mangalib: `https://mangalib.me/<slug>/read/v<V>/c<C>`.
+ * HentaiLIB: `https://hentailib.me/ru/<slug>/read/v<V>/c<C>`. */
 export function mangalibChapterUrl(slugUrl: string, c: MangalibChapterRef, siteId = 1): string {
-  // number_secondary keeps "10" and "10.5" apart — without it both chapters got
-  // the SAME chapter_id (duplicate React keys, both marked read together, and
-  // opening 10.5 served chapter 10's pages).
-  const num = c.numberSecondary ? `${c.number}.${c.numberSecondary}` : `${c.number}`;
-  const base = siteId === 2 ? `${HENTAILIB_BASE}/ru/manga` : MANGALIB_BASE;
-  return `${base}/${slugUrl}/read/v${c.volume}/c${num}`;
+  // The API's `number` already contains genuine fractions (18.5). Its
+  // `number_secondary` mirrors the volume and must not become another suffix.
+  const base = siteId === 2 ? `${HENTAILIB_BASE}/ru` : MANGALIB_BASE;
+  return `${base}/${slugUrl}/read/v${c.volume}/c${c.number}`;
 }
 
 /** Parses an app chapter URL back into (slug, volume, number). */
@@ -264,7 +265,7 @@ export function mangalibChapterSortKey(c: MangalibChapterRef): number {
 }
 
 function chSortValue(c: MangalibChapterRef): number {
-  return Number(c.volume) * 1000 + Number(c.number) * 10 + Number(c.numberSecondary || 0);
+  return Number(c.volume) * 1_000_000 + Number(c.number) * 1000;
 }
 
 // ── Chapter pages ───────────────────────────────────────────────────────
@@ -298,7 +299,7 @@ export async function mangalibChapterPages(
   proxy?: string,
   siteId = 1,
 ): Promise<MangalibPageSet> {
-  const apiNumber = siteId === 2 ? String(number).split('.')[0] : String(number);
+  const apiNumber = String(number);
   const j = await mangalibApi<{ data: { pages?: { url?: string }[]; name?: string | null } }>(
     `/manga/${encodeURIComponent(slugUrl)}/chapter?volume=${encodeURIComponent(String(volume))}&number=${encodeURIComponent(apiNumber)}`,
     proxy,

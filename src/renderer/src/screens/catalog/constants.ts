@@ -78,7 +78,9 @@ export const MS_AGES: [string, string][] = [
 ];
 
 export const RM_ORDERING: [string, string][] = [
-  ['-rating', 'По популярности'],
+  ['-views', 'По популярности'],
+  ['views', 'По просмотрам ▲'],
+  ['-rating', 'По рейтингу ▼'],
   ['rating', 'По рейтингу ▲'],
   ['-score', 'По оценке ▼'],
   ['score', 'По оценке ▲'],
@@ -86,8 +88,6 @@ export const RM_ORDERING: [string, string][] = [
   ['count_chapters', 'По количеству глав ▲'],
   ['-chapter_date', 'По дате главы ▼'],
   ['chapter_date', 'По дате главы ▲'],
-  ['-views', 'По просмотрам ▼'],
-  ['views', 'По просмотрам ▲'],
   ['-count_rating', 'По числу оценок ▼'],
   ['-votes', 'По голосам ▼'],
   ['-id', 'По добавлению ▼'],

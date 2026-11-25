@@ -11,12 +11,18 @@ describe('searchRemanga params', () => {
     httpGetJson.mockReset();
     httpGetJson.mockResolvedValue([]);
   });
-  it('uses views ordering by default and omits empty query', async () => {
+  it('uses descending views ordering by default and omits empty query', async () => {
     await searchRemanga('', 0, {});
     expect(httpGetJson).toHaveBeenCalledTimes(1);
     const url = httpGetJson.mock.calls[0][0] as string;
-    expect(url).toContain('ordering=views');
+    expect(url).toContain('ordering=-views');
     expect(url).not.toContain('query=');
+  });
+  it('omits malformed decimal ranges instead of sending HTTP-400 parameters', async () => {
+    await searchRemanga('', 0, { remangaRatingMin: '.', remangaRatingMax: '8..5' });
+    const url = new URL(String(httpGetJson.mock.calls[0][0]));
+    expect(url.searchParams.has('rating_gte')).toBe(false);
+    expect(url.searchParams.has('rating_lte')).toBe(false);
   });
   it('sends the saved Remanga session to catalogue requests', async () => {
     setRemangaAuth('test-token', '');

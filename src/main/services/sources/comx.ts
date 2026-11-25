@@ -85,7 +85,15 @@ export async function searchComx(
   } else {
     target = page > 0 ? `${COMX_BASE}/comix-read/page/${page + 1}/` : `${COMX_BASE}/comix-read/`;
   }
-  const html = await comxFetchText(target, { proxy: opts.proxy, timeoutMs: 30_000 });
+  let html: string;
+  try {
+    html = await comxFetchText(target, { proxy: opts.proxy, timeoutMs: 30_000 });
+  } catch (error) {
+    // Com-X serves both zero-match filters and pages past the end as 404.
+    // That is an empty catalogue page, not a failed request.
+    if (/\bHTTP 404\b/.test(error instanceof Error ? error.message : String(error))) return [];
+    throw error;
+  }
   const results = parseComxListing(html, COMX_BASE);
   return results;
 }

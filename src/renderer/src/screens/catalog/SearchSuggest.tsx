@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SearchSuggestion } from '@shared/ipc';
 import type { CatalogSearch } from './useCatalogSearch';
+import { catalogCardFromSuggestion } from './catalog-suggestion';
 
 /** Sources with a dedicated lightweight autocomplete endpoint (each one asks
  * its own site/API). The rest fall back to the normal catalog search. */
@@ -133,14 +134,7 @@ export default function SearchSuggest({ s }: { s: CatalogSearch }): JSX.Element 
     if (it.kind === 'work' && it.url) {
       // Same flow as clicking a catalog card: the chapter overlay opens and the
       // list is resolved by the main process (URL or MangaDex id).
-      s.onSelectCard({
-        url: it.url,
-        title: it.title,
-        coverUrl: it.coverUrl ?? null,
-        pages: null,
-        status: it.status ?? null,
-        tags: [],
-      });
+      s.onSelectCard(catalogCardFromSuggestion(it, s.source));
     }
   };
 

@@ -90,7 +90,7 @@ export function registerCatalog(deps: CatalogDeps): {
       if (res.mangaTitle) onSeriesTitle?.(mangaId, res.mangaTitle);
     } else if (mangaId.includes('mangalib') || mangaId.includes('hentailib')) {
       const siteId = mangaId.includes('hentailib') ? 2 : 1;
-      const { mangalibChapters, mangalibChapterUrl, mangalibChapterSortKey } = await import('../services/sources/mangalib');
+      const { mangalibChapters, mangalibChapterUrl, mangalibChapterSortKey, mangalibChapterTitle } = await import('../services/sources/mangalib');
       const mlProxy = srcProxy;
       // Chapter URLs are …/<id>--<slug>/read/v1/c5: the numeric slug is the series.
       const slug = mangaId.split('/').find((seg) => /^\d+--/.test(seg)) ?? mangaId.trim().replace(/\/+$/, '').split('/').filter(Boolean).pop() ?? mangaId;
@@ -99,7 +99,7 @@ export function registerCatalog(deps: CatalogDeps): {
         .sort((a, b) => mangalibChapterSortKey(a) - mangalibChapterSortKey(b))
         .map((c) => ({
           chapter_id: mangalibChapterUrl(slug, c, siteId),
-          chapter_num: `Том ${c.volume} Глава ${c.number}${c.numberSecondary ? `.${c.numberSecondary}` : ''}${c.name ? ` — ${c.name}` : ''}`,
+          chapter_num: mangalibChapterTitle(c),
           title: null,
           lang: siteId === 2 ? 'hentailib' : 'mangalib',
         }));

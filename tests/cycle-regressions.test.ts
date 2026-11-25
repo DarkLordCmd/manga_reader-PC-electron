@@ -75,11 +75,14 @@ describe('parseChapterFeed (MangaDex)', () => {
 });
 
 describe('mangalibChapterUrl', () => {
-  it('keeps secondary chapter numbers apart (10 vs 10.5)', () => {
+  it('uses the API chapter number unchanged and ignores number_secondary', () => {
     const base = { id: 1, volume: '1', number: '10', numberSecondary: null, name: 'x' };
     expect(mangalibChapterUrl('7580--name', base)).toContain('/c10');
-    const sec = { ...base, numberSecondary: '5' };
-    expect(mangalibChapterUrl('7580--name', sec)).toContain('/c10.5');
+    const fraction = { ...base, number: '10.5', numberSecondary: '5' };
+    expect(mangalibChapterUrl('7580--name', fraction)).toContain('/c10.5');
+    expect(mangalibChapterUrl('7580--name', fraction)).not.toContain('/c10.5.5');
+    const secondaryOnly = { ...base, numberSecondary: '5' };
+    expect(mangalibChapterUrl('7580--name', secondaryOnly)).toContain('/c10');
   });
 });
 

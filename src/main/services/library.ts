@@ -27,12 +27,15 @@ export class LibraryService {
     if (item && item.status === null) this.repo.setStatus(item.key, 'reading');
   }
 
-  /** Older builds could have classified Mangalib 18+ cards as R34. Regular
-   * Mangalib is a Main source, so repair those legacy rows once they are seen. */
+  /** Older builds could classify regular Mangalib 18+ cards as R34, or
+   * HentaiLIB rows without an adult flag as Main. Repair both by source. */
   repairMangalibMainCategories(): number {
     let changed = 0;
     for (const item of this.repo.allIncludingDeleted()) {
-      if (item.source === 'Mangalib' && item.category === 'r34' && !/hentailib/i.test(item.url)) {
+      if (/hentailib\./i.test(item.url) && item.category === 'main') {
+        this.repo.setCategory(item.key, 'r34');
+        changed += 1;
+      } else if (item.source === 'Mangalib' && item.category === 'r34' && !/hentailib/i.test(item.url)) {
         this.repo.setCategory(item.key, 'main');
         changed += 1;
       }

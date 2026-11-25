@@ -22,7 +22,7 @@ export function sourceLabelForUrl(url: string): string {
  * MangaDex erotica): they belong to the R34 tab as well. */
 export function categoryForUrl(url: string, adult = false): string {
   if (adult) return 'r34';
-  return /nhentai|exhentai|e-hentai\.org/i.test(url) ? 'r34' : 'main';
+  return /nhentai|exhentai|e-hentai\.org|hentailib\./i.test(url) ? 'r34' : 'main';
 }
 
 export function galleryKeyForUrl(url: string): string | null {

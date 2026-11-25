@@ -22,6 +22,7 @@ export default function QuickSearchPresets({ s }: { s: CatalogSearch }): JSX.Ele
                 className="qs-launch"
                 title={`${q.source}: ${q.query}`}
                 onClick={() => {
+                  if (!s.canLaunchQuickSearch(q)) return;
                   s.setQsOpen(false);
                   const { keyword, tags } = parseEhQueryToTags(q.query);
                   if (q.source !== s.source) s.changeSource(q.source);

@@ -11,6 +11,12 @@ describe('categoryForUrl', () => {
 
   it('keeps ordinary sources in main', () => {
     expect(categoryForUrl('https://manga-shi.org/manga/x/')).toBe('main');
+    expect(categoryForUrl('https://mangalib.me/7580--berserk')).toBe('main');
+  });
+
+  it('classifies HentaiLIB as R34 by URL without an adult flag', () => {
+    expect(categoryForUrl('https://hentailib.me/ru/manga/7580--berserk')).toBe('r34');
+    expect(categoryForUrl('https://hentailib.me/ru/7580--berserk/read/v1/c1')).toBe('r34');
   });
 });
 
@@ -75,6 +81,39 @@ describe('18+ works from non-R34 sources', () => {
       adult: true,
     });
     expect(hentai.category).toBe('r34');
+  });
+
+  it('stores HentaiLIB in R34 without an adult flag and repairs legacy Main rows', () => {
+    const repo = new InMemorySeriesRepository();
+    const svc = new LibraryService(repo, { autoAdd: () => true });
+    const item = svc.addFromCatalog({
+      url: 'https://hentailib.me/ru/manga/7580--berserk',
+      title: 'Берсерк',
+      coverUrl: null,
+      source: 'HentaiLIB',
+      seriesId: 'https://hentailib.me/ru/manga/7580--berserk',
+    });
+    expect(item.category).toBe('r34');
+
+    repo.upsertHistory({
+      key: 'hl:7580--legacy',
+      seriesId: 'https://hentailib.me/ru/manga/7580--legacy',
+      url: 'https://hentailib.me/ru/manga/7580--legacy',
+      title: 'Legacy',
+      coverUrl: null,
+      source: 'HentaiLIB',
+      category: 'main',
+      kind: null,
+      currentPage: 1,
+      totalPages: 1,
+      chapterLabel: '1',
+      chapterIndex: 0,
+      chapterTotal: 1,
+      openedAt: Date.now(),
+      createdAt: Date.now(),
+    });
+    expect(svc.repairMangalibMainCategories()).toBeGreaterThan(0);
+    expect(repo.get('hl:7580--legacy')?.category).toBe('r34');
   });
 
   it('library entry without adult stays main', () => {

@@ -109,7 +109,7 @@ export default function Catalog(): JSX.Element {
           )}
         </div>
 
-        {s.showFilters && <FilterPanel s={s} />}
+        {s.showFilters && <FilterPanel key={s.source} s={s} />}
       </div>
 
       <ChaptersOverlay s={s} />

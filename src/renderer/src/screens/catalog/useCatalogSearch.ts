@@ -1,12 +1,24 @@
 import { errorText } from '../../lib/errors';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CatalogCard, CatalogCursor, CatalogFilters, ChapterListItem, ExAccount } from '@shared/ipc';
-import { filterCardsByEhKinds } from '@shared/filters';
+import { filterCardsByEhKinds, DEFAULT_REMANGA_ORDERING } from '@shared/filters';
 import type { ReadingStatus } from '@shared/library';
+import type { QuickSearch } from '@shared/quick-search';
 import type { MenuItem } from '../../components/ContextMenu';
 import { buildLibraryMenuItems } from '../../lib/library-menu';
 import { useStore } from '../../state/store';
-import { R34_SOURCES, SOURCES } from './constants';
+import { SOURCES } from './constants';
+import {
+  catalogFiltersForSource,
+  createEmptyMangalibFilters,
+  type MangalibFilterState,
+} from './catalog-filters';
+import {
+  resolveCatalogSource,
+  isQuickSearchVisible,
+  visibleCatalogSources,
+  visibleQuickSearchesFor,
+} from './catalog-state';
 import { shouldAutoLoad } from './auto-load';
 import { trimCursorCache, trimPageCache } from './catalog-cache';
 
@@ -41,27 +53,6 @@ function saveAdultCache(cache: Map<string, boolean>): void {
   }
 }
 
-export interface MangalibFilterState {
-  sortBy: string;
-  order: string;
-  types: string[];
-  statuses: string[];
-  formats: string[];
-  ages: string[];
-  genres: string[];
-  tags: string[];
-  countries: string[];
-  bookmarks: string[];
-  chaptersMin: string;
-  chaptersMax: string;
-  ratingMin: string;
-  ratingMax: string;
-  votesMin: string;
-  votesMax: string;
-  yearMin: string;
-  yearMax: string;
-}
-
 /** A hung IPC/source request must not leave the catalogue in an endless
  * "Поиск…" state. The underlying main request may finish later; its stale
  * response is discarded by searchIdRef. */
@@ -80,35 +71,14 @@ function withSourceTimeout<T>(promise: Promise<T>, ms: number, message: string):
     );
   });
 }
-const EMPTY_MANGALIB_FILTERS: MangalibFilterState = {
-  sortBy: '',
-  order: 'desc',
-  types: [],
-  statuses: [],
-  formats: [],
-  ages: [],
-  genres: [],
-  tags: [],
-  countries: [],
-  bookmarks: [],
-  chaptersMin: '',
-  chaptersMax: '',
-  ratingMin: '',
-  ratingMax: '',
-  votesMin: '',
-  votesMax: '',
-  yearMin: '',
-  yearMax: '',
-};
 
 export function useCatalogSearch() {
   const { setScreen, setOpened, settings, setSettings, settingsReady } = useStore();
-  const [source, setSource] = useState(() => {
-    const mainSource = SOURCES.find((x) => !R34_SOURCES.includes(x.key))?.key || 'comx';
-    const s = settings.last_catalog_source || mainSource;
-    const known = SOURCES.some((x) => x.key === s);
-    return !known || (!settings.show_r34_history && R34_SOURCES.includes(s)) ? mainSource : s;
-  });
+  const visibleSources = useMemo(() => visibleCatalogSources(settings.show_r34_history), [settings.show_r34_history]);
+  const [sourceState, setSourceState] = useState(() => resolveCatalogSource(settings.last_catalog_source, settings.show_r34_history));
+  // Render and search with a safe source immediately, even before the effect
+  // that repairs the underlying state after a privacy/settings change.
+  const source = resolveCatalogSource(sourceState, settings.show_r34_history);
   const [sourceRestored, setSourceRestored] = useState(false);
   const restoredSourceRef = useRef(source);
   const filterTimerRef = useRef<number | null>(null);
@@ -176,10 +146,13 @@ export function useCatalogSearch() {
   const [msChaptersMax, setMsChaptersMax] = useState('');
   const [msTags, setMsTags] = useState<string[]>([]);
   const [msExcludeTags, setMsExcludeTags] = useState<string[]>([]);
-  const [ml, setMl] = useState<MangalibFilterState>(EMPTY_MANGALIB_FILTERS);
+  const [ml, setMl] = useState<MangalibFilterState>(createEmptyMangalibFilters);
+  const [hl, setHl] = useState<MangalibFilterState>(createEmptyMangalibFilters);
+  const libFilters = source === 'hentailib' ? hl : ml;
+  const setLibFilters = source === 'hentailib' ? setHl : setMl;
   const [msBookmarkStatuses, setMsBookmarkStatuses] = useState<string[]>([]);
   const [msHideBookmarked, setMsHideBookmarked] = useState(false);
-  const [rmOrdering, setRmOrdering] = useState('');
+  const [rmOrdering, setRmOrdering] = useState(DEFAULT_REMANGA_ORDERING);
   const [rmStatus, setRmStatus] = useState('');
   const [rmTypes, setRmTypes] = useState<string[]>([]);
   const [rmGenres, setRmGenres] = useState<string[]>([]);
@@ -278,7 +251,7 @@ export function useCatalogSearch() {
   const infiniteScroll = settings.infinite_scroll;
   const [hasMore, setHasMore] = useState(true);
 
-  const filters: CatalogFilters = {
+  const allFilters: CatalogFilters = {
     ehExcludedCats,
     ehMinRating,
     ehWatchedOnly,
@@ -297,24 +270,6 @@ export function useCatalogSearch() {
     mangashiExcludeTags: msExcludeTags,
     mangashiBookmarkStatuses: msBookmarkStatuses,
     mangashiHideBookmarked: msHideBookmarked,
-    mangalibTypes: ml.types,
-    mangalibStatuses: ml.statuses,
-    mangalibFormats: ml.formats,
-    mangalibAgeRatings: ml.ages,
-    mangalibGenres: ml.genres,
-    mangalibTags: ml.tags,
-    mangalibCountries: ml.countries,
-    mangalibBookmarks: ml.bookmarks,
-    mangalibChaptersMin: ml.chaptersMin,
-    mangalibChaptersMax: ml.chaptersMax,
-    mangalibRatingMin: ml.ratingMin,
-    mangalibRatingMax: ml.ratingMax,
-    mangalibVotesMin: ml.votesMin,
-    mangalibVotesMax: ml.votesMax,
-    mangalibYearMin: ml.yearMin,
-    mangalibYearMax: ml.yearMax,
-    mangalibSortBy: ml.sortBy,
-    mangalibOrder: ml.order,
     remangaOrdering: rmOrdering,
     remangaStatus: rmStatus,
     remangaTypes: rmTypes,
@@ -332,7 +287,7 @@ export function useCatalogSearch() {
     senkuroStatuses: skStatus,
     senkuroTypes: skType,
     senkuroFormats: skFormat,
-    senkuroRatings: settings.show_r34_history ? skRatings : skRatings.filter((r) => r !== 'EXPLICIT'),
+    senkuroRatings: skRatings,
     senkuroSources: skSources,
     senkuroTranslation: skTranslation,
     senkuroCountries: skCountries,
@@ -351,6 +306,7 @@ export function useCatalogSearch() {
     comxYearTo: cxYearTo,
     nhentaiTags: nhFilterTags,
   };
+  const filters = catalogFiltersForSource(source, allFilters, { mangalib: ml, hentailib: hl }, settings.show_r34_history);
 
   const tagSource = source === 'exhentai' || source === 'exhentai_onion' || source === 'ehentai';
   const nhTagSource = source === 'nhentai' || source === 'nhentai_onion';
@@ -365,11 +321,7 @@ export function useCatalogSearch() {
     source === 'senkuro' ||
     source === 'comx' ||
     nhTagSource;
-  const visibleSources = settings.show_r34_history ? SOURCES : SOURCES.filter((s) => !R34_SOURCES.includes(s.key));
-  const knownSources = new Set(SOURCES.map((x) => x.key));
-  const visibleQuickSearches = settings.quick_searches.filter(
-    (q) => knownSources.has(q.source) && (settings.show_r34_history || !R34_SOURCES.includes(q.source)),
-  );
+  const visibleQuickSearches = visibleQuickSearchesFor(settings.quick_searches, settings.show_r34_history);
 
   useEffect(() => {
     const id = ++tagSuggestSeqRef.current;
@@ -457,24 +409,17 @@ export function useCatalogSearch() {
   // real source restored from settings.
   useEffect(() => {
     if (!settingsReady || sourceRestored) return;
-    const saved = settings.last_catalog_source;
-    const known = saved ? SOURCES.some((x) => x.key === saved) : false;
-    // Never fall back to the current state: at first hydration it can still be
-    // an R34 source while the real setting has R34 disabled. That left the
-    // controlled <select> showing the first visible source (Com-X) while the
-    // hook still searched E-Hentai/NHentai and rendered their filter panel.
-    const safeSource = SOURCES.find((x) => settings.show_r34_history || !R34_SOURCES.includes(x.key))?.key ?? SOURCES[0]?.key ?? 'comx';
-    const restored = known && saved && (!settings.show_r34_history || !R34_SOURCES.includes(saved)) ? saved : safeSource;
+    const restored = resolveCatalogSource(settings.last_catalog_source, settings.show_r34_history);
     restoredSourceRef.current = restored;
     setSourceRestored(true);
-    if (restored !== source) {
+    if (restored !== sourceState) {
       searchIdRef.current++;
       completedSigRef.current = '';
       pageCursorRef.current.clear();
       cancelPendingFilterSearch();
       setSkRatings((prev) => prev.filter((r) => r !== 'EXPLICIT'));
-      setSource(restored);
     }
+    setSourceState(restored);
     // Source restoration is deliberately a one-time hydration step.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsReady, settings.last_catalog_source, settings.show_r34_history, sourceRestored]);
@@ -751,12 +696,15 @@ export function useCatalogSearch() {
 
   // Reset scroll page when filters change
   const changeSource = (s: string): void => {
+    const next = resolveCatalogSource(s, settings.show_r34_history);
+    // Removed/hidden presets and stale callers must never launch a source.
+    if (s !== next || (next === source && sourceState === next)) return;
     searchIdRef.current++;
     completedSigRef.current = '';
     pageCursorRef.current.clear();
     cancelPendingFilterSearch();
     setSkRatings((prev) => prev.filter((r) => r !== 'EXPLICIT'));
-    setSource(s);
+    setSourceState(next);
     setCards([]);
     setError(null);
     setPage(0);
@@ -764,26 +712,17 @@ export function useCatalogSearch() {
     setPickedTags([]);
     scrollToTop();
     // Remember the source for later visits to this screen
-    setSettings({ ...settings, last_catalog_source: s });
+    setSettings({ ...settings, last_catalog_source: next });
   };
 
-  // A saved source can be hidden now (R34 off, or the source was removed).
-  // Controlled <select> then visually shows the first option while the hook
-  // keeps searching the hidden source and renders its filter panel. Force the
-  // state onto a visible source after settings hydration.
+  // Repair hidden/removed state after hydration or a privacy toggle. The
+  // rendered `source` above is already safe, so the controlled picker, toolbar
+  // and filter panel cannot briefly disagree with the active search.
   useEffect(() => {
-    if (visibleSources.some((x) => x.key === source)) return;
-    changeSource(visibleSources[0]?.key || 'comx');
+    if (sourceState === source) return;
+    changeSource(source);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, settings.show_r34_history]);
-  // Turning the R34 privacy toggle off while an R34 source is active falls back
-  // to a safe source (also hides its now-excluded cards/search presets).
-  useEffect(() => {
-    if (!settings.show_r34_history && R34_SOURCES.includes(source)) {
-      changeSource(SOURCES.find((x) => !R34_SOURCES.includes(x.key))?.key || 'comx');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.show_r34_history]);
+  }, [sourceState, source, settings.show_r34_history]);
 
   const resetFilters = (): void => {
     setEhExcludedCats(0);
@@ -805,8 +744,9 @@ export function useCatalogSearch() {
     setMsExcludeTags([]);
     setMsBookmarkStatuses([]);
     setMsHideBookmarked(false);
-    setMl(EMPTY_MANGALIB_FILTERS);
-    setRmOrdering('');
+    setMl(createEmptyMangalibFilters());
+    setHl(createEmptyMangalibFilters());
+    setRmOrdering(DEFAULT_REMANGA_ORDERING);
     setRmStatus('');
     setRmTypes([]);
     setRmGenres([]);
@@ -1067,6 +1007,8 @@ export function useCatalogSearch() {
       status: m.lookup?.status ?? null,
     });
 
+  const canLaunchQuickSearch = (search: QuickSearch): boolean => isQuickSearchVisible(search, settings.show_r34_history);
+
   return {
     settings,
     setSettings,
@@ -1088,6 +1030,7 @@ export function useCatalogSearch() {
     qsOpen,
     setQsOpen,
     visibleQuickSearches,
+    canLaunchQuickSearch,
     setQuickSearchSeq,
     tagSource,
     nhTagSource,
@@ -1157,8 +1100,8 @@ export function useCatalogSearch() {
     setMsBookmarkStatuses,
     msHideBookmarked,
     setMsHideBookmarked,
-    ml,
-    setMl,
+    libFilters,
+    setLibFilters,
     rmOrdering,
     setRmOrdering,
     rmStatus,
