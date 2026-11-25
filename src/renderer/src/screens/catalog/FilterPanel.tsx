@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import {
   EH_CATEGORIES,
   MANGASHI_TAGS,
+  REMANGA_CATEGORIES,
   REMANGA_GENRES,
   MD_LANGS,
   MD_POPULAR_TAGS,
@@ -242,6 +243,12 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
     cxClass: false,
     cxGenres: false,
     cxExclude: false,
+    rmMain: true,
+    rmSort: true,
+    rmGenres: false,
+    rmCategories: false,
+    rmExcludeGenres: false,
+    rmExcludeCategories: false,
   });
   const [msTagQuery, setMsTagQuery] = useState('');
   const [msExcludeTagQuery, setMsExcludeTagQuery] = useState('');
@@ -249,6 +256,10 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
   const [mlTagQuery, setMlTagQuery] = useState('');
   const [cxGenreQuery, setCxGenreQuery] = useState('');
   const [cxExcludeGenreQuery, setCxExcludeGenreQuery] = useState('');
+  const [rmGenreQuery, setRmGenreQuery] = useState('');
+  const [rmCategoryQuery, setRmCategoryQuery] = useState('');
+  const [rmExcludeGenreQuery, setRmExcludeGenreQuery] = useState('');
+  const [rmExcludeCategoryQuery, setRmExcludeCategoryQuery] = useState('');
   const toggleSection = (key: string): void => setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   const toggleIn = (setter: (fn: (prev: string[]) => string[]) => void) => (v: string) =>
     setter((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
@@ -282,7 +293,42 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
       ...COMX_GENRES.filter(([v]) => selected.has(v)),
       ...COMX_GENRES.filter(([v, label]) => !selected.has(v) && (!q || label.toLowerCase().includes(q))),
     ];
-  }, [cxExcludeGenreQuery, s.cxExcludeGenres]);  const selectedLabels = s.skLabelList.filter((l) => s.skLabels.includes(l.slug));
+  }, [cxExcludeGenreQuery, s.cxExcludeGenres]);  const rmMainCount =
+    s.rmTypes.length +
+    (s.rmStatus ? 1 : 0) +
+    [s.rmChaptersMin, s.rmChaptersMax, s.rmYearMin, s.rmYearMax, s.rmRatingMin, s.rmRatingMax].filter(Boolean).length;
+  const rmGenreList = useMemo(() => {
+    const q = rmGenreQuery.trim().toLowerCase();
+    const sel = new Set(s.rmGenres);
+    return [
+      ...REMANGA_GENRES.filter(([v]) => sel.has(v)),
+      ...REMANGA_GENRES.filter(([v, l]) => !sel.has(v) && (!q || l.toLowerCase().includes(q))),
+    ];
+  }, [rmGenreQuery, s.rmGenres]);
+  const rmCategoryList = useMemo(() => {
+    const q = rmCategoryQuery.trim().toLowerCase();
+    const sel = new Set(s.rmCategories);
+    return [
+      ...REMANGA_CATEGORIES.filter(([v]) => sel.has(v)),
+      ...REMANGA_CATEGORIES.filter(([v, l]) => !sel.has(v) && (!q || l.toLowerCase().includes(q))),
+    ];
+  }, [rmCategoryQuery, s.rmCategories]);
+  const rmExcludeGenreList = useMemo(() => {
+    const q = rmExcludeGenreQuery.trim().toLowerCase();
+    const sel = new Set(s.rmExcludeGenres);
+    return [
+      ...REMANGA_GENRES.filter(([v]) => sel.has(v)),
+      ...REMANGA_GENRES.filter(([v, l]) => !sel.has(v) && (!q || l.toLowerCase().includes(q))),
+    ];
+  }, [rmExcludeGenreQuery, s.rmExcludeGenres]);
+  const rmExcludeCategoryList = useMemo(() => {
+    const q = rmExcludeCategoryQuery.trim().toLowerCase();
+    const sel = new Set(s.rmExcludeCategories);
+    return [
+      ...REMANGA_CATEGORIES.filter(([v]) => sel.has(v)),
+      ...REMANGA_CATEGORIES.filter(([v, l]) => !sel.has(v) && (!q || l.toLowerCase().includes(q))),
+    ];
+  }, [rmExcludeCategoryQuery, s.rmExcludeCategories]);  const selectedLabels = s.skLabelList.filter((l) => s.skLabels.includes(l.slug));
   const msTagList = useMemo(() => {
     const q = msTagQuery.trim().toLowerCase();
     const selected = new Set(s.msTags);
@@ -841,7 +887,12 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
 
       {s.source === 'remanga' && (
         <>
-          <FilterRow label="Сортировка">
+          <FilterSection
+            title="Сортировка"
+            count={s.rmOrdering ? 1 : 0}
+            open={!!openSections.rmSort}
+            onToggle={() => toggleSection('rmSort')}
+          >
             <SelectFilter
               options={RM_ORDERING}
               value={s.rmOrdering}
@@ -849,33 +900,177 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
                 s.setRmOrdering(v);
               }}
             />
-          </FilterRow>
-          <FilterRow label="Статус">
-            <SelectFilter
-              options={RM_STATUS}
-              value={s.rmStatus}
-              onChange={(v) => {
-                s.setRmStatus(v);
+          </FilterSection>
+
+          <FilterSection
+            title="Параметры"
+            count={rmMainCount}
+            open={!!openSections.rmMain}
+            onToggle={() => toggleSection('rmMain')}
+          >
+            <SubLabel>Тип</SubLabel>
+            <TagChecklist
+              items={RM_TYPES}
+              selected={s.rmTypes}
+              onToggle={(v) =>
+                s.setRmTypes((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))
+              }
+            />
+            <FilterRow label="Статус">
+              <SelectFilter options={RM_STATUS} value={s.rmStatus} onChange={s.setRmStatus} />
+            </FilterRow>
+            <FilterRow label="Количество глав">
+              <div className="filter-range">
+                <input
+                  className="filter-input narrow"
+                  inputMode="numeric"
+                  placeholder="От"
+                  aria-label="Глав от"
+                  value={s.rmChaptersMin}
+                  onChange={(e) => s.setRmChaptersMin(e.target.value.replace(/\D/g, ''))}
+                />
+                <span>—</span>
+                <input
+                  className="filter-input narrow"
+                  inputMode="numeric"
+                  placeholder="До"
+                  aria-label="Глав до"
+                  value={s.rmChaptersMax}
+                  onChange={(e) => s.setRmChaptersMax(e.target.value.replace(/\D/g, ''))}
+                />
+              </div>
+            </FilterRow>
+            <FilterRow label="Год выпуска">
+              <div className="filter-range">
+                <input
+                  className="filter-input narrow"
+                  inputMode="numeric"
+                  placeholder="От"
+                  aria-label="Год от"
+                  value={s.rmYearMin}
+                  onChange={(e) => s.setRmYearMin(e.target.value.replace(/\D/g, ''))}
+                />
+                <span>—</span>
+                <input
+                  className="filter-input narrow"
+                  inputMode="numeric"
+                  placeholder="До"
+                  aria-label="Год до"
+                  value={s.rmYearMax}
+                  onChange={(e) => s.setRmYearMax(e.target.value.replace(/\D/g, ''))}
+                />
+              </div>
+            </FilterRow>
+            <FilterRow label="Оценка">
+              <div className="filter-range">
+                <input
+                  className="filter-input narrow"
+                  inputMode="decimal"
+                  placeholder="От"
+                  aria-label="Оценка от"
+                  value={s.rmRatingMin}
+                  onChange={(e) => s.setRmRatingMin(e.target.value.replace(/[^\d.]/g, ''))}
+                />
+                <span>—</span>
+                <input
+                  className="filter-input narrow"
+                  inputMode="decimal"
+                  placeholder="До"
+                  aria-label="Оценка до"
+                  value={s.rmRatingMax}
+                  onChange={(e) => s.setRmRatingMax(e.target.value.replace(/[^\d.]/g, ''))}
+                />
+              </div>
+            </FilterRow>
+          </FilterSection>
+
+          <FilterSection
+            title="Жанры"
+            count={s.rmGenres.length}
+            open={!!openSections.rmGenres}
+            onToggle={() => toggleSection('rmGenres')}
+          >
+            <input
+              className="filter-input full"
+              placeholder="Поиск жанра…"
+              value={rmGenreQuery}
+              onChange={(e) => setRmGenreQuery(e.target.value)}
+            />
+            <TagChecklist
+              items={rmGenreList}
+              selected={s.rmGenres}
+              onToggle={(v) => {
+                s.setRmExcludeGenres((prev) => prev.filter((x) => x !== v));
+                s.setRmGenres((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
               }}
             />
-          </FilterRow>
-          <FilterRow label="Тип">
-            <SelectFilter
-              options={RM_TYPES}
-              value={s.rmTypes}
-              onChange={(v) => {
-                s.setRmTypes(v);
+          </FilterSection>
+
+          <FilterSection
+            title="Категории"
+            count={s.rmCategories.length}
+            open={!!openSections.rmCategories}
+            onToggle={() => toggleSection('rmCategories')}
+          >
+            <input
+              className="filter-input full"
+              placeholder="Поиск категории…"
+              value={rmCategoryQuery}
+              onChange={(e) => setRmCategoryQuery(e.target.value)}
+            />
+            <TagChecklist
+              items={rmCategoryList}
+              selected={s.rmCategories}
+              onToggle={(v) => {
+                s.setRmExcludeCategories((prev) => prev.filter((x) => x !== v));
+                s.setRmCategories((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
               }}
             />
-          </FilterRow>
-          <div className="filter-title">Жанры</div>
-          <TagChecklist
-            items={REMANGA_GENRES}
-            selected={s.rmGenres}
-            onToggle={(v) => {
-              s.setRmGenres((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
-            }}
-          />
+          </FilterSection>
+
+          <FilterSection
+            title="Исключить жанры"
+            count={s.rmExcludeGenres.length}
+            open={!!openSections.rmExcludeGenres}
+            onToggle={() => toggleSection('rmExcludeGenres')}
+          >
+            <input
+              className="filter-input full"
+              placeholder="Найти исключаемый жанр…"
+              value={rmExcludeGenreQuery}
+              onChange={(e) => setRmExcludeGenreQuery(e.target.value)}
+            />
+            <TagChecklist
+              items={rmExcludeGenreList}
+              selected={s.rmExcludeGenres}
+              onToggle={(v) => {
+                s.setRmGenres((prev) => prev.filter((x) => x !== v));
+                s.setRmExcludeGenres((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+              }}
+            />
+          </FilterSection>
+
+          <FilterSection
+            title="Исключить категории"
+            count={s.rmExcludeCategories.length}
+            open={!!openSections.rmExcludeCategories}
+            onToggle={() => toggleSection('rmExcludeCategories')}
+          >
+            <input
+              className="filter-input full"
+              placeholder="Найти исключаемую категорию…"
+              value={rmExcludeCategoryQuery}
+              onChange={(e) => setRmExcludeCategoryQuery(e.target.value)}
+            />
+            <TagChecklist
+              items={rmExcludeCategoryList}
+              selected={s.rmExcludeCategories}
+              onToggle={(v) => {
+                s.setRmCategories((prev) => prev.filter((x) => x !== v));
+                s.setRmExcludeCategories((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+              }}
+            />
+          </FilterSection>
         </>
       )}
 

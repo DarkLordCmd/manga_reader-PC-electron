@@ -84,9 +84,18 @@ export async function searchRemanga(query: string, page: number, filters: Catalo
   const params = new URLSearchParams({ page: String(page + 1), count: '20', ordering: filters.remangaOrdering || 'views' });
   if (query.trim()) params.set('query', query.trim());
   if (filters.remangaStatus) params.set('status', filters.remangaStatus);
-  if (filters.remangaTypes) params.set('types', filters.remangaTypes);
+  for (const t of filters.remangaTypes ?? []) params.append('types', t);
   for (const g of filters.remangaGenres ?? []) params.append('genres', g);
   for (const c of filters.remangaCategories ?? []) params.append('categories', c);
+  for (const g of filters.remangaExcludeGenres ?? []) params.append('exclude_genres', g);
+  for (const c of filters.remangaExcludeCategories ?? []) params.append('exclude_categories', c);
+  for (const t of filters.remangaExcludeTypes ?? []) params.append('exclude_types', t);
+  if (filters.remangaChaptersMin) params.set('count_chapters_gte', filters.remangaChaptersMin);
+  if (filters.remangaChaptersMax) params.set('count_chapters_lte', filters.remangaChaptersMax);
+  if (filters.remangaYearMin) params.set('issue_year_gte', filters.remangaYearMin);
+  if (filters.remangaYearMax) params.set('issue_year_lte', filters.remangaYearMax);
+  if (filters.remangaRatingMin) params.set('rating_gte', filters.remangaRatingMin);
+  if (filters.remangaRatingMax) params.set('rating_lte', filters.remangaRatingMax);
   const json = (await httpGetJson(
     `https://api.remanga.org/api/v2/search/catalog/?${params.toString()}`,
     {

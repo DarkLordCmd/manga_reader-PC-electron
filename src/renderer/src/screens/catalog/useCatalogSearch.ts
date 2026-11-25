@@ -180,8 +180,17 @@ export function useCatalogSearch() {
   const [msHideBookmarked, setMsHideBookmarked] = useState(false);
   const [rmOrdering, setRmOrdering] = useState('');
   const [rmStatus, setRmStatus] = useState('');
-  const [rmTypes, setRmTypes] = useState('');
+  const [rmTypes, setRmTypes] = useState<string[]>([]);
   const [rmGenres, setRmGenres] = useState<string[]>([]);
+  const [rmCategories, setRmCategories] = useState<string[]>([]);
+  const [rmExcludeGenres, setRmExcludeGenres] = useState<string[]>([]);
+  const [rmExcludeCategories, setRmExcludeCategories] = useState<string[]>([]);
+  const [rmChaptersMin, setRmChaptersMin] = useState('');
+  const [rmChaptersMax, setRmChaptersMax] = useState('');
+  const [rmYearMin, setRmYearMin] = useState('');
+  const [rmYearMax, setRmYearMax] = useState('');
+  const [rmRatingMin, setRmRatingMin] = useState('');
+  const [rmRatingMax, setRmRatingMax] = useState('');
   const [skOrdering, setSkOrdering] = useState('');
   const [skStatus, setSkStatus] = useState<string[]>([]);
   const [skType, setSkType] = useState<string[]>([]);
@@ -309,6 +318,15 @@ export function useCatalogSearch() {
     remangaStatus: rmStatus,
     remangaTypes: rmTypes,
     remangaGenres: rmGenres,
+    remangaCategories: rmCategories,
+    remangaExcludeGenres: rmExcludeGenres,
+    remangaExcludeCategories: rmExcludeCategories,
+    remangaChaptersMin: rmChaptersMin,
+    remangaChaptersMax: rmChaptersMax,
+    remangaYearMin: rmYearMin,
+    remangaYearMax: rmYearMax,
+    remangaRatingMin: rmRatingMin,
+    remangaRatingMax: rmRatingMax,
     senkuroOrdering: skOrdering,
     senkuroStatuses: skStatus,
     senkuroTypes: skType,
@@ -774,8 +792,17 @@ export function useCatalogSearch() {
     setMl(EMPTY_MANGALIB_FILTERS);
     setRmOrdering('');
     setRmStatus('');
-    setRmTypes('');
+    setRmTypes([]);
     setRmGenres([]);
+    setRmCategories([]);
+    setRmExcludeGenres([]);
+    setRmExcludeCategories([]);
+    setRmChaptersMin('');
+    setRmChaptersMax('');
+    setRmYearMin('');
+    setRmYearMax('');
+    setRmRatingMin('');
+    setRmRatingMax('');
     setSkOrdering('');
     setSkStatus([]);
     setSkType([]);
@@ -1124,6 +1151,24 @@ export function useCatalogSearch() {
     setRmTypes,
     rmGenres,
     setRmGenres,
+    rmCategories,
+    setRmCategories,
+    rmExcludeGenres,
+    setRmExcludeGenres,
+    rmExcludeCategories,
+    setRmExcludeCategories,
+    rmChaptersMin,
+    setRmChaptersMin,
+    rmChaptersMax,
+    setRmChaptersMax,
+    rmYearMin,
+    setRmYearMin,
+    rmYearMax,
+    setRmYearMax,
+    rmRatingMin,
+    setRmRatingMin,
+    rmRatingMax,
+    setRmRatingMax,
     skOrdering,
     setSkOrdering,
     skStatus,
