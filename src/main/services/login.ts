@@ -31,7 +31,14 @@ export function hasAuthenticatedSession(target: string, cookies: { name: string;
   if (/nhentai.*\.onion/i.test(target)) return has('access_token') || has('refresh_token');
   if (/exhentai|e-hentai/i.test(target)) return has('onikakushi') || has('ipb_member_id');
   if (/senkuro/i.test(target)) return has('remixsid') || has('session_id') || has('access_token');
-  if (/mangalib/i.test(target)) return has('mangalib_session') || has('token') || has('access_token') || has('_identity');
+  if (/mangalib/i.test(target))
+    return (
+      has('mangalib_session') ||
+      has('token') ||
+      has('access_token') ||
+      has('_identity') ||
+      cookies.some((c) => /^remember_web_/i.test(c.name) && !!c.value)
+    );
   if (/com-x/i.test(target)) return has('dle_user_id') || has('dle_password');
   if (/manga-shi/i.test(target)) return cookies.some((c) => !!c.value && /^remember_web_/i.test(c.name));
   if (/remanga/i.test(target)) {
@@ -98,7 +105,7 @@ export function filterLoginCookies<T extends { domain?: string; name: string; va
     : /(^|\.)(?:e-hentai|exhentai)\.org$/.test(targetHost)
       ? ['e-hentai.org', 'exhentai.org']
       : /(^|\.)mangalib\.me$/.test(targetHost)
-        ? ['mangalib.me', 'lib.social']
+        ? ['mangalib.me', 'lib.social', 'cdnlibs.org']
         : [targetHost];
   return cookies.filter((cookie) => {
     if (!cookie.domain) return false;
@@ -209,8 +216,14 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
     });
 
     denyAllPermissions(ses);
-    // Promo/ad popups (Mangalib gift wheel) must stay out of the login flow.
-    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    // Promo/ad popups (Mangalib gift wheel) must stay out of the login flow,
+    // but social-login popups (VK/Google/Telegram) are part of authorization.
+    win.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https:\/\/(id\.vk\.(ru|com)|oauth\.vk\.com|accounts\.google\.com|oauth\.telegram\.org|auth\.lib\.social)\b/i.test(url)) {
+        return { action: 'allow' };
+      }
+      return { action: 'deny' };
+    });
 
     let done = false;
     const loadAttempt = 0;
@@ -218,6 +231,12 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
       if (done) return;
       done = true;
       win.close();
+      // A page's beforeunload handler can keep the login window alive after
+      // cookies were already collected. The window is disposable; force it
+      // down so Settings gets the resolved result and no orphan stays open.
+      setTimeout(() => {
+        if (!win.isDestroyed()) win.destroy();
+      }, 700);
       resolve(result);
     };
 
@@ -699,7 +718,26 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
           `)
           .catch(() => {});
       }
-      if (/mangalib/i.test(loginUrl) && !/front\/auth/i.test(loginUrl)) {
+      // Mangalib sometimes lands on its homepage instead of the auth route
+      // (A/B experiment, expired redirect). If the first page is the homepage
+      // and no login was seen yet, go to the auth route once. A successful
+      // login sets seenLogin and this fallback never runs.
+      if (
+        /mangalib/i.test(loginUrl) &&
+        !seenLogin &&
+        !mangalibAuthRetry &&
+        !/front\/auth|auth\.lib\.social/i.test(win.webContents.getURL())
+      ) {
+        mangalibAuthRetry = true;
+        setTimeout(() => {
+          if (!done && !seenLogin) {
+            void win.webContents
+              .loadURL('https://mangalib.me/ru/front/auth')
+              .catch((e) => logger.info('[login] Mangalib auth fallback failed:', e?.message ?? e));
+          }
+        }, 1200);
+      }
+      if (/mangalib/i.test(loginUrl) && !/front\/auth|auth\.lib\.social/i.test(win.webContents.getURL())) {
         void win.webContents
           .executeJavaScript(`
             (function() {
@@ -709,7 +747,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
                   var el = Array.prototype.find.call(document.querySelectorAll('a[href], button'), function(x) {
                     var t = (x.textContent || '').trim();
                     var h = x.getAttribute && (x.getAttribute('href') || '');
-                    return /^Вход\\s*\\|\\s*Регистрация$/i.test(t) || (t === 'Войти' && !/regin|register/i.test(h));
+                    return /^Вход\\s*(?:\\||или)?\\s*Регистрация$/i.test(t) || (t === 'Войти' && !/regin|register/i.test(h));
                   });
                   if (el) { el.click(); clearInterval(timer); }
                 } catch (e) {}
@@ -842,6 +880,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
     }
 
     let seenLogin = false;
+    let mangalibAuthRetry = false;
     const poll = setInterval(() => {
       if (done) {
         clearInterval(poll);
@@ -863,30 +902,23 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
           const url = ws.getURL();
           const onLoginOrSso = /\/login|sso\.|act=login/i.test(url);
           if (onLoginOrSso) seenLogin = true;
-          if (!done && dbg) {
-            void ses.cookies
-              .get({})
-              .then((list) => {
-                dlog(
-                  'poll url=' +
-                    url +
-                    ' seenLogin=' +
-                    seenLogin +
-                    ' cookies: ' +
-                    list
-                      .filter((c) => c.name && !/^(prepole|__qca|__utm)/.test(c.name))
-                      .map((c) => c.name)
-                      .join(','),
-                );
-              })
-              .catch(() => {});
-          }
+          const ssoAuthPage = /auth\.lib\.social/i.test(url) || /\/front\/auth/i.test(url);
           // Auto-finish ONLY when the flow is truly done: back on the target
           // site's own domain, no login/SSO markers in the URL. Both Senkuro
           // domains count: the login may have been completed on the .com
           // mirror after DDoS-Guard blocked .me for this network.
-          const onTargetSite = url.startsWith('http') && !onLoginOrSso && /senkuro\.(me|com)|remanga\.org|nhentai\.net|\.onion/.test(url);
-          if (seenLogin && onTargetSite) {
+          const onTargetSite =
+            url.startsWith('http') &&
+            (ssoAuthPage ||
+              (!onLoginOrSso &&
+                /senkuro\.(me|com)|remanga\.org|nhentai\.net|mangalib\.me|lib\.social|manga-shi\.org|com-x\.life|\.onion/.test(url)));
+          // Mangalib sets a session cookie for guests too. Do not close on a
+          // bare homepage: require that the auth flow was actually entered.
+          const authReady = !/mangalib/i.test(loginUrl) || seenLogin || ssoAuthPage;
+          // `seenLogin + back on site` is the redirect flow. Auth pages are
+          // handled by the cookie check below, so a guest at the SSO login
+          // form is not mistaken for a successful login.
+          if (seenLogin && onTargetSite && !ssoAuthPage) {
             clearInterval(poll);
             statusEl = 'Вход признан успешным — собираю куки…';
             void injectStatus();
@@ -906,7 +938,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
               `(function(){var el=document.querySelector('input[type="password"],input[name="UserName"],input[name="PassWord"],input[name="username_or_email"]');if(!el)return false;var s=getComputedStyle(el);return !!(el.offsetParent!==null&&s.display!=='none'&&s.visibility!=='hidden');})()`,
             )
             .catch(() => true);
-          if (!done && onTargetSite && hasAuthenticatedSession(loginUrl, jar, loginFormVisible)) {
+          if (!done && onTargetSite && authReady && hasAuthenticatedSession(loginUrl, jar, loginFormVisible)) {
             clearInterval(poll);
             statusEl = 'Вход выполнен — собираю куки…';
             void injectStatus();
