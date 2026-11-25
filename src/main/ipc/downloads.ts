@@ -12,7 +12,7 @@ import type { DownloadManager } from '../services/download-manager';
 import type { SettingsService } from '../services/settings';
 import type { ExAccountsService } from '../services/accounts';
 
-const SERIES_SOURCES = ['MangaDex', 'Remanga', 'Senkuro', 'Manga-shi', 'Readmanga', 'Mintmanga', 'Mangapoisk', 'MangaMello'];
+const SERIES_SOURCES = ['MangaDex', 'Remanga', 'Senkuro', 'Manga-shi', 'Readmanga', 'Mintmanga', 'Mangapoisk'];
 
 export function registerDownloads(deps: {
   downloads: DownloadManager;

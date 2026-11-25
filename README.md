@@ -2,7 +2,7 @@
 
 Читалка манги/комиксов для Windows (Linux/macOS собираются, но проверяются на Windows), портированная на Electron.
 
-- Каталог и поиск по десяткам источников: MangaDex, E-Hentai/ExHentai (в т.ч. onion), NHentai (в т.ч. onion), Com-X, Senkuro, Manga-shi, Remanga, mangalib, Readmanga/Mintmanga/Mangapoisk, MangaMello.
+- Каталог и поиск по десяткам источников: MangaDex, E-Hentai/ExHentai (в т.ч. onion), NHentai (в т.ч. onion), Com-X, Senkuro, Manga-shi, Remanga, mangalib, Readmanga/Mintmanga/Mangapoisk.
 - **Поиск с подсказками**: у каждого источника свой автокомплит (Senkuro/Senkognito, MangaDex, Remanga, NHentai — обложки и метаданные; E-Hentai/ExHentai — теги с добавлением в поле тегов).
 - **Remanga**: вход через отдельное окно remanga.org (как у Senkuro), затем импорт закладок (Читаю / В планах / Прочитано / Отложено / Брошено) с последней главой; пароль вводится только на сайте.
 - **Другие источники в карточке**: при открытии произведения проверяются Remanga, Senkuro, Manga-shi, Mangalib, Com-X, Readmanga, Mintmanga и Mangapoisk; найденный источник можно выбрать одним кликом.

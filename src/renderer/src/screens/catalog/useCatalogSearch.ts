@@ -105,7 +105,8 @@ export function useCatalogSearch() {
   const { setScreen, setOpened, settings, setSettings, settingsReady } = useStore();
   const [source, setSource] = useState(() => {
     const s = settings.last_catalog_source || 'mangadex';
-    return !settings.show_r34_history && R34_SOURCES.includes(s) ? 'mangadex' : s;
+    const known = SOURCES.some((x) => x.key === s);
+    return !known || (!settings.show_r34_history && R34_SOURCES.includes(s)) ? 'mangadex' : s;
   });
   const [sourceRestored, setSourceRestored] = useState(false);
   const restoredSourceRef = useRef(source);
@@ -335,9 +336,10 @@ export function useCatalogSearch() {
     source === 'comx' ||
     nhTagSource;
   const visibleSources = settings.show_r34_history ? SOURCES : SOURCES.filter((s) => !R34_SOURCES.includes(s.key));
-  const visibleQuickSearches = settings.show_r34_history
-    ? settings.quick_searches
-    : settings.quick_searches.filter((q) => !R34_SOURCES.includes(q.source));
+  const knownSources = new Set(SOURCES.map((x) => x.key));
+  const visibleQuickSearches = settings.quick_searches.filter(
+    (q) => knownSources.has(q.source) && (settings.show_r34_history || !R34_SOURCES.includes(q.source)),
+  );
 
   useEffect(() => {
     const id = ++tagSuggestSeqRef.current;
@@ -426,7 +428,8 @@ export function useCatalogSearch() {
   useEffect(() => {
     if (!settingsReady || sourceRestored) return;
     const saved = settings.last_catalog_source;
-    const restored = saved && (!settings.show_r34_history || !R34_SOURCES.includes(saved)) ? saved : source;
+    const known = saved ? SOURCES.some((x) => x.key === saved) : false;
+    const restored = known && saved && (!settings.show_r34_history || !R34_SOURCES.includes(saved)) ? saved : source;
     restoredSourceRef.current = restored;
     setSourceRestored(true);
     if (restored !== source) {

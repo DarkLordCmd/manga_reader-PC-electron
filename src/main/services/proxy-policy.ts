@@ -25,7 +25,7 @@ export type SiteKey =
   | 'hentailib'
   | 'comx'
   | 'grouple'
-  | 'mangamello';
+;
 
 /** Resolves the logical site a URL belongs to. Order matters: more specific
  * hosts first. */
@@ -44,7 +44,6 @@ export function siteKeyForUrl(url: string): SiteKey | null {
   if (l.includes('mangalib') || l.includes('cdnlibs.org') || l.includes('imglib.info') || l.includes('imgslib.link')) return 'mangalib';
   if (l.includes('com-x.life')) return 'comx';
   if (l.includes('one-way.work') || l.includes('readmanga') || l.includes('mintmanga') || l.includes('mangapoisk')) return 'grouple';
-  if (l.includes('mangamello')) return 'mangamello';
   return null;
 }
 
@@ -93,7 +92,6 @@ const SOURCE_ORIGINS: Record<string, string> = {
   remanga: 'https://remanga.org/',
   senkuro: 'https://senkuro.me/',
   mangashi: 'https://manga-shi.org/',
-  mangamello: 'https://mangamello.com/',
   nhentai: 'https://nhentai.net/',
   nhentai_onion: 'http://nhentai.net.onion/',
   ehentai: 'https://e-hentai.org/',

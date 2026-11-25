@@ -1,7 +1,6 @@
 import { resolveAtHome } from './mangadex';
 import { fetchRemangaChapter, fetchSenkuroChapter, mangaSeriesUrlFromChapterUrl, senkuroSeriesUrlFromChapterUrl } from './sources';
 import { fetchSimpleGallery } from './simple-gallery';
-import { fetchMangaMelloChapter } from './sources';
 import * as cheerio from 'cheerio';
 
 /** image hosts used by com-x reader pages (window.__IMG_HOST__ may pick one
@@ -62,7 +61,6 @@ export function sourceLabel(url: string): string {
   if (l.includes('readmanga')) return 'Readmanga';
   if (l.includes('mintmanga')) return 'Mintmanga';
   if (l.includes('mangapoisk')) return 'Mangapoisk';
-  if (l.includes('mangamello')) return 'MangaMello';
   return '';
 }
 
@@ -112,19 +110,7 @@ export async function resolveGallery(url: string, opts: { proxy?: string; cookie
       seriesId: senkuroSeriesUrlFromChapterUrl(trimmed) ?? seriesId,
     };
   }
-  if (trimmed.includes('mangamello')) {
-    const r = await fetchMangaMelloChapter(trimmed, opts.proxy);
-    return {
-      title: r.title,
-      pageUrls: r.pageUrls,
-      coverUrl: null,
-      source: 'MangaMello',
-      referer: 'https://mangamello.com/',
-      proxy: opts.proxy,
-      mangaId: seriesId,
-      seriesId,
-    };
-  }
+
   if ((trimmed.includes('mangalib.') || trimmed.includes('hentailib.')) && /\/read\/v/i.test(trimmed)) {
     const { mangalibChapterPages } = await import('./sources/mangalib');
     const isHentai = trimmed.includes('hentailib.');

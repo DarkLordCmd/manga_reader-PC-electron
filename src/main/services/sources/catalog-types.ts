@@ -32,7 +32,7 @@ export type CatalogSourceKey =
   | 'readmanga'
   | 'mintmanga'
   | 'mangapoisk'
-  | 'mangamello';
+;
 
 export interface CatalogFilters {
   ehExcludedCats?: number;

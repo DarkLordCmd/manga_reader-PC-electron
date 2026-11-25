@@ -11,13 +11,11 @@ import {
   searchGrouple,
   fetchGroupleChapters,
   searchMangaShi,
-  searchMangaMello,
   searchNhentai,
   searchRemanga,
   searchSenkuro,
   searchExHentai,
   fetchMangaShiChapters,
-  fetchMangaMelloChapters,
 } from '../services/catalog-search';
 import { searchMangaDex, fetchChapterCount, fetchChapterList } from '../services/mangadex';
 import { fetchRemangaChapters, fetchSenkuroChapters, mangaSeriesUrlFromChapterUrl, senkuroMangaSlugFromUrl } from '../services/sources';
@@ -107,8 +105,6 @@ export function registerCatalog(deps: CatalogDeps): {
         }));
     } else if (mangaId.includes('manga-shi')) {
       chapters = await fetchMangaShiChapters(mangaId, srcProxy);
-    } else if (mangaId.includes('mangamello')) {
-      chapters = await fetchMangaMelloChapters(mangaId, srcProxy);
     } else if (/nhentai/.test(mangaId)) {
       // nhentai galleries have no chapter list: the whole gallery opens as a
       // single "chapter" (chapter_id = gallery URL, resolved by openUrl).
@@ -268,7 +264,6 @@ export function registerCatalog(deps: CatalogDeps): {
         );
       }
       if (source === 'mangashi') return await searchMangaShi(query, proxy, filters, page);
-      if (source === 'mangamello') return await searchMangaMello(query, page, proxyForSource('mangamello', s, torSocks));
       if (source === 'nhentai' || source === 'nhentai_onion') {
         const isOnion = source === 'nhentai_onion';
         const base = isOnion

@@ -14,7 +14,6 @@ export const SOURCES: { key: string; label: string }[] = [
   { key: 'readmanga', label: 'Readmanga' },
   { key: 'mintmanga', label: 'Mintmanga' },
   { key: 'mangapoisk', label: 'Mangapoisk' },
-  { key: 'mangamello', label: 'MangaMello' },
 ];
 
 /** Sources hidden when the "show R34" privacy setting is off. */
