@@ -51,9 +51,15 @@ export function registerLibrary(deps: {
 }): void {
   const { library, history, settings, sync, broadcastLibrary } = deps;
 
-  handleSafe(CH.getHistory, z.tuple([]), () => history.toVec());
+  handleSafe(CH.getHistory, z.tuple([]), () => {
+    library.repairMangalibMainCategories();
+    return history.toVec();
+  });
 
-  handleSafe(CH.libraryList, z.tuple([libraryQuery.optional()]), (_e, query?: LibraryQuery) => library.list(query ?? {}));
+  handleSafe(CH.libraryList, z.tuple([libraryQuery.optional()]), (_e, query?: LibraryQuery) => {
+    library.repairMangalibMainCategories();
+    return library.list(query ?? {});
+  });
   handleSafe(CH.libraryGet, z.tuple([anyString]), (_e, key: string) => library.get(String(key)));
   handleSafe(CH.libraryAdd, z.tuple([libraryEntry.extend({})]), (_e, entry) => {
     const item = library.addFromCatalog(entry);

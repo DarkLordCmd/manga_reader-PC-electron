@@ -180,6 +180,14 @@ describe('Mangalib catalog pagination', () => {
       'https://hentailib.me/ru/manga/7580--berserk/read/v1/c1',
     );
   });
+  it('keeps regular Mangalib age ratings in Main, not R34', async () => {
+    mockMangalibApi([{ ...apiManga, ageRestriction: { id: 4, label: '18+' } }]);
+
+    const result = await searchMangalib('', 0, PROXY, {}, 1);
+
+    expect(result[0]?.age18).toBe(false);
+    expect(result[0]?.adult).toBeUndefined();
+  });
   it('filters Mangalib age restrictions locally when the API ignores caution', async () => {
     mockMangalibApi([
       { ...apiManga, slug_url: '1--adult', rus_name: 'Adult', ageRestriction: { id: 4, label: '18+' } },
@@ -189,7 +197,6 @@ describe('Mangalib catalog pagination', () => {
     const result = await searchMangalib('', 0, PROXY, { mangalibAgeRatings: ['4'] });
 
     expect(result.map((x) => x.title)).toEqual(['Adult']);
-    expect(result[0]?.age18).toBe(true);
   });
   it('passes Mangalib filters to the lib.social API', async () => {
     mockMangalibApi([apiManga]);

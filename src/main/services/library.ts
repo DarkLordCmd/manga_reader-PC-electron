@@ -27,6 +27,19 @@ export class LibraryService {
     if (item && item.status === null) this.repo.setStatus(item.key, 'reading');
   }
 
+  /** Older builds could have classified Mangalib 18+ cards as R34. Regular
+   * Mangalib is a Main source, so repair those legacy rows once they are seen. */
+  repairMangalibMainCategories(): number {
+    let changed = 0;
+    for (const item of this.repo.allIncludingDeleted()) {
+      if (item.source === 'Mangalib' && item.category === 'r34' && !/hentailib/i.test(item.url)) {
+        this.repo.setCategory(item.key, 'main');
+        changed += 1;
+      }
+    }
+    return changed;
+  }
+
   addFromCatalog(entry: CatalogAddEntry): LibraryItem {
     const item = this.upsertEntry(entry);
     if (item.status === null) this.repo.setStatus(item.key, 'planned');
@@ -43,6 +56,7 @@ export class LibraryService {
     // ("＋" in History) must not make it look like it was just read and jump it
     // to the top of History / the "last read" sort.
     const existing = this.repo.getIncludingDeleted(key) ?? this.repo.findByUrl(entry.url);
+    const regularMangalib = /mangalib\./i.test(entry.url) && !/hentailib/i.test(entry.url);
     const upsert: SeriesUpsert = {
       key,
       seriesId: entry.seriesId,
@@ -50,7 +64,7 @@ export class LibraryService {
       title: entry.title,
       coverUrl: entry.coverUrl,
       source: entry.source,
-      category: entry.adult ? 'r34' : (entry.category ?? categoryForUrl(entry.url)),
+      category: regularMangalib ? 'main' : entry.adult ? 'r34' : (entry.category ?? categoryForUrl(entry.url)),
       kind: entry.kind ?? null,
       currentPage: 1,
       totalPages: 0,

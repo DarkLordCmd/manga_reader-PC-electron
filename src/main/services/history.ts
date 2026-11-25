@@ -154,7 +154,9 @@ export class HistoryManager {
       next.kind = update.kind ?? existing.kind ?? null;
       // Never downgrade an R34 row to "main" just because a later open did not
       // pass the adult flag (chapter-to-chapter navigation does not know it).
-      if (existing.category === 'r34') next.category = 'r34';
+      const regularMangalib = /mangalib\./i.test(update.url) && !/hentailib/i.test(update.url);
+      if (regularMangalib) next.category = 'main';
+      else if (existing.category === 'r34') next.category = 'r34';
       if (existing.url === update.url) {
         next.currentPage = Math.max(existing.currentPage, update.currentPage ?? 1);
         next.totalPages = Math.max(existing.totalPages, update.total_pages);

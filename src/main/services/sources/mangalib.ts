@@ -123,7 +123,9 @@ function toItem(m: ApiManga, siteId = 1): CatalogItem {
     score: typeof m.rate_avg === 'number' && m.rate_avg > 0 ? Number(m.rate_avg.toFixed(1)) : null,
     kind: m.type?.label ?? null,
     ageRestriction: m.ageRestriction?.id ?? null,
-    age18: siteId === 2 || m.ageRestriction?.id === 4,
+    // Regular Mangalib is a Main source; its 18+ age rating is not the R34
+    // category. Only HentaiLIB (site 2) carries the adult/R34 badges.
+    age18: siteId === 2,
     adult: siteId === 2 ? true : undefined,
   };
 }
