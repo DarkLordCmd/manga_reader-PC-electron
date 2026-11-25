@@ -104,9 +104,10 @@ const EMPTY_MANGALIB_FILTERS: MangalibFilterState = {
 export function useCatalogSearch() {
   const { setScreen, setOpened, settings, setSettings, settingsReady } = useStore();
   const [source, setSource] = useState(() => {
-    const s = settings.last_catalog_source || SOURCES[0]?.key || 'comx';
+    const mainSource = SOURCES.find((x) => !R34_SOURCES.includes(x.key))?.key || 'comx';
+    const s = settings.last_catalog_source || mainSource;
     const known = SOURCES.some((x) => x.key === s);
-    return !known || (!settings.show_r34_history && R34_SOURCES.includes(s)) ? SOURCES[0]?.key || 'comx' : s;
+    return !known || (!settings.show_r34_history && R34_SOURCES.includes(s)) ? mainSource : s;
   });
   const [sourceRestored, setSourceRestored] = useState(false);
   const restoredSourceRef = useRef(source);
@@ -458,7 +459,12 @@ export function useCatalogSearch() {
     if (!settingsReady || sourceRestored) return;
     const saved = settings.last_catalog_source;
     const known = saved ? SOURCES.some((x) => x.key === saved) : false;
-    const restored = known && saved && (!settings.show_r34_history || !R34_SOURCES.includes(saved)) ? saved : source;
+    // Never fall back to the current state: at first hydration it can still be
+    // an R34 source while the real setting has R34 disabled. That left the
+    // controlled <select> showing the first visible source (Com-X) while the
+    // hook still searched E-Hentai/NHentai and rendered their filter panel.
+    const safeSource = SOURCES.find((x) => settings.show_r34_history || !R34_SOURCES.includes(x.key))?.key ?? SOURCES[0]?.key ?? 'comx';
+    const restored = known && saved && (!settings.show_r34_history || !R34_SOURCES.includes(saved)) ? saved : safeSource;
     restoredSourceRef.current = restored;
     setSourceRestored(true);
     if (restored !== source) {
@@ -761,10 +767,21 @@ export function useCatalogSearch() {
     setSettings({ ...settings, last_catalog_source: s });
   };
 
+  // A saved source can be hidden now (R34 off, or the source was removed).
+  // Controlled <select> then visually shows the first option while the hook
+  // keeps searching the hidden source and renders its filter panel. Force the
+  // state onto a visible source after settings hydration.
+  useEffect(() => {
+    if (visibleSources.some((x) => x.key === source)) return;
+    changeSource(visibleSources[0]?.key || 'comx');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, settings.show_r34_history]);
   // Turning the R34 privacy toggle off while an R34 source is active falls back
   // to a safe source (also hides its now-excluded cards/search presets).
   useEffect(() => {
-    if (!settings.show_r34_history && R34_SOURCES.includes(source)) changeSource(SOURCES[0]?.key || 'comx');
+    if (!settings.show_r34_history && R34_SOURCES.includes(source)) {
+      changeSource(SOURCES.find((x) => !R34_SOURCES.includes(x.key))?.key || 'comx');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.show_r34_history]);
 
