@@ -62,6 +62,24 @@ export interface MangalibFilterState {
   yearMax: string;
 }
 
+/** A hung IPC/source request must not leave the catalogue in an endless
+ * "Поиск…" state. The underlying main request may finish later; its stale
+ * response is discarded by searchIdRef. */
+function withSourceTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 const EMPTY_MANGALIB_FILTERS: MangalibFilterState = {
   sortBy: '',
   order: 'desc',
@@ -602,7 +620,11 @@ export function useCatalogSearch() {
           // was used to load that page, otherwise "Пред." fetched page 1.
           const stored = pageCursorRef.current.get(`${sig}|${p}`);
           const cursor = p === 0 ? undefined : dir === 'prev' ? (stored ?? cursorFor(cards, 'prev')) : (cursorFor(cards, 'next') ?? stored);
-          res = await window.api.searchCatalog(source, effectiveQuery, p, sort, filters, cursor);
+          res = await withSourceTimeout(
+            window.api.searchCatalog(source, effectiveQuery, p, sort, filters, cursor),
+            35_000,
+            'Источник не ответил за 35 секунд. Проверьте соединение/прокси и повторите.',
+          );
           pageCursorRef.current.set(`${sig}|${p}`, cursor);
           trimCursorCache(pageCursorRef.current);
         }
