@@ -33,6 +33,7 @@ export type CatalogSourceKey =
 
 export interface CatalogFilters {
   ehExcludedCats?: number;
+  mangashiPreset?: string;
   mangashiSort?: string;
   mangashiStatus?: string;
   mangashiType?: string;
@@ -41,6 +42,9 @@ export interface CatalogFilters {
   mangashiChaptersMin?: string;
   mangashiChaptersMax?: string;
   mangashiTags?: string[];
+  mangashiExcludeTags?: string[];
+  mangashiBookmarkStatuses?: string[];
+  mangashiHideBookmarked?: boolean;
   remangaOrdering?: string;
   remangaStatus?: string;
   remangaTypes?: string;

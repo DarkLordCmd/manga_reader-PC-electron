@@ -121,6 +121,7 @@ export interface CatalogFilters {
   mangadexTags?: string[];
   mangadexLangs?: string[];
   nhentaiTags?: string[];
+  mangashiPreset?: string;
   mangashiSort?: string;
   mangashiStatus?: string;
   mangashiType?: string;
@@ -129,6 +130,9 @@ export interface CatalogFilters {
   mangashiChaptersMin?: string;
   mangashiChaptersMax?: string;
   mangashiTags?: string[];
+  mangashiExcludeTags?: string[];
+  mangashiBookmarkStatuses?: string[];
+  mangashiHideBookmarked?: boolean;
   remangaOrdering?: string;
   remangaStatus?: string;
   remangaTypes?: string;

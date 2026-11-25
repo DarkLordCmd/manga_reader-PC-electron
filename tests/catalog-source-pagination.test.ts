@@ -82,6 +82,34 @@ describe('Manga-shi catalog pagination', () => {
     await expect(searchMangaShi('', undefined, {}, 1)).resolves.toEqual([]);
   });
 
+  it('passes Manga-shi list, exclusion, year and bookmark filters to the site', async () => {
+    mocks.fetchHtmlSmart.mockResolvedValue('<html><body>No results</body></html>');
+    setMangaShiCookies('manga_session=abc');
+
+    await searchMangaShi(
+      '',
+      undefined,
+      {
+        mangashiPreset: 'popular',
+        mangashiYear: '2024',
+        mangashiTags: ['tag-a'],
+        mangashiExcludeTags: ['tag-b'],
+        mangashiBookmarkStatuses: ['READING', 'COMPLETED'],
+        mangashiHideBookmarked: true,
+      },
+      1,
+    );
+
+    const url = mocks.fetchHtmlSmart.mock.calls[0][0] as string;
+    expect(url).toContain('preset=popular');
+    expect(url).toContain('year=2024');
+    expect(url).toContain('tag=tag-a');
+    expect(url).toContain('exclude_tag=tag-b');
+    expect(url).toContain('bookmark_status=READING');
+    expect(url).toContain('bookmark_status=COMPLETED');
+    expect(url).toContain('hide_bookmarked=1');
+    expect(mocks.fetchHtmlSmart.mock.calls[0][1]).toMatchObject({ cookieHeader: 'manga_session=abc' });
+  });
   it('still reports a missing media-shell as a layout change on page zero', async () => {
     mocks.fetchHtmlSmart.mockResolvedValue('<html><body>No results</body></html>');
 

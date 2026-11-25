@@ -104,6 +104,7 @@ export function useCatalogSearch() {
   const [ehMinRating, setEhMinRating] = useState(0);
   const [ehWatchedOnly, setEhWatchedOnly] = useState(false);
   const [ehToplist, setEhToplist] = useState(0);
+  const [msPreset, setMsPreset] = useState('');
   const [msSort, setMsSort] = useState('');
   const [msStatus, setMsStatus] = useState('');
   const [msType, setMsType] = useState('');
@@ -112,6 +113,9 @@ export function useCatalogSearch() {
   const [msChaptersMin, setMsChaptersMin] = useState('');
   const [msChaptersMax, setMsChaptersMax] = useState('');
   const [msTags, setMsTags] = useState<string[]>([]);
+  const [msExcludeTags, setMsExcludeTags] = useState<string[]>([]);
+  const [msBookmarkStatuses, setMsBookmarkStatuses] = useState<string[]>([]);
+  const [msHideBookmarked, setMsHideBookmarked] = useState(false);
   const [rmOrdering, setRmOrdering] = useState('');
   const [rmStatus, setRmStatus] = useState('');
   const [rmTypes, setRmTypes] = useState('');
@@ -203,6 +207,7 @@ export function useCatalogSearch() {
     ehToplist,
     mangadexTags: mdActiveTags,
     mangadexLangs: mdLangs,
+    mangashiPreset: msPreset,
     mangashiSort: msSort,
     mangashiStatus: msStatus,
     mangashiType: msType,
@@ -211,6 +216,9 @@ export function useCatalogSearch() {
     mangashiChaptersMin: msChaptersMin,
     mangashiChaptersMax: msChaptersMax,
     mangashiTags: msTags,
+    mangashiExcludeTags: msExcludeTags,
+    mangashiBookmarkStatuses: msBookmarkStatuses,
+    mangashiHideBookmarked: msHideBookmarked,
     remangaOrdering: rmOrdering,
     remangaStatus: rmStatus,
     remangaTypes: rmTypes,
@@ -651,6 +659,7 @@ export function useCatalogSearch() {
     setMdActiveTags([]);
     setMdLangs([]);
     setNhFilterTags([]);
+    setMsPreset('');
     setMsSort('');
     setMsStatus('');
     setMsType('');
@@ -659,6 +668,9 @@ export function useCatalogSearch() {
     setMsChaptersMin('');
     setMsChaptersMax('');
     setMsTags([]);
+    setMsExcludeTags([]);
+    setMsBookmarkStatuses([]);
+    setMsHideBookmarked(false);
     setRmOrdering('');
     setRmStatus('');
     setRmTypes('');
@@ -971,6 +983,8 @@ export function useCatalogSearch() {
     setMdLangs,
     nhFilterTags,
     setNhFilterTags,
+    msPreset,
+    setMsPreset,
     msSort,
     setMsSort,
     msStatus,
@@ -987,6 +1001,12 @@ export function useCatalogSearch() {
     setMsChaptersMax,
     msTags,
     setMsTags,
+    msExcludeTags,
+    setMsExcludeTags,
+    msBookmarkStatuses,
+    setMsBookmarkStatuses,
+    msHideBookmarked,
+    setMsHideBookmarked,
     rmOrdering,
     setRmOrdering,
     rmStatus,

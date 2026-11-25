@@ -2657,3 +2657,44 @@ input[type='checkbox'].toggle-input {
   color: var(--accent);
   margin-bottom: 6px;
 }
+/* Manga-shi: compact two-column parameter grid inside the shared collapsible
+   filter sections, plus segmented age/list controls. */
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 12px;
+}
+.filter-grid .filter-row {
+  margin: 6px 0;
+}
+.filter-segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.filter-segments .tag-check {
+  height: 26px;
+  padding: 0 10px;
+}
+.filter-grid .filter-range .filter-input {
+  width: auto;
+  flex: 1;
+}
+.fsec-body > .filter-check {
+  margin-top: 8px;
+}
+@media (max-width: 700px) {
+  .filter-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.filter-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+.filter-presets .tag-check {
+  height: 26px;
+  padding: 0 9px;
+}

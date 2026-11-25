@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   EH_CATEGORIES,
   MANGASHI_TAGS,
@@ -18,7 +18,7 @@ import {
   COMX_CATEGORY,
   COMX_GENRE,
 } from '@shared/filters';
-import { MS_AGES, MS_SORTS, MS_STATUS, MS_TYPES, RM_ORDERING, RM_STATUS, RM_TYPES } from './constants';
+import { MS_AGES, MS_BOOKMARK_STATUSES, MS_PRESETS, MS_SORTS, MS_STATUS, MS_TYPES, MS_YEARS, RM_ORDERING, RM_STATUS, RM_TYPES } from './constants';
 import type { CatalogSearch } from './useCatalogSearch';
 import { useBodyScrollLock, useDialogFocus } from '../../lib/use-modal';
 function FilterRow({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
@@ -204,7 +204,13 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
     range: false,
     origin: false,
     labels: false,
+    msMain: true,
+    msLists: false,
+    msGenres: false,
+    msExclude: false,
   });
+  const [msTagQuery, setMsTagQuery] = useState('');
+  const [msExcludeTagQuery, setMsExcludeTagQuery] = useState('');
   const toggleSection = (key: string): void => setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   const toggleIn = (setter: (fn: (prev: string[]) => string[]) => void) => (v: string) =>
     setter((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
@@ -222,6 +228,24 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
     (s.skYearFrom ? 1 : 0) +
     (s.skYearTo ? 1 : 0);
   const selectedLabels = s.skLabelList.filter((l) => s.skLabels.includes(l.slug));
+  const msTagList = useMemo(() => {
+    const q = msTagQuery.trim().toLowerCase();
+    const selected = new Set(s.msTags);
+    return [
+      ...MANGASHI_TAGS.filter(([v]) => selected.has(v)),
+      ...MANGASHI_TAGS.filter(([v, label]) => !selected.has(v) && (!q || label.toLowerCase().includes(q))),
+    ];
+  }, [msTagQuery, s.msTags]);
+  const msExcludeTagList = useMemo(() => {
+    const q = msExcludeTagQuery.trim().toLowerCase();
+    const selected = new Set(s.msExcludeTags);
+    return [
+      ...MANGASHI_TAGS.filter(([v]) => selected.has(v)),
+      ...MANGASHI_TAGS.filter(([v, label]) => !selected.has(v) && (!q || label.toLowerCase().includes(q))),
+    ];
+  }, [msExcludeTagQuery, s.msExcludeTags]);
+  const msMainCount = [s.msSort, s.msStatus, s.msType, s.msYear, s.msAge, s.msChaptersMin, s.msChaptersMax].filter(Boolean).length;
+  const msListCount = s.msBookmarkStatuses.length + (s.msHideBookmarked ? 1 : 0);
   return (
     <div className="filter-panel">
       <div className="filter-panel-head">
@@ -349,70 +373,168 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
 
       {s.source === 'mangashi' && (
         <>
-          <FilterRow label="Сортировка">
-            <SelectFilter
-              options={MS_SORTS}
-              value={s.msSort}
-              onChange={(v) => {
-                s.setMsSort(v);
-              }}
-            />
-          </FilterRow>
-          <FilterRow label="Статус">
-            <SelectFilter
-              options={MS_STATUS}
-              value={s.msStatus}
-              onChange={(v) => {
-                s.setMsStatus(v);
-              }}
-            />
-          </FilterRow>
-          <FilterRow label="Тип">
-            <SelectFilter
-              options={MS_TYPES}
-              value={s.msType}
-              onChange={(v) => {
-                s.setMsType(v);
-              }}
-            />
-          </FilterRow>
-          <FilterRow label="Год выпуска">
-            <input className="filter-input" value={s.msYear} placeholder="Напр. 2024" onChange={(e) => s.setMsYear(e.target.value)} />
-          </FilterRow>
-          <FilterRow label="Возрастной рейтинг">
-            <SelectFilter
-              options={MS_AGES}
-              value={s.msAge}
-              onChange={(v) => {
-                s.setMsAge(v);
-              }}
-            />
-          </FilterRow>
-          <FilterRow label="Кол-во глав">
-            <div className="filter-range">
-              <input
-                className="filter-input narrow"
-                value={s.msChaptersMin}
-                placeholder="От"
-                onChange={(e) => s.setMsChaptersMin(e.target.value)}
-              />
-              <span>—</span>
-              <input
-                className="filter-input narrow"
-                value={s.msChaptersMax}
-                placeholder="До"
-                onChange={(e) => s.setMsChaptersMax(e.target.value)}
-              />
+          <div className="filter-presets">
+            {MS_PRESETS.map(([value, label]) => {
+              const needsAuth = value === 'for_you';
+              const disabled = needsAuth && !s.settings.mangashi_cookies_raw;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  className={`tag-check${s.msPreset === value ? ' active' : ''}`}
+                  aria-pressed={s.msPreset === value}
+                  disabled={disabled}
+                  title={disabled ? 'Войдите в Manga-shi, чтобы использовать «Для вас»' : undefined}
+                  onClick={() => s.setMsPreset((prev) => (prev === value ? '' : value))}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <FilterSection
+            title="Параметры"
+            count={msMainCount}
+            open={!!openSections.msMain}
+            onToggle={() => toggleSection('msMain')}
+          >
+            <div className="filter-grid">
+              <FilterRow label="Сортировка">
+                <SelectFilter options={MS_SORTS} value={s.msSort} onChange={(v) => s.setMsSort(v)} />
+              </FilterRow>
+              <FilterRow label="Статус">
+                <SelectFilter options={MS_STATUS} value={s.msStatus} onChange={(v) => s.setMsStatus(v)} />
+              </FilterRow>
+              <FilterRow label="Тип">
+                <SelectFilter options={MS_TYPES} value={s.msType} onChange={(v) => s.setMsType(v)} />
+              </FilterRow>
+              <FilterRow label="Год выпуска">
+                <SelectFilter options={MS_YEARS} value={s.msYear} onChange={(v) => s.setMsYear(v)} />
+              </FilterRow>
+              <FilterRow label="Возрастной рейтинг">
+                <div className="filter-segments">
+                  {MS_AGES.map(([value, label]) => (
+                    <button
+                      key={value || 'all'}
+                      type="button"
+                      className={`tag-check${s.msAge === value ? ' active' : ''}`}
+                      aria-pressed={s.msAge === value}
+                      onClick={() => s.setMsAge(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </FilterRow>
+              <FilterRow label="Кол-во глав">
+                <div className="filter-range">
+                  <input
+                    className="filter-input narrow"
+                    inputMode="numeric"
+                    value={s.msChaptersMin}
+                    placeholder="От"
+                    aria-label="Минимум глав"
+                    onChange={(e) => s.setMsChaptersMin(e.target.value.replace(/\D/g, ''))}
+                  />
+                  <span>—</span>
+                  <input
+                    className="filter-input narrow"
+                    inputMode="numeric"
+                    value={s.msChaptersMax}
+                    placeholder="До"
+                    aria-label="Максимум глав"
+                    onChange={(e) => s.setMsChaptersMax(e.target.value.replace(/\D/g, ''))}
+                  />
+                </div>
+              </FilterRow>
             </div>
-          </FilterRow>
-          <div className="filter-title">Жанры</div>
-          <TagChecklist
-            items={MANGASHI_TAGS}
-            selected={s.msTags}
-            onToggle={(v) => {
-              s.setMsTags((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
-            }}
-          />
+          </FilterSection>
+
+          <FilterSection
+            title="Мои списки"
+            count={msListCount}
+            open={!!openSections.msLists}
+            onToggle={() => toggleSection('msLists')}
+          >
+            {s.settings.mangashi_cookies_raw ? (
+              <>
+                <div className="tag-checklist">
+                  {MS_BOOKMARK_STATUSES.map(([value, label]) => {
+                    const active = s.msBookmarkStatuses.includes(value);
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        className={`tag-check${active ? ' active' : ''}`}
+                        aria-pressed={active}
+                        onClick={() =>
+                          s.setMsBookmarkStatuses((prev) =>
+                            prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value],
+                          )
+                        }
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <label className="filter-check">
+                  <input
+                    type="checkbox"
+                    checked={s.msHideBookmarked}
+                    onChange={(e) => s.setMsHideBookmarked(e.target.checked)}
+                  />
+                  Скрыть из библиотеки
+                </label>
+              </>
+            ) : (
+              <div className="filter-note">Войдите в Manga-shi в настройках, чтобы фильтровать по своим спискам.</div>
+            )}
+          </FilterSection>
+
+          <FilterSection
+            title="Жанры"
+            count={s.msTags.length}
+            open={!!openSections.msGenres}
+            onToggle={() => toggleSection('msGenres')}
+          >
+            <input
+              className="filter-input full"
+              placeholder="Поиск жанра…"
+              value={msTagQuery}
+              onChange={(e) => setMsTagQuery(e.target.value)}
+            />
+            <TagChecklist
+              items={msTagList}
+              selected={s.msTags}
+              onToggle={(v) => {
+                s.setMsExcludeTags((prev) => prev.filter((x) => x !== v));
+                s.setMsTags((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+              }}
+            />
+          </FilterSection>
+
+          <FilterSection
+            title="Исключить жанры"
+            count={s.msExcludeTags.length}
+            open={!!openSections.msExclude}
+            onToggle={() => toggleSection('msExclude')}
+          >
+            <input
+              className="filter-input full"
+              placeholder="Найти исключаемый жанр…"
+              value={msExcludeTagQuery}
+              onChange={(e) => setMsExcludeTagQuery(e.target.value)}
+            />
+            <TagChecklist
+              items={msExcludeTagList}
+              selected={s.msExcludeTags}
+              onToggle={(v) => {
+                s.setMsTags((prev) => prev.filter((x) => x !== v));
+                s.setMsExcludeTags((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+              }}
+            />
+          </FilterSection>
         </>
       )}
 

@@ -20,6 +20,7 @@ export async function searchMangaShi(
   const base = baseOverride ?? 'https://manga-shi.org';
   const params: string[] = [];
   if (query.trim()) params.push(`q=${encodeURIComponent(query.trim())}`);
+  if (filters.mangashiPreset) params.push(`preset=${filters.mangashiPreset}`);
   if (filters.mangashiSort) params.push(`sort=${filters.mangashiSort}`);
   if (filters.mangashiStatus) params.push(`status=${filters.mangashiStatus}`);
   if (filters.mangashiType) params.push(`type=${filters.mangashiType}`);
@@ -28,6 +29,9 @@ export async function searchMangaShi(
   if (filters.mangashiChaptersMin) params.push(`chapters_min=${filters.mangashiChaptersMin}`);
   if (filters.mangashiChaptersMax) params.push(`chapters_max=${filters.mangashiChaptersMax}`);
   for (const t of filters.mangashiTags ?? []) params.push(`tag=${t}`);
+  for (const t of filters.mangashiExcludeTags ?? []) params.push(`exclude_tag=${t}`);
+  for (const status of filters.mangashiBookmarkStatuses ?? []) params.push(`bookmark_status=${status}`);
+  if (filters.mangashiHideBookmarked) params.push('hide_bookmarked=1');
   // manga-shi.org pagination is 1-indexed on the wire; our page is 0-based.
   if (page > 0) params.push(`page=${page + 1}`);
   const url = `${base}/catalog/${params.length ? `?${params.join('&')}` : ''}`;
