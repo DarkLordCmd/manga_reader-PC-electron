@@ -1,4 +1,3 @@
-import { SORTS } from './constants';
 import QuickSearchPresets from './QuickSearchPresets';
 import SearchSuggest from './SearchSuggest';
 import type { CatalogSearch } from './useCatalogSearch';
@@ -25,15 +24,7 @@ export default function CatalogToolbar({ s }: { s: CatalogSearch }): JSX.Element
       )}
       {s.exNotice && <span className="muted">{s.exNotice}</span>}
       <SearchSuggest s={s} />
-      {s.source === 'mangadex' && (
-        <select aria-label="Сортировка каталога" value={s.sort} onChange={(e) => s.setSort(e.target.value)}>
-          {SORTS.map((opt) => (
-            <option key={opt.key} value={opt.key}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      )}
+
       <button onClick={() => void s.search(0, false, true)}>Найти</button>
       <QuickSearchPresets s={s} />
     </div>

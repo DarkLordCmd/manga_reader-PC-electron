@@ -104,9 +104,9 @@ const EMPTY_MANGALIB_FILTERS: MangalibFilterState = {
 export function useCatalogSearch() {
   const { setScreen, setOpened, settings, setSettings, settingsReady } = useStore();
   const [source, setSource] = useState(() => {
-    const s = settings.last_catalog_source || 'mangadex';
+    const s = settings.last_catalog_source || SOURCES[0]?.key || 'comx';
     const known = SOURCES.some((x) => x.key === s);
-    return !known || (!settings.show_r34_history && R34_SOURCES.includes(s)) ? 'mangadex' : s;
+    return !known || (!settings.show_r34_history && R34_SOURCES.includes(s)) ? SOURCES[0]?.key || 'comx' : s;
   });
   const [sourceRestored, setSourceRestored] = useState(false);
   const restoredSourceRef = useRef(source);
@@ -361,7 +361,6 @@ export function useCatalogSearch() {
     source === 'mangalib' ||
     source === 'hentailib' ||
     source === 'remanga' ||
-    source === 'mangadex' ||
     source === 'senkuro' ||
     source === 'comx' ||
     nhTagSource;
@@ -765,7 +764,7 @@ export function useCatalogSearch() {
   // Turning the R34 privacy toggle off while an R34 source is active falls back
   // to a safe source (also hides its now-excluded cards/search presets).
   useEffect(() => {
-    if (!settings.show_r34_history && R34_SOURCES.includes(source)) changeSource('mangadex');
+    if (!settings.show_r34_history && R34_SOURCES.includes(source)) changeSource(SOURCES[0]?.key || 'comx');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.show_r34_history]);
 

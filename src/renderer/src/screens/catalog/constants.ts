@@ -1,5 +1,4 @@
 export const SOURCES: { key: string; label: string }[] = [
-  { key: 'mangadex', label: 'MangaDex' },
   { key: 'exhentai', label: 'ExHentai' },
   { key: 'exhentai_onion', label: 'ExHentai (onion)' },
   { key: 'ehentai', label: 'E-Hentai' },

@@ -6,7 +6,6 @@ import type { CatalogSearch } from './useCatalogSearch';
  * its own site/API). The rest fall back to the normal catalog search. */
 const FAST_SOURCES = new Set([
   'senkuro',
-  'mangadex',
   'remanga',
   'nhentai',
   'nhentai_onion',

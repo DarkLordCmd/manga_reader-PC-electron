@@ -4,8 +4,6 @@ import {
   MANGASHI_TAGS,
   REMANGA_CATEGORIES,
   REMANGA_GENRES,
-  MD_LANGS,
-  MD_POPULAR_TAGS,
   NH_POPULAR_TAGS,
   SENKURO_STATUS,
   SENKURO_TYPE,
@@ -445,42 +443,6 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
         </>
       )}
 
-      {s.source === 'mangadex' && (
-        <>
-          <div className="filter-title">Поиск лейблов</div>
-          <input
-            className="filter-input full"
-            value={s.mdTagQuery}
-            placeholder="Например романтика"
-            onChange={(e) => s.setMdTagQuery(e.target.value)}
-          />
-          <div className="filter-title">Популярные</div>
-          <div className="tag-checklist">
-            {MD_POPULAR_TAGS.filter((t) => !s.mdTagQuery || t.toLowerCase().includes(s.mdTagQuery.toLowerCase())).map((tag) => {
-              const active = s.mdActiveTags.includes(tag);
-              return (
-                <button
-                  key={tag}
-                  className={`tag-check${active ? ' active' : ''}`}
-                  onClick={() => {
-                    s.setMdActiveTags((prev) => (prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag]));
-                  }}
-                >
-                  {tag}
-                </button>
-              );
-            })}
-          </div>
-          <div className="filter-title">Язык перевода</div>
-          <TagChecklist
-            items={MD_LANGS}
-            selected={s.mdLangs}
-            onToggle={(code) => {
-              s.setMdLangs((prev) => (prev.includes(code) ? prev.filter((l) => l !== code) : [...prev, code]));
-            }}
-          />
-        </>
-      )}
 
       {s.nhTagSource && (
         <>
