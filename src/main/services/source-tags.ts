@@ -81,7 +81,7 @@ async function nhentaiTags(url: string, settings: Settings, opts: { torSocks: st
 }
 
 async function mangashiTags(url: string, settings: Settings, opts: { torSocks: string }): Promise<string[]> {
-  const html = await fetchHtml(url, settings, opts, 'mangashi', undefined, true);
+  const html = await fetchHtml(url, settings, opts, 'mangashi', settings.mangashi_cookies_raw || undefined, true);
   if (!html) return [];
   const $ = cheerio.load(html);
   const out: string[] = [];

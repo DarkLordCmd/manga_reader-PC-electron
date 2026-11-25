@@ -57,8 +57,27 @@ export function mangaSeriesUrlFromChapterUrl(url: string): string | null {
 
 const searchCache = new SwrCache<CatalogItem[]>(120_000, 40);
 
+let remangaToken = '';
+let remangaCookies = '';
+/** Apply the account session captured by the Remanga login window to all
+ * catalogue, suggestion, chapter-list and chapter API requests. */
+export function setRemangaAuth(token: string, cookies: string): void {
+  remangaToken = token.trim();
+  remangaCookies = cookies.trim();
+}
+
+function remangaAuthHeaders(): Record<string, string> {
+  if (remangaToken) return { Authorization: `Bearer ${remangaToken}` };
+  if (remangaCookies) return { Cookie: remangaCookies };
+  return {};
+}
+
+function remangaAuthKey(): string {
+  return remangaToken ? `token:${remangaToken.slice(-8)}` : remangaCookies ? `cookies:${remangaCookies.length}` : 'public';
+}
+
 export async function searchRemanga(query: string, page: number, filters: CatalogFilters = {}, proxy?: string): Promise<CatalogItem[]> {
-  const key = ['rm', query, page, JSON.stringify(filters)].join('|');
+  const key = ['rm', query, page, JSON.stringify(filters), remangaAuthKey()].join('|');
   return searchCache.get(key, async () => {
   // UI sends '' for the default sort — `'' || 'views'` (a nullish coalescing
   // would keep the empty string) → invalid ordering crashes the API.
@@ -73,6 +92,7 @@ export async function searchRemanga(query: string, page: number, filters: Catalo
     {
       Referer: 'https://remanga.org/',
       Accept: 'application/json',
+      ...remangaAuthHeaders(),
     },
     proxy,
   )) as any;
@@ -121,6 +141,7 @@ export async function fetchRemangaChapters(mangaUrl: string, proxy?: string): Pr
     {
       Referer: 'https://remanga.org/',
       Accept: 'application/json',
+      ...remangaAuthHeaders(),
     },
     proxy,
   )) as any;
@@ -143,6 +164,7 @@ export async function fetchRemangaChapters(mangaUrl: string, proxy?: string): Pr
       {
         Referer: 'https://remanga.org/',
         Accept: 'application/json',
+        ...remangaAuthHeaders(),
       },
       proxy,
     )) as any;
@@ -182,6 +204,7 @@ export async function fetchRemangaChapter(chapterUrl: string, proxy?: string): P
     {
       Referer: 'https://remanga.org/',
       Accept: 'application/json',
+      ...remangaAuthHeaders(),
     },
     proxy,
   )) as any;

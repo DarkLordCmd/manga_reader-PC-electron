@@ -33,6 +33,7 @@ import { fetchSenkuroMangaTitle, senkuroMangaSlugFromUrl } from './services/sour
 import { proxyForUrl } from './services/proxy-policy';
 import { initCookieStore, setComxUserCookies } from './services/comx-gate';
 import { setMangaShiCookies } from './services/sources/mangashi';
+import { setRemangaAuth } from './services/sources/remanga';
 import { setMangalibUserCookies } from './services/sources/mangalib';
 import { initPageCache } from './services/page-cache';
 import { DownloadManager } from './services/download-manager';
@@ -221,6 +222,7 @@ app.whenReady().then(() => {
   settings = new SettingsService(app.getPath('userData'));
   const applySourceCookies = (s: Settings): void => {
     setMangaShiCookies(s.mangashi_cookies_raw ?? '');
+    setRemangaAuth(s.remanga_token ?? '', s.remanga_cookies_raw ?? '');
     setMangalibUserCookies(s.mangalib_cookies_raw ?? '');
     setComxUserCookies(s.comx_cookies_raw ?? '');
   };
