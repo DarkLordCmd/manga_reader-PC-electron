@@ -41,6 +41,48 @@ function saveAdultCache(cache: Map<string, boolean>): void {
   }
 }
 
+export interface MangalibFilterState {
+  sortBy: string;
+  order: string;
+  types: string[];
+  statuses: string[];
+  formats: string[];
+  ages: string[];
+  genres: string[];
+  tags: string[];
+  countries: string[];
+  bookmarks: string[];
+  chaptersMin: string;
+  chaptersMax: string;
+  ratingMin: string;
+  ratingMax: string;
+  votesMin: string;
+  votesMax: string;
+  yearMin: string;
+  yearMax: string;
+}
+
+const EMPTY_MANGALIB_FILTERS: MangalibFilterState = {
+  sortBy: '',
+  order: 'desc',
+  types: [],
+  statuses: [],
+  formats: [],
+  ages: [],
+  genres: [],
+  tags: [],
+  countries: [],
+  bookmarks: [],
+  chaptersMin: '',
+  chaptersMax: '',
+  ratingMin: '',
+  ratingMax: '',
+  votesMin: '',
+  votesMax: '',
+  yearMin: '',
+  yearMax: '',
+};
+
 export function useCatalogSearch() {
   const { setScreen, setOpened, settings, setSettings, settingsReady } = useStore();
   const [source, setSource] = useState(() => {
@@ -114,6 +156,7 @@ export function useCatalogSearch() {
   const [msChaptersMax, setMsChaptersMax] = useState('');
   const [msTags, setMsTags] = useState<string[]>([]);
   const [msExcludeTags, setMsExcludeTags] = useState<string[]>([]);
+  const [ml, setMl] = useState<MangalibFilterState>(EMPTY_MANGALIB_FILTERS);
   const [msBookmarkStatuses, setMsBookmarkStatuses] = useState<string[]>([]);
   const [msHideBookmarked, setMsHideBookmarked] = useState(false);
   const [rmOrdering, setRmOrdering] = useState('');
@@ -219,6 +262,24 @@ export function useCatalogSearch() {
     mangashiExcludeTags: msExcludeTags,
     mangashiBookmarkStatuses: msBookmarkStatuses,
     mangashiHideBookmarked: msHideBookmarked,
+    mangalibTypes: ml.types,
+    mangalibStatuses: ml.statuses,
+    mangalibFormats: ml.formats,
+    mangalibAgeRatings: ml.ages,
+    mangalibGenres: ml.genres,
+    mangalibTags: ml.tags,
+    mangalibCountries: ml.countries,
+    mangalibBookmarks: ml.bookmarks,
+    mangalibChaptersMin: ml.chaptersMin,
+    mangalibChaptersMax: ml.chaptersMax,
+    mangalibRatingMin: ml.ratingMin,
+    mangalibRatingMax: ml.ratingMax,
+    mangalibVotesMin: ml.votesMin,
+    mangalibVotesMax: ml.votesMax,
+    mangalibYearMin: ml.yearMin,
+    mangalibYearMax: ml.yearMax,
+    mangalibSortBy: ml.sortBy,
+    mangalibOrder: ml.order,
     remangaOrdering: rmOrdering,
     remangaStatus: rmStatus,
     remangaTypes: rmTypes,
@@ -248,6 +309,7 @@ export function useCatalogSearch() {
     source === 'exhentai_onion' ||
     source === 'ehentai' ||
     source === 'mangashi' ||
+    source === 'mangalib' ||
     source === 'remanga' ||
     source === 'mangadex' ||
     source === 'senkuro' ||
@@ -671,6 +733,7 @@ export function useCatalogSearch() {
     setMsExcludeTags([]);
     setMsBookmarkStatuses([]);
     setMsHideBookmarked(false);
+    setMl(EMPTY_MANGALIB_FILTERS);
     setRmOrdering('');
     setRmStatus('');
     setRmTypes('');
@@ -1007,6 +1070,8 @@ export function useCatalogSearch() {
     setMsBookmarkStatuses,
     msHideBookmarked,
     setMsHideBookmarked,
+    ml,
+    setMl,
     rmOrdering,
     setRmOrdering,
     rmStatus,

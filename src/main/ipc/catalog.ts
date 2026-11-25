@@ -389,7 +389,7 @@ export function registerCatalog(deps: CatalogDeps): {
       if (source === 'mangalib') {
         const { searchMangalib } = await import('../services/sources/mangalib');
         const mlProxy = s.tor_proxied_sites.includes('mangalib') ? torSocks : s.mangalib_proxy_addr.trim() || undefined;
-        return await searchMangalib(query, page, mlProxy);
+        return await searchMangalib(query, page, mlProxy, filters);
       }
       const groupleIdx = { readmanga: 0, mintmanga: 1, mangapoisk: 2 } as const;
       if (source in groupleIdx) {

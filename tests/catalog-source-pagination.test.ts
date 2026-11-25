@@ -164,6 +164,54 @@ describe('Mangalib catalog pagination', () => {
     await expect(searchMangalib('', 1, PROXY)).resolves.toEqual([]);
   });
 
+  it('passes Mangalib filters to the lib.social API', async () => {
+    mockMangalibApi([apiManga]);
+
+    await searchMangalib('berserk', 0, PROXY, {
+      mangalibTypes: ['5'],
+      mangalibStatuses: ['2'],
+      mangalibFormats: ['1'],
+      mangalibAgeRatings: ['4'],
+      mangalibGenres: ['34'],
+      mangalibTags: ['271'],
+      mangalibCountries: ['JP'],
+      mangalibBookmarks: ['1'],
+      mangalibChaptersMin: '100',
+      mangalibChaptersMax: '500',
+      mangalibRatingMin: '8',
+      mangalibRatingMax: '10',
+      mangalibVotesMin: '1000',
+      mangalibVotesMax: '90000',
+      mangalibYearMin: '2020',
+      mangalibYearMax: '2025',
+      mangalibSortBy: 'rate_avg',
+      mangalibOrder: 'desc',
+    });
+
+    const url = new URL(mocks.httpFetch.mock.calls[1][0].url);
+    for (const [key, value] of [
+      ['types[]', '5'],
+      ['status[]', '2'],
+      ['format[]', '1'],
+      ['caution[]', '4'],
+      ['genres[]', '34'],
+      ['tags[]', '271'],
+      ['country[]', 'JP'],
+      ['bookmarks[]', '1'],
+      ['chap_count_min', '100'],
+      ['chap_count_max', '500'],
+      ['rating_min', '8'],
+      ['rating_max', '10'],
+      ['rate_min', '1000'],
+      ['rate_max', '90000'],
+      ['year_min', '2020'],
+      ['year_max', '2025'],
+      ['sort_by', 'rate_avg'],
+      ['order', 'desc'],
+    ]) {
+      expect(url.searchParams.get(key)).toBe(value);
+    }
+  });
   it('does not mistake malformed follow-up entries for an empty page', async () => {
     mockMangalibApi([{ name: 'Missing slug' }]);
 

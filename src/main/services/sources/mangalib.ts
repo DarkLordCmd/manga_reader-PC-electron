@@ -1,5 +1,5 @@
 import { httpFetch } from '../http';
-import { type CatalogItem } from './catalog-types';
+import { type CatalogFilters, type CatalogItem } from './catalog-types';
 
 // Mangalib's SPA talks to a shared lib.social JSON API on api.cdnlibs.org.
 // The API silently returns empty lists for requests without DDoS-Guard
@@ -120,10 +120,41 @@ function toItem(m: ApiManga): CatalogItem {
 }
 
 /** Catalog listing / search through the lib.social API. */
-export async function searchMangalib(query: string, page = 0, proxy?: string): Promise<CatalogItem[]> {
+function addMany(params: URLSearchParams, key: string, values?: string[]): void {
+  for (const value of values ?? []) {
+    if (value) params.append(`${key}[]`, value);
+  }
+}
+
+export async function searchMangalib(
+  query: string,
+  page = 0,
+  proxy?: string,
+  filters: CatalogFilters = {},
+): Promise<CatalogItem[]> {
   const params = new URLSearchParams();
   params.set('page', String(page + 1));
   if (query.trim()) params.set('q', query.trim());
+  addMany(params, 'types', filters.mangalibTypes);
+  addMany(params, 'status', filters.mangalibStatuses);
+  addMany(params, 'format', filters.mangalibFormats);
+  addMany(params, 'caution', filters.mangalibAgeRatings);
+  addMany(params, 'genres', filters.mangalibGenres);
+  addMany(params, 'tags', filters.mangalibTags);
+  addMany(params, 'country', filters.mangalibCountries);
+  addMany(params, 'bookmarks', filters.mangalibBookmarks);
+  if (filters.mangalibChaptersMin) params.set('chap_count_min', filters.mangalibChaptersMin);
+  if (filters.mangalibChaptersMax) params.set('chap_count_max', filters.mangalibChaptersMax);
+  if (filters.mangalibRatingMin) params.set('rating_min', filters.mangalibRatingMin);
+  if (filters.mangalibRatingMax) params.set('rating_max', filters.mangalibRatingMax);
+  if (filters.mangalibVotesMin) params.set('rate_min', filters.mangalibVotesMin);
+  if (filters.mangalibVotesMax) params.set('rate_max', filters.mangalibVotesMax);
+  if (filters.mangalibYearMin) params.set('year_min', filters.mangalibYearMin);
+  if (filters.mangalibYearMax) params.set('year_max', filters.mangalibYearMax);
+  if (filters.mangalibSortBy) {
+    params.set('sort_by', filters.mangalibSortBy);
+    if (filters.mangalibOrder) params.set('order', filters.mangalibOrder);
+  }
   const path = `/manga?${params.toString()}`;
   const j = await mangalibApi<{ data: ApiManga[] }>(path, proxy);
   const list = Array.isArray(j?.data) ? j.data : [];
