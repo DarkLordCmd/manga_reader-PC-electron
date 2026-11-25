@@ -218,11 +218,25 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
     denyAllPermissions(ses);
     // Promo/ad popups (Mangalib gift wheel) must stay out of the login flow,
     // but social-login popups (VK/Google/Telegram) are part of authorization.
+    // Keep the parent alive while such a popup is open: Mangalib can set a
+    // session cookie as soon as VK opens, and the old auto-close then killed
+    // the parent before VK finished.
+    let authPopupCount = 0;
+    let authProviderSeen = false;
+    let authProviderDone = false;
     win.webContents.setWindowOpenHandler(({ url }) => {
-      if (/^https:\/\/(id\.vk\.(ru|com)|oauth\.vk\.com|accounts\.google\.com|oauth\.telegram\.org|auth\.lib\.social)\b/i.test(url)) {
+      if (/^https:\/\/([^/]+\.)?(vk\.(com|ru)|id\.vk\.(com|ru)|oauth\.vk\.com|accounts\.google\.com|oauth\.telegram\.org|auth\.lib\.social)(\/|$)/i.test(url)) {
+        authPopupCount += 1;
+        if (/mangalib/i.test(loginUrl)) authProviderSeen = true;
         return { action: 'allow' };
       }
       return { action: 'deny' };
+    });
+    win.webContents.on('did-create-window', (child) => {
+      child.on('closed', () => {
+        authPopupCount = Math.max(0, authPopupCount - 1);
+        if (authProviderSeen) authProviderDone = true;
+      });
     });
 
     let done = false;
@@ -915,10 +929,21 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
           // Mangalib sets a session cookie for guests too. Do not close on a
           // bare homepage: require that the auth flow was actually entered.
           const authReady = !/mangalib/i.test(loginUrl) || seenLogin || ssoAuthPage;
+          // Mangalib's VK OAuth redirects through the same window and may
+          // briefly look authenticated; auto-close there killed the VK flow.
+          // Only auto-close after an auth provider was seen and the flow
+          // returned to Mangalib; otherwise use «Готово»/manual close.
+          if (/(^|\.)(vk\.(com|ru)|id\.vk\.(com|ru)|accounts\.google\.com|oauth\.telegram\.org)(\/|$)/i.test(url)) {
+            authProviderSeen = true;
+          }
+          if (authProviderSeen && /(^|\.)(mangalib\.me|lib\.social)(\/|$)/i.test(url)) {
+            authProviderDone = true;
+          }
+          const autoCloseAllowed = !/mangalib/i.test(loginUrl) || authProviderDone;
           // `seenLogin + back on site` is the redirect flow. Auth pages are
           // handled by the cookie check below, so a guest at the SSO login
           // form is not mistaken for a successful login.
-          if (seenLogin && onTargetSite && !ssoAuthPage) {
+          if (autoCloseAllowed && seenLogin && onTargetSite && !ssoAuthPage && authPopupCount === 0) {
             clearInterval(poll);
             statusEl = 'Вход признан успешным — собираю куки…';
             void injectStatus();
@@ -938,7 +963,7 @@ export async function runLoginWindow(loginUrl: string, torSocksAddr: string): Pr
               `(function(){var el=document.querySelector('input[type="password"],input[name="UserName"],input[name="PassWord"],input[name="username_or_email"]');if(!el)return false;var s=getComputedStyle(el);return !!(el.offsetParent!==null&&s.display!=='none'&&s.visibility!=='hidden');})()`,
             )
             .catch(() => true);
-          if (!done && onTargetSite && authReady && hasAuthenticatedSession(loginUrl, jar, loginFormVisible)) {
+          if (autoCloseAllowed && !done && onTargetSite && authReady && authPopupCount === 0 && hasAuthenticatedSession(loginUrl, jar, loginFormVisible)) {
             clearInterval(poll);
             statusEl = 'Вход выполнен — собираю куки…';
             void injectStatus();
