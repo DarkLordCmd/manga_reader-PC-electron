@@ -10,6 +10,7 @@ export const SOURCES: { key: string; label: string }[] = [
   { key: 'mangashi', label: 'Manga-shi' },
   { key: 'remanga', label: 'Remanga' },
   { key: 'mangalib', label: 'Mangalib' },
+  { key: 'hentailib', label: 'HentaiLIB' },
   { key: 'readmanga', label: 'Readmanga' },
   { key: 'mintmanga', label: 'Mintmanga' },
   { key: 'mangapoisk', label: 'Mangapoisk' },
@@ -17,7 +18,7 @@ export const SOURCES: { key: string; label: string }[] = [
 ];
 
 /** Sources hidden when the "show R34" privacy setting is off. */
-export const R34_SOURCES = ['exhentai', 'exhentai_onion', 'ehentai', 'nhentai', 'nhentai_onion'];
+export const R34_SOURCES = ['exhentai', 'exhentai_onion', 'ehentai', 'nhentai', 'nhentai_onion', 'hentailib'];
 
 export const SORTS: { key: string; label: string }[] = [
   { key: 'relevance', label: 'По релевантности' },

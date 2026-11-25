@@ -22,6 +22,7 @@ export type SiteKey =
   | 'remanga'
   | 'mangashi'
   | 'mangalib'
+  | 'hentailib'
   | 'comx'
   | 'grouple'
   | 'mangamello';
@@ -39,6 +40,7 @@ export function siteKeyForUrl(url: string): SiteKey | null {
   if (l.includes('senkuro')) return 'senkuro';
   if (l.includes('remanga')) return 'remanga';
   if (l.includes('manga-shi')) return 'mangashi';
+  if (l.includes('hentailib') || l.includes('hentaicdn.org')) return 'hentailib';
   if (l.includes('mangalib') || l.includes('cdnlibs.org') || l.includes('imglib.info') || l.includes('imgslib.link')) return 'mangalib';
   if (l.includes('com-x.life')) return 'comx';
   if (l.includes('one-way.work') || l.includes('readmanga') || l.includes('mintmanga') || l.includes('mangapoisk')) return 'grouple';
@@ -76,6 +78,7 @@ export function proxyForUrl(url: string, s: Settings, torSocks: string): string 
       if (tor.includes('ehentai') || tor.includes('exhentai')) return torSocks;
       return s.exhentai_proxy_addr.trim() || undefined;
     case 'mangalib':
+    case 'hentailib':
       if (tor.includes('mangalib')) return torSocks;
       return s.mangalib_proxy_addr.trim() || undefined;
     default:
@@ -98,6 +101,7 @@ const SOURCE_ORIGINS: Record<string, string> = {
   exhentai_onion: 'http://exhentai.org.onion/',
   comx: 'https://com-x.life/',
   mangalib: 'https://mangalib.me/',
+  hentailib: 'https://hentailib.me/',
   readmanga: 'https://readmanga.live/',
   mintmanga: 'https://mintmanga.live/',
   mangapoisk: 'https://mangapoisk.ru/',

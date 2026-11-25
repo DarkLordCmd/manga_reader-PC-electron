@@ -57,6 +57,7 @@ export function sourceLabel(url: string): string {
   if (l.includes('senkuro')) return 'Senkuro';
   if (l.includes('manga-shi')) return 'Manga-shi';
   if (l.includes('remanga')) return 'Remanga';
+  if (l.includes('hentailib')) return 'HentaiLIB';
   if (l.includes('mangalib')) return 'Mangalib';
   if (l.includes('readmanga')) return 'Readmanga';
   if (l.includes('mintmanga')) return 'Mintmanga';
@@ -124,8 +125,9 @@ export async function resolveGallery(url: string, opts: { proxy?: string; cookie
       seriesId,
     };
   }
-  if (trimmed.includes('mangalib.') && /\/read\/v/i.test(trimmed)) {
+  if ((trimmed.includes('mangalib.') || trimmed.includes('hentailib.')) && /\/read\/v/i.test(trimmed)) {
     const { mangalibChapterPages } = await import('./sources/mangalib');
+    const isHentai = trimmed.includes('hentailib.');
     const u = new URL(trimmed);
     const segs = u.pathname.split('/').filter(Boolean);
     const idx = segs.indexOf('read');
@@ -134,13 +136,13 @@ export async function resolveGallery(url: string, opts: { proxy?: string; cookie
     const vol = (segs[idx + 1] ?? '').replace(/^v/i, '');
     const num = (segs[idx + 2] ?? '').replace(/^c/i, '');
     if (!slug || !vol || !num) throw new UnsupportedUrlError();
-    const r = await mangalibChapterPages(slug, vol, num, opts.proxy);
+    const r = await mangalibChapterPages(slug, vol, num, opts.proxy, isHentai ? 2 : 1);
     return {
       title: r.title,
       pageUrls: r.pageUrls,
       coverUrl: null,
-      source: 'Mangalib',
-      referer: 'https://mangalib.me/',
+      source: isHentai ? 'HentaiLIB' : 'Mangalib',
+      referer: isHentai ? 'https://hentailib.me/' : 'https://mangalib.me/',
       proxy: opts.proxy,
       mangaId: seriesId,
       seriesId,
@@ -151,6 +153,7 @@ export async function resolveGallery(url: string, opts: { proxy?: string; cookie
     trimmed.includes('nhentai') ||
     trimmed.includes('com-x.life') ||
     trimmed.includes('mangalib.') ||
+    trimmed.includes('hentailib.') ||
     trimmed.includes('e-hentai.org') ||
     trimmed.includes('exhentai') ||
     trimmed.includes('readmanga.') ||

@@ -191,7 +191,7 @@ export function registerGallery(deps: GalleryDeps): void {
       }
       // Long-strip formats (RU aggregators + local folders of stitched strips):
       // the reader renders them as a continuous vertical strip without margins.
-      const webtoon = /senkuro|remanga|manga-shi|mangalib|libmir|mangamello|mangadex\.org\/(manga|chapter)/i.test(trimmed);
+      const webtoon = /senkuro|remanga|manga-shi|mangalib|hentailib|libmir|mangamello|mangadex\.org\/(manga|chapter)/i.test(trimmed);
       return {
         id: gid,
         title: result.title,

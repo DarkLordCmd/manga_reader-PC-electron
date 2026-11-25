@@ -11,6 +11,7 @@ export function sourceLabelForUrl(url: string): string {
   if (lower.includes('senkuro.')) return 'Senkuro';
   if (lower.includes('manga-shi.')) return 'Manga-shi';
   if (lower.includes('remanga.')) return 'Remanga';
+  if (lower.includes('hentailib.')) return 'HentaiLIB';
   if (lower.includes('mangalib.')) return 'Mangalib';
   return '';
 }
@@ -68,6 +69,10 @@ export function seriesKeyForUrl(url: string): string | null {
     // chapter path has NO "manga" marker, so the old fallback (last segment =
     // "c5") produced a different key per chapter — every chapter became its own
     // history/library row. The numeric slug segment is the series identity.
+    if (/hentailib/.test(host)) {
+      const slug = segs.find((s) => /^\d+--/.test(s)) ?? afterMarker('manga') ?? segs[segs.length - 1] ?? '';
+      return `hl:${slug}`;
+    }
     if (/mangalib|^libmir|^chzz/.test(host)) {
       const slug = segs.find((s) => /^\d+--/.test(s)) ?? afterMarker('manga') ?? segs[segs.length - 1] ?? '';
       return `ml:${slug}`;

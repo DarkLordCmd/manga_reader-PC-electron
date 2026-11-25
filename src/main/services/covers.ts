@@ -45,6 +45,7 @@ function siteKeyForUrl(url: string): string | null {
   if (isHost(host, 'exhentai.org')) return 'exhentai';
   if (isHost(host, 'e-hentai.org')) return 'ehentai';
   if (isHost(host, 'nhentai.net') || isHost(host, 'nhentai.to')) return 'nhentai';
+  if (isHost(host, 'hentailib.me') || isHost(host, 'hentaicdn.org')) return 'mangalib';
   if (isHost(host, 'senkuro.me') || isHost(host, 'senkuro.com') || isHost(host, 'senkuro.net')) return 'senkuro';
   if (isHost(host, 'remanga.org')) return 'remanga';
   if (isHost(host, 'manga-shi.org') || isHost(host, 'manga-shi.moe')) return 'mangashi';
@@ -80,7 +81,7 @@ export function coverReferer(siteKey: string | null, url: string): string | unde
     case 'mangashi':
       return 'https://manga-shi.org/';
     case 'mangalib':
-      return 'https://mangalib.me/';
+      return url.includes('hentailib') || url.includes('hentaicdn') ? 'https://hentailib.me/' : 'https://mangalib.me/';
     case 'comx':
       return 'https://com-x.life/';
     case 'grouple':

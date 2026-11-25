@@ -599,7 +599,7 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
         </>
       )}
 
-      {s.source === 'mangalib' && (
+      {(s.source === 'mangalib' || s.source === 'hentailib') && (
         <>
           <FilterSection
             title="Сортировка"

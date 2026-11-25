@@ -13,6 +13,7 @@ vi.mock('../src/main/services/http', () => ({
 }));
 
 import { fetchMangaShiChapters, searchMangaShi, setMangaShiCookies } from '../src/main/services/sources/mangashi';
+import { mangalibChapterUrl } from '../src/main/services/sources/mangalib';
 import { resetMangalibJar, searchMangalib, setMangalibUserCookies } from '../src/main/services/sources/mangalib';
 import { fetchRemangaChapters } from '../src/main/services/sources/remanga';
 
@@ -164,6 +165,21 @@ describe('Mangalib catalog pagination', () => {
     await expect(searchMangalib('', 1, PROXY)).resolves.toEqual([]);
   });
 
+  it('loads HentaiLIB as lib.social site 2 with adult URLs', async () => {
+    mockMangalibApi([apiManga]);
+
+    const result = await searchMangalib('', 0, PROXY, {}, 2);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.url).toBe('https://hentailib.me/ru/manga/7580--berserk');
+    expect(result[0]?.adult).toBe(true);
+    expect(result[0]?.age18).toBe(true);
+    const url = new URL(mocks.httpFetch.mock.calls[1][0].url);
+    expect(url.searchParams.get('site_id[]')).toBe('2');
+    expect(mangalibChapterUrl('7580--berserk', { id: 1, volume: '1', number: '1', numberSecondary: null, name: '' }, 2)).toBe(
+      'https://hentailib.me/ru/manga/7580--berserk/read/v1/c1',
+    );
+  });
   it('filters Mangalib age restrictions locally when the API ignores caution', async () => {
     mockMangalibApi([
       { ...apiManga, slug_url: '1--adult', rus_name: 'Adult', ageRestriction: { id: 4, label: '18+' } },

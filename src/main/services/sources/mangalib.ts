@@ -10,6 +10,11 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 const API_BASE = 'https://api.cdnlibs.org/api';
 const SITE_ID = '1';
 export const MANGALIB_BASE = 'https://mangalib.me';
+export const HENTAILIB_BASE = 'https://hentailib.me';
+
+function libBase(siteId: number): string {
+  return siteId === 2 ? HENTAILIB_BASE : MANGALIB_BASE;
+}
 
 interface Jar {
   cookies: string;
@@ -50,11 +55,11 @@ export function resetMangalibJar(): void {
   jar = null;
 }
 
-function apiHeaders(cookies: string): Record<string, string> {
+function apiHeaders(cookies: string, siteId = 1): Record<string, string> {
   const h: Record<string, string> = {
     'User-Agent': UA,
     Accept: 'application/json',
-    'Site-Id': SITE_ID,
+    'Site-Id': String(siteId),
     Origin: 'https://mangalib.me',
     Referer: 'https://mangalib.me/',
   };
@@ -63,11 +68,11 @@ function apiHeaders(cookies: string): Record<string, string> {
   return h;
 }
 
-export async function mangalibApi<T = any>(path: string, proxy?: string, timeoutMs = 30_000): Promise<T> {
+export async function mangalibApi<T = any>(path: string, proxy?: string, timeoutMs = 30_000, siteId = 1): Promise<T> {
   let j = jar;
   if (!j || Date.now() - j.ts >= JAR_TTL) j = await primeCookieJar(proxy);
   const call = async (cookies: string): Promise<unknown> => {
-    const r = await httpFetch({ url: `${API_BASE}${path}`, headers: apiHeaders(cookies), timeoutMs }, proxy);
+    const r = await httpFetch({ url: `${API_BASE}${path}`, headers: apiHeaders(cookies, siteId), timeoutMs }, proxy);
     if (r.status !== 200) throw new Error(`HTTP ${r.status} (${API_BASE}${path})`);
     return JSON.parse(r.text);
   };
@@ -88,8 +93,8 @@ const coverThumb = (m: any): string | null => {
   return (c.filename ? (c.default ?? c.thumbnail ?? '') : (c.default ?? c.thumbnail ?? '')) || null;
 };
 
-function itemUrl(slugUrl: string): string {
-  return `${MANGALIB_BASE}/${slugUrl}`;
+function itemUrl(slugUrl: string, siteId = 1): string {
+  return siteId === 2 ? `${HENTAILIB_BASE}/ru/manga/${slugUrl}` : `${MANGALIB_BASE}/${slugUrl}`;
 }
 
 interface ApiManga {
@@ -104,12 +109,12 @@ interface ApiManga {
   ageRestriction?: { id?: number; label?: string };
 }
 
-function toItem(m: ApiManga): CatalogItem {
+function toItem(m: ApiManga, siteId = 1): CatalogItem {
   const title = (m.rus_name || m.name || m.eng_name || '').trim() || 'Без названия';
   const cover = m.cover?.default || m.cover?.thumbnail || null;
   const chap = m.chap_count ? Number(m.chap_count) : null;
   return {
-    url: itemUrl(m.slug_url),
+    url: itemUrl(m.slug_url, siteId),
     title,
     coverUrl: cover,
     // chap_count is the number of CHAPTERS: the card renders `pages` as "N стр.".
@@ -118,7 +123,8 @@ function toItem(m: ApiManga): CatalogItem {
     score: typeof m.rate_avg === 'number' && m.rate_avg > 0 ? Number(m.rate_avg.toFixed(1)) : null,
     kind: m.type?.label ?? null,
     ageRestriction: m.ageRestriction?.id ?? null,
-    age18: m.ageRestriction?.id === 4,
+    age18: siteId === 2 || m.ageRestriction?.id === 4,
+    adult: siteId === 2 ? true : undefined,
   };
 }
 
@@ -134,10 +140,12 @@ export async function searchMangalib(
   page = 0,
   proxy?: string,
   filters: CatalogFilters = {},
+  siteId = 1,
 ): Promise<CatalogItem[]> {
   const params = new URLSearchParams();
   params.set('page', String(page + 1));
   if (query.trim()) params.set('q', query.trim());
+  if (siteId === 2) params.append('site_id[]', '2');
   addMany(params, 'types', filters.mangalibTypes);
   addMany(params, 'status', filters.mangalibStatuses);
   addMany(params, 'format', filters.mangalibFormats);
@@ -159,7 +167,7 @@ export async function searchMangalib(
     if (filters.mangalibOrder) params.set('order', filters.mangalibOrder);
   }
   const path = `/manga?${params.toString()}`;
-  const j = await mangalibApi<{ data: ApiManga[] }>(path, proxy);
+  const j = await mangalibApi<{ data: ApiManga[] }>(path, proxy, 30_000, siteId);
   const rawList = Array.isArray(j?.data) ? j.data : [];
   // The lib.social endpoint accepts `caution[]` but does not consistently
   // filter by it (the site itself returns mixed ratings). Apply the selected
@@ -170,15 +178,15 @@ export async function searchMangalib(
   const out: CatalogItem[] = [];
   for (const m of list) {
     if (typeof m?.slug_url !== 'string' || m.slug_url.length === 0) continue;
-    const url = itemUrl(m.slug_url);
+    const url = itemUrl(m.slug_url, siteId);
     if (seen.has(url)) continue;
     seen.add(url);
-    out.push(toItem(m));
+    out.push(toItem(m, siteId));
   }
   if (list.length === 0 && page > 0) return [];
   if (out.length === 0) {
     if (ageFilter.size > 0 && rawList.length > 0) return [];
-    throw new Error(query.trim() ? 'Mangalib: поиск не дал результатов' : 'Mangalib: пустой каталог (проверь VPN/прокси)');
+    throw new Error(`${siteId === 2 ? 'HentaiLIB' : 'Mangalib'}: ${query.trim() ? 'поиск не дал результатов' : 'пустой каталог (проверь VPN/прокси)'}`);
   }
   return out;
 }
@@ -203,8 +211,8 @@ interface ApiChapter {
 }
 
 /** Full chapter list (all branches) for a series slug (slug_url like `7580--name`). */
-export async function mangalibChapters(slugUrl: string, proxy?: string): Promise<MangalibChapterRef[]> {
-  const j = await mangalibApi<{ data: ApiChapter[] }>(`/manga/${encodeURIComponent(slugUrl)}/chapters`, proxy, 60_000);
+export async function mangalibChapters(slugUrl: string, proxy?: string, siteId = 1): Promise<MangalibChapterRef[]> {
+  const j = await mangalibApi<{ data: ApiChapter[] }>(`/manga/${encodeURIComponent(slugUrl)}/chapters`, proxy, 60_000, siteId);
   const list = Array.isArray(j?.data) ? j.data : [];
   return list
     .filter((c) => typeof c?.id === 'number' && Array.isArray(c?.branches) && c.branches.length > 0)
@@ -227,12 +235,13 @@ function chapterLabel(c: MangalibChapterRef): string {
 }
 
 /** Reader URL used as chapter_id throughout the app: `https://mangalib.me/<slug>/read/v<V>/c<C>`. */
-export function mangalibChapterUrl(slugUrl: string, c: MangalibChapterRef): string {
+export function mangalibChapterUrl(slugUrl: string, c: MangalibChapterRef, siteId = 1): string {
   // number_secondary keeps "10" and "10.5" apart — without it both chapters got
   // the SAME chapter_id (duplicate React keys, both marked read together, and
   // opening 10.5 served chapter 10's pages).
   const num = c.numberSecondary ? `${c.number}.${c.numberSecondary}` : `${c.number}`;
-  return `${MANGALIB_BASE}/${slugUrl}/read/v${c.volume}/c${num}`;
+  const base = siteId === 2 ? `${HENTAILIB_BASE}/ru/manga` : MANGALIB_BASE;
+  return `${base}/${slugUrl}/read/v${c.volume}/c${num}`;
 }
 
 /** Parses an app chapter URL back into (slug, volume, number). */
@@ -259,16 +268,17 @@ function chSortValue(c: MangalibChapterRef): number {
 // ── Chapter pages ───────────────────────────────────────────────────────
 
 /** Default (compressed) image server picked from API constants (site 1). */
-export async function mangalibImageServer(proxy?: string): Promise<string> {
+export async function mangalibImageServer(proxy?: string, siteId = 1): Promise<string> {
   const j = await mangalibApi<{ data?: { imageServers?: { id: string; url: string; site_ids?: number[] }[] } }>(
     '/constants?fields%5B0%5D=imageServers',
     proxy,
     20_000,
+    siteId,
   );
   const servers = j?.data?.imageServers;
   const arr = Array.isArray(servers) ? servers : [];
   const forSite = (id: string): string | null => {
-    const s = arr.find((x) => x.id === id && (x.site_ids?.includes(1) ?? false));
+    const s = arr.find((x) => x.id === id && (x.site_ids?.includes(siteId) ?? false));
     return s ? s.url.replace(/\/+$/, '') : null;
   };
   return forSite('compress') ?? forSite('main') ?? 'https://img3.cdnlibs.org';
@@ -284,18 +294,22 @@ export async function mangalibChapterPages(
   volume: string | number,
   number: string | number,
   proxy?: string,
+  siteId = 1,
 ): Promise<MangalibPageSet> {
+  const apiNumber = siteId === 2 ? String(number).split('.')[0] : String(number);
   const j = await mangalibApi<{ data: { pages?: { url?: string }[]; name?: string | null } }>(
-    `/manga/${encodeURIComponent(slugUrl)}/chapter?volume=${encodeURIComponent(String(volume))}&number=${encodeURIComponent(String(number))}`,
+    `/manga/${encodeURIComponent(slugUrl)}/chapter?volume=${encodeURIComponent(String(volume))}&number=${encodeURIComponent(apiNumber)}`,
     proxy,
+    30_000,
+    siteId,
   );
   const d = j?.data;
   const rels = (d?.pages ?? [])
     .map((p) => p.url)
     .filter((u): u is string => typeof u === 'string' && u.length > 0 && !u.startsWith('data:'));
   if (rels.length === 0) throw new Error('Mangalib: в главе нет страниц');
-  const server = await mangalibImageServer(proxy);
-  const pageUrls = rels.map((u) => `${server}${u}`);
+  const server = await mangalibImageServer(proxy, siteId);
+  const pageUrls = rels.map((u) => `${server}${u.startsWith('//') ? u.slice(1) : u}`);
   const title = d?.name ? `Том ${volume} Глава ${number} — ${d.name}` : 'Mangalib';
   return { title: title.slice(0, 120), pageUrls };
 }

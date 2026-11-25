@@ -28,6 +28,7 @@ export type CatalogSourceKey =
   | 'mangashi'
   | 'remanga'
   | 'mangalib'
+  | 'hentailib'
   | 'readmanga'
   | 'mintmanga'
   | 'mangapoisk'
@@ -91,6 +92,7 @@ export function siteKeyForUrl(url: string): string | null {
   if (l.includes('senkuro.')) return 'senkuro';
   if (l.includes('manga-shi.')) return 'mangashi';
   if (l.includes('remanga.')) return 'remanga';
+  if (l.includes('hentailib.')) return 'hentailib';
   if (l.includes('mangalib.')) return 'mangalib';
   return null;
 }

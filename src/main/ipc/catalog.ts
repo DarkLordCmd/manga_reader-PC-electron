@@ -90,19 +90,20 @@ export function registerCatalog(deps: CatalogDeps): {
       // The library row may predate the title fix (stored the chapter number as
       // its title). Repair it now that the real work title is known.
       if (res.mangaTitle) onSeriesTitle?.(mangaId, res.mangaTitle);
-    } else if (mangaId.includes('mangalib')) {
+    } else if (mangaId.includes('mangalib') || mangaId.includes('hentailib')) {
+      const siteId = mangaId.includes('hentailib') ? 2 : 1;
       const { mangalibChapters, mangalibChapterUrl, mangalibChapterSortKey } = await import('../services/sources/mangalib');
       const mlProxy = srcProxy;
       // Chapter URLs are …/<id>--<slug>/read/v1/c5: the numeric slug is the series.
       const slug = mangaId.split('/').find((seg) => /^\d+--/.test(seg)) ?? mangaId.trim().replace(/\/+$/, '').split('/').filter(Boolean).pop() ?? mangaId;
-      const list = await mangalibChapters(slug, mlProxy);
+      const list = await mangalibChapters(slug, mlProxy, siteId);
       chapters = list
         .sort((a, b) => mangalibChapterSortKey(a) - mangalibChapterSortKey(b))
         .map((c) => ({
-          chapter_id: mangalibChapterUrl(slug, c),
+          chapter_id: mangalibChapterUrl(slug, c, siteId),
           chapter_num: `Том ${c.volume} Глава ${c.number}${c.numberSecondary ? `.${c.numberSecondary}` : ''}${c.name ? ` — ${c.name}` : ''}`,
           title: null,
-          lang: 'mangalib',
+          lang: siteId === 2 ? 'hentailib' : 'mangalib',
         }));
     } else if (mangaId.includes('manga-shi')) {
       chapters = await fetchMangaShiChapters(mangaId, srcProxy);
@@ -386,10 +387,10 @@ export function registerCatalog(deps: CatalogDeps): {
           { proxy, category: filters.comxCategory, genre: filters.comxGenre },
         );
       }
-      if (source === 'mangalib') {
+      if (source === 'mangalib' || source === 'hentailib') {
         const { searchMangalib } = await import('../services/sources/mangalib');
         const mlProxy = s.tor_proxied_sites.includes('mangalib') ? torSocks : s.mangalib_proxy_addr.trim() || undefined;
-        return await searchMangalib(query, page, mlProxy, filters);
+        return await searchMangalib(query, page, mlProxy, filters, source === 'hentailib' ? 2 : 1);
       }
       const groupleIdx = { readmanga: 0, mintmanga: 1, mangapoisk: 2 } as const;
       if (source in groupleIdx) {

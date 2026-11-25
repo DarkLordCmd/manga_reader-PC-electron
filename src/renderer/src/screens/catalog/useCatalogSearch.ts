@@ -328,6 +328,7 @@ export function useCatalogSearch() {
     source === 'ehentai' ||
     source === 'mangashi' ||
     source === 'mangalib' ||
+    source === 'hentailib' ||
     source === 'remanga' ||
     source === 'mangadex' ||
     source === 'senkuro' ||

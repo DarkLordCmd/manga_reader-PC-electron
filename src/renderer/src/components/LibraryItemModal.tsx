@@ -90,6 +90,7 @@ export default function LibraryItemModal({ item, progressIndex, alternatives = [
       { key: 'senkuro', label: 'Senkuro' },
       { key: 'mangashi', label: 'Manga-shi' },
       { key: 'mangalib', label: 'Mangalib' },
+      { key: 'hentailib', label: 'HentaiLIB' },
       { key: 'comx', label: 'Com-X' },
       { key: 'readmanga', label: 'Readmanga' },
       { key: 'mintmanga', label: 'Mintmanga' },
