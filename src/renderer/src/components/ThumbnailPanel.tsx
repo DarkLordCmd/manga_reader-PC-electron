@@ -77,6 +77,17 @@ export default function ThumbnailPanel({ galleryId, pageCount, currentIndex, thu
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [anchor, setAnchor] = useState(0);
+  // Scroll events caused by our own centering must not be mistaken for the
+  // user dragging the thumbnail scrollbar. Without this guard the initial
+  // programmatic scroll to the saved page is read as "near page 1" and the
+  // window jumps back to the top.
+  const programmaticScroll = useRef(false);
+  const programmaticTimer = useRef<number | null>(null);
+  // Layout changes (top spacer, image heights) can emit scroll events while
+  // the panel is being positioned for a restored page. Those are not user
+  // scrolls and must not reset the virtual window to page 1.
+  const suppressScroll = useRef(true);
+  const suppressTimer = useRef<number | null>(null);
   // Stable identities for the memoized rows: an inline arrow for onSelect/refs
   // changes every render and would defeat the memo above.
   const onSelectRef = useRef(onSelect);
@@ -103,16 +114,21 @@ export default function ThumbnailPanel({ galleryId, pageCount, currentIndex, thu
     const panelRect = panel.getBoundingClientRect();
     const rect = el.getBoundingClientRect();
     const targetTop = Math.max(0, panel.scrollTop + (rect.top - panelRect.top) - (panel.clientHeight - rect.height) / 2);
-    if (Math.abs(panel.scrollTop - targetTop) > 20) panel.scrollTo({ top: targetTop, behavior });
+    if (Math.abs(panel.scrollTop - targetTop) > 20) {
+      programmaticScroll.current = true;
+      if (programmaticTimer.current != null) clearTimeout(programmaticTimer.current);
+      programmaticTimer.current = window.setTimeout(() => {
+        programmaticScroll.current = false;
+        programmaticTimer.current = null;
+      }, 600);
+      panel.scrollTo({ top: targetTop, behavior });
+    }
   };
 
   // Gallery (re)load: thumbnail images are not laid out yet, so a one-shot
-  // recenter would no-op and the panel would keep the previous chapter's scroll
-  // offset. Reset to the top, then one-shot retries (no persistent load
-  // listener — that would fight manual scrolling and stale-closure yanks).
+  // recenter would no-op. Retry only a few times; there is no persistent load
+  // listener that would fight manual scrolling.
   useEffect(() => {
-    const panel = panelRef.current;
-    panel?.scrollTo({ top: 0, behavior: 'auto' });
     const timers = [120, 600, 1500].map((ms) => setTimeout(() => center('auto'), ms));
     return () => {
       for (const t of timers) clearTimeout(t);
@@ -123,9 +139,22 @@ export default function ThumbnailPanel({ galleryId, pageCount, currentIndex, thu
   // Follow the reader index: move the window so the current thumb is rendered,
   // then recenter after the re-render (rAF) so the element exists.
   useEffect(() => {
-    // nchor is the center of the virtual window. Subtracting the half\n    // window here too made the window end exactly at the current page, so\n    // the thumbnails below it (and after scrolling) were never rendered.\n    setAnchor(Math.max(0, clampIdx));
+    // `anchor` is the center of the virtual window. Subtracting the half
+    // window here too made the window end exactly at the current page, so
+    // thumbnails below it (and after scrolling) were never rendered.
+    setAnchor(Math.max(0, clampIdx));
+    suppressScroll.current = true;
+    if (suppressTimer.current != null) clearTimeout(suppressTimer.current);
+    suppressTimer.current = window.setTimeout(() => {
+      suppressScroll.current = false;
+      suppressTimer.current = null;
+    }, 1000);
     const raf = requestAnimationFrame(() => center('auto'));
-    return () => cancelAnimationFrame(raf);
+    const timers = [80, 300, 900].map((ms) => setTimeout(() => center('auto'), ms));
+    return () => {
+      cancelAnimationFrame(raf);
+      for (const t of timers) clearTimeout(t);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, galleryId, pageCount]);
 
@@ -133,6 +162,7 @@ export default function ThumbnailPanel({ galleryId, pageCount, currentIndex, thu
   // panel back to the reader's current page. Only re-renders when the window
   // actually needs to move.
   const onScroll = (): void => {
+    if (programmaticScroll.current || suppressScroll.current) return;
     const panel = panelRef.current;
     if (!panel) return;
     const near = Math.floor(panel.scrollTop / row) + 1;
