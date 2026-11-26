@@ -143,6 +143,12 @@ export function catalogFiltersForSource(
         readmangaExcludeCategories: filters.readmangaExcludeCategories,
         readmangaYearMin: filters.readmangaYearMin,
         readmangaYearMax: filters.readmangaYearMax,
+      };    case 'mangapoisk':
+      return {
+        mangapoiskGenres: filters.mangapoiskGenres,
+        mangapoiskYears: filters.mangapoiskYears,
+        mangapoiskStatus: filters.mangapoiskStatus,
+        mangapoiskSortBy: filters.mangapoiskSortBy,
       };    case 'senkuro':
       return {
         senkuroOrdering: filters.senkuroOrdering,

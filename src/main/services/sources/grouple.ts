@@ -27,7 +27,14 @@ export const GROUPLE_SITES: SimpleSiteConfig[] = [
     useApiCatalog: true,
     linkMarker: '/manga/',
   },
-  { name: 'Mangapoisk', base: 'https://mangapoisk.me', catalogPath: '/', searchPath: '?search=', linkMarker: '/manga/' },
+  {
+    name: 'Mangapoisk',
+    base: 'https://mangapoisk.me',
+    catalogPath: '/manga',
+    searchPath: '/search?q=',
+    htmlCatalogMode: true,
+    linkMarker: '/manga/',
+  },
 ];
 
 // Paths that are navigation/utility pages, never series slugs.
@@ -99,10 +106,33 @@ function extractTitle($: cheerio.CheerioAPI, el: any): string {
 }
 
 export function parseGroupleListing(html: string, base: string, _page = 0): CatalogItem[] {
-  assertLayout(MARKERS, html, 'Grouple');
   const $ = cheerio.load(html);
   const results: CatalogItem[] = [];
   const seen = new Set<string>();
+
+  // Mangapoisk's current catalogue is a server-rendered grid of
+  // <a class="mb-5" href="/manga/slug" title="…"> cover/title anchors with a
+  // separate .post-description sibling. It has neither Grouple tile markers
+  // nor a JSON API, so parse its grid before the legacy layout assertion.
+  const mpAnchors = $('a[href^="/manga/"]').filter((_i, el) => {
+    const href = $(el).attr('href') ?? '';
+    return !!$(el).attr('title') && !/\/manga\/[^/]+\/chapter\//.test(href);
+  });
+  const isMangapoiskGrid = html.includes('post-description') || html.includes('card-title') || html.includes('dropdownSearchButton-genres');
+  if (isMangapoiskGrid) {
+    mpAnchors.each((_i, el) => {
+      const a = $(el);
+      const full = resolve(base, a.attr('href') ?? '');
+      const title = (a.attr('title') ?? '').trim();
+      if (!full || title.length < 2 || seen.has(full)) return;
+      seen.add(full);
+      const cover = a.find('img').first().attr('src') ?? null;
+      results.push({ url: full, title, coverUrl: cover ? resolve(base, cover) : null, pages: null });
+    });
+    return results;
+  }
+
+  assertLayout(MARKERS, html, 'Grouple');
 
   // Strategy A: legacy grouple tiles (`tile-link` + .text-center).
   const tryLegacyTile = (el: any): { full: string; title: string } | null => {
@@ -178,6 +208,10 @@ export interface GroupleCatalogFilters {
   searchFilters?: string[];
   yearMin?: string;
   yearMax?: string;
+  genres?: string[];
+  years?: string[];
+  status?: string;
+  sortBy?: string;
 }
 
 export async function searchGrouple(
@@ -187,6 +221,20 @@ export async function searchGrouple(
   fetchOverride?: (url: string) => Promise<string>,
   opts: { proxy?: string; filters?: GroupleCatalogFilters } = {},
 ): Promise<CatalogItem[]> {
+  if (cfg.htmlCatalogMode) {
+    const p = new URLSearchParams();
+    if (query.trim()) p.set('q', query.trim());
+    for (const value of opts.filters?.genres ?? []) p.append('genres[]', value);
+    for (const value of opts.filters?.years ?? []) p.append('years[]', value);
+    if (opts.filters?.status) p.set('translated', opts.filters.status);
+    if (opts.filters?.sortBy) p.set('sortBy', opts.filters.sortBy);
+    if (page > 0) p.set('page', String(page + 1));
+    const path = query.trim() ? '/search' : cfg.catalogPath;
+    const target = `${cfg.base}${path}${p.toString() ? `?${p.toString()}` : ''}`;
+    const data = fetchOverride ? await fetchOverride(target) : await fetchHtmlSmart(target, { proxy: opts.proxy });
+    const results = parseGroupleListing(data, cfg.base, page);
+    return results;
+  }
   const f = opts.filters;
   const hasFilters = !!(
     f &&

@@ -92,6 +92,10 @@ export interface CatalogFilters {
   readmangaExcludeCategories?: string[];
   readmangaYearMin?: string;
   readmangaYearMax?: string;
+  mangapoiskGenres?: string[];
+  mangapoiskYears?: string[];
+  mangapoiskStatus?: string;
+  mangapoiskSortBy?: string;
 }
 
 export interface SimpleSiteConfig {
@@ -102,6 +106,8 @@ export interface SimpleSiteConfig {
   apiCatalogPath?: string;
   /** Use the JSON catalog API even for the unfiltered default listing. */
   useApiCatalog?: boolean;
+  /** HTML catalog with site-specific filter query (Mangapoisk). */
+  htmlCatalogMode?: boolean;
   linkMarker: string;
 }
 

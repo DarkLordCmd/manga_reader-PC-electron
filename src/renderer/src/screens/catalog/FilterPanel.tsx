@@ -33,6 +33,10 @@ import {
   MINTMANGA_CATEGORIES,
   MINTMANGA_LIMITATIONS,
   MINTMANGA_ANOTHER,
+  MANGAPOISK_GENRES,
+  MANGAPOISK_YEARS,
+  MANGAPOISK_STATUS,
+  MANGAPOISK_SORTS,
 } from '@shared/filters';
 import {
   ML_AGES,
@@ -269,6 +273,10 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
     grSearch: false,
     grExcludeGenres: false,
     grExcludeCategories: false,
+    mpSort: true,
+    mpMain: true,
+    mpGenres: false,
+    mpYears: false,
   });
   const [msTagQuery, setMsTagQuery] = useState('');
   const [msExcludeTagQuery, setMsExcludeTagQuery] = useState('');
@@ -284,6 +292,8 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
   const [grCategoryQuery, setGrCategoryQuery] = useState('');
   const [grExcludeGenreQuery, setGrExcludeGenreQuery] = useState('');
   const [grExcludeCategoryQuery, setGrExcludeCategoryQuery] = useState('');
+  const [mpGenreQuery, setMpGenreQuery] = useState('');
+  const [mpYearQuery, setMpYearQuery] = useState('');
   const toggleSection = (key: string): void => setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   const toggleIn = (setter: (fn: (prev: string[]) => string[]) => void) => (v: string) =>
     setter((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
@@ -357,7 +367,22 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
   const groupleGenres = s.source === 'mintmanga' ? MINTMANGA_GENRES : READMANGA_GENRES;
   const groupleCategories = s.source === 'mintmanga' ? MINTMANGA_CATEGORIES : READMANGA_CATEGORIES;
   const groupleLimitations = s.source === 'mintmanga' ? MINTMANGA_LIMITATIONS : READMANGA_LIMITATIONS;
-  const groupleAnother = s.source === 'mintmanga' ? MINTMANGA_ANOTHER : READMANGA_ANOTHER;  const grMainCount =
+  const groupleAnother = s.source === 'mintmanga' ? MINTMANGA_ANOTHER : READMANGA_ANOTHER;  const mpGenreList = useMemo(() => {
+    const q = mpGenreQuery.trim().toLowerCase();
+    const selected = new Set(s.mpGenres);
+    return [
+      ...MANGAPOISK_GENRES.filter(([value]) => selected.has(value)),
+      ...MANGAPOISK_GENRES.filter(([value, label]) => !selected.has(value) && (!q || label.toLowerCase().includes(q))),
+    ];
+  }, [mpGenreQuery, s.mpGenres]);
+  const mpYearList = useMemo(() => {
+    const q = mpYearQuery.trim();
+    const selected = new Set(s.mpYears);
+    return [
+      ...MANGAPOISK_YEARS.filter(([value]) => selected.has(value)),
+      ...MANGAPOISK_YEARS.filter(([value]) => !selected.has(value) && (!q || value.includes(q))),
+    ];
+  }, [mpYearQuery, s.mpYears]);  const grMainCount =
     s.grProduction.length +
     s.grTranslation.length +
     [s.grYearMin, s.grYearMax].filter(Boolean).length;
@@ -1283,6 +1308,72 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
                 s.setGrExcludeCategories((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
               }}
             />
+          </FilterSection>
+        </>
+      )}
+
+      {s.source === 'mangapoisk' && (
+        <>
+          <FilterSection
+            title="Сортировка"
+            count={s.mpSortBy !== 'popular' ? 1 : 0}
+            open={!!openSections.mpSort}
+            onToggle={() => toggleSection('mpSort')}
+          >
+            <SelectFilter options={MANGAPOISK_SORTS} value={s.mpSortBy} onChange={s.setMpSortBy} />
+          </FilterSection>
+
+          <FilterSection
+            title="Жанры"
+            count={s.mpGenres.length}
+            open={!!openSections.mpGenres}
+            onToggle={() => toggleSection('mpGenres')}
+          >
+            <input
+              className="filter-input full"
+              placeholder="Поиск жанра…"
+              value={mpGenreQuery}
+              onChange={(e) => setMpGenreQuery(e.target.value)}
+            />
+            <TagChecklist
+              items={mpGenreList}
+              selected={s.mpGenres}
+              onToggle={(v) => s.setMpGenres((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))}
+            />
+          </FilterSection>
+
+          <FilterSection
+            title="Годы"
+            count={s.mpYears.length}
+            open={!!openSections.mpYears}
+            onToggle={() => toggleSection('mpYears')}
+          >
+            <input
+              className="filter-input full"
+              placeholder="Поиск года…"
+              value={mpYearQuery}
+              onChange={(e) => setMpYearQuery(e.target.value)}
+            />
+            <TagChecklist
+              items={mpYearList}
+              selected={s.mpYears}
+              onToggle={(v) => s.setMpYears((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))}
+            />
+          </FilterSection>
+
+          <FilterSection
+            title="Параметры"
+            count={s.mpStatus ? 1 : 0}
+            open={!!openSections.mpMain}
+            onToggle={() => toggleSection('mpMain')}
+          >
+            <FilterRow label="Статус">
+              <SelectFilter
+                options={[['', 'Все'], ...MANGAPOISK_STATUS]}
+                value={s.mpStatus}
+                onChange={s.setMpStatus}
+              />
+            </FilterRow>
           </FilterSection>
         </>
       )}

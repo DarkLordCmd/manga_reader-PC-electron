@@ -177,6 +177,10 @@ export function useCatalogSearch() {
   const [grExcludeCategories, setGrExcludeCategories] = useState<string[]>([]);
   const [grYearMin, setGrYearMin] = useState('');
   const [grYearMax, setGrYearMax] = useState('');
+  const [mpGenres, setMpGenres] = useState<string[]>([]);
+  const [mpYears, setMpYears] = useState<string[]>([]);
+  const [mpStatus, setMpStatus] = useState('');
+  const [mpSortBy, setMpSortBy] = useState('popular');
   const [skOrdering, setSkOrdering] = useState('');
   const [skStatus, setSkStatus] = useState<string[]>([]);
   const [skType, setSkType] = useState<string[]>([]);
@@ -307,6 +311,10 @@ export function useCatalogSearch() {
     readmangaExcludeCategories: grExcludeCategories,
     readmangaYearMin: grYearMin,
     readmangaYearMax: grYearMax,
+    mangapoiskGenres: mpGenres,
+    mangapoiskYears: mpYears,
+    mangapoiskStatus: mpStatus,
+    mangapoiskSortBy: mpSortBy,
     senkuroOrdering: skOrdering,
     senkuroStatuses: skStatus,
     senkuroTypes: skType,
@@ -346,6 +354,7 @@ export function useCatalogSearch() {
     source === 'comx' ||
     source === 'readmanga' ||
     source === 'mintmanga' ||
+    source === 'mangapoisk' ||
     nhTagSource;
   const visibleQuickSearches = visibleQuickSearchesFor(settings.quick_searches, settings.show_r34_history);
 
@@ -749,6 +758,10 @@ export function useCatalogSearch() {
       setGrExcludeCategories([]);
       setGrYearMin('');
       setGrYearMax('');
+    setMpGenres([]);
+    setMpYears([]);
+    setMpStatus('');
+    setMpSortBy('popular');
     }
     setCards([]);
     setError(null);
@@ -816,6 +829,10 @@ export function useCatalogSearch() {
     setGrExcludeCategories([]);
     setGrYearMin('');
     setGrYearMax('');
+    setMpGenres([]);
+    setMpYears([]);
+    setMpStatus('');
+    setMpSortBy('popular');
     setSkOrdering('');
     setSkStatus([]);
     setSkType([]);
@@ -1209,6 +1226,14 @@ export function useCatalogSearch() {
     setGrYearMin,
     grYearMax,
     setGrYearMax,
+    mpGenres,
+    setMpGenres,
+    mpYears,
+    setMpYears,
+    mpStatus,
+    setMpStatus,
+    mpSortBy,
+    setMpSortBy,
     skOrdering,
     setSkOrdering,
     skStatus,

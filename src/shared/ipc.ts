@@ -177,6 +177,10 @@ export interface CatalogFilters {
   readmangaExcludeCategories?: string[];
   readmangaYearMin?: string;
   readmangaYearMax?: string;
+  mangapoiskGenres?: string[];
+  mangapoiskYears?: string[];
+  mangapoiskStatus?: string;
+  mangapoiskSortBy?: string;
   senkuroOrdering?: string;
   senkuroStatuses?: string[];
   senkuroTypes?: string[];

@@ -406,8 +406,26 @@ export function registerCatalog(deps: CatalogDeps): {
         // page 1..N made the pager show the same 50 titles forever (and the
         // infinite-scroll sentinel saw no new cards, so Grouple pagination was
         // completely dead).
-        const cached = page === 0 ? groupleCache.get(source) : undefined;
-        if (!query.trim() && page === 0 && cached && cached.base === cfg.base && Date.now() - cached.ts < 10 * 60_000) {
+        const groupleFiltersActive =
+          source === 'mangapoisk'
+            ? !!(filters.mangapoiskGenres?.length ||
+                filters.mangapoiskYears?.length ||
+                filters.mangapoiskStatus ||
+                (filters.mangapoiskSortBy && filters.mangapoiskSortBy !== 'popular'))
+            : !!(filters.readmangaSortType ||
+                filters.readmangaProductionStatuses?.length ||
+                filters.readmangaTranslationStatuses?.length ||
+                filters.readmangaGenres?.length ||
+                filters.readmangaCategories?.length ||
+                filters.readmangaLimitations?.length ||
+                filters.readmangaAnother?.length ||
+                filters.readmangaSearchFilters?.length ||
+                filters.readmangaExcludeGenres?.length ||
+                filters.readmangaExcludeCategories?.length ||
+                filters.readmangaYearMin ||
+                filters.readmangaYearMax);
+        const cached = page === 0 && !groupleFiltersActive ? groupleCache.get(source) : undefined;
+        if (!query.trim() && page === 0 && !groupleFiltersActive && cached && cached.base === cfg.base && Date.now() - cached.ts < 10 * 60_000) {
           // Refresh in the background so the next visit is still fresh.
           void refreshGroupleCache(source);
           return cached.items;
@@ -431,8 +449,16 @@ export function registerCatalog(deps: CatalogDeps): {
               yearMax: filters.readmangaYearMax,
             }
           : undefined;
-        const items = await searchGrouple(cfg, query, page, undefined, { proxy: torSocks, filters: readmangaFilters });
-        if (!query.trim() && page === 0) groupleCache.set(source, { base: cfg.base || '', items, ts: Date.now() });
+        const groupleFilters = source === 'mangapoisk'
+          ? {
+              genres: filters.mangapoiskGenres,
+              years: filters.mangapoiskYears,
+              status: filters.mangapoiskStatus,
+              sortBy: filters.mangapoiskSortBy,
+            }
+          : readmangaFilters;
+        const items = await searchGrouple(cfg, query, page, undefined, { proxy: torSocks, filters: groupleFilters });
+        if (!query.trim() && page === 0 && !groupleFiltersActive) groupleCache.set(source, { base: cfg.base || '', items, ts: Date.now() });
         return items;
       }
       return [];
