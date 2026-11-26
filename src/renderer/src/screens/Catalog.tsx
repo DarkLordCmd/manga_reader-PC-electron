@@ -10,9 +10,29 @@ import { errorText } from '../lib/errors';
 
 const EH_SOURCES = new Set(['ehentai', 'exhentai', 'exhentai_onion']);
 const CARD_SIZE_KEY = 'catalog_card_size';
-const CARD_SIZE_DEFAULT = 150;
+const CARD_SIZE_MANUAL_KEY = 'catalog_card_size_manual';
 const CARD_SIZE_MIN = 110;
 const CARD_SIZE_MAX = 300;
+const CARD_SIZE_AUTO_DIVISOR = 7;
+
+/** Default cover size follows the window width: ~5 columns fullscreen and
+ * ~4 columns in the smaller window. Once the slider is moved, the explicit
+ * size wins and resizing no longer changes it. */
+function autoCardSize(width: number): number {
+  const raw = width / CARD_SIZE_AUTO_DIVISOR;
+  const clamped = Math.min(CARD_SIZE_MAX, Math.max(CARD_SIZE_MIN, raw));
+  return Math.round(clamped / 10) * 10;
+}
+
+function readSavedCardSize(): number | null {
+  try {
+    if (localStorage.getItem(CARD_SIZE_MANUAL_KEY) !== '1') return null;
+    const saved = Number(localStorage.getItem(CARD_SIZE_KEY));
+    return Number.isFinite(saved) && saved >= CARD_SIZE_MIN && saved <= CARD_SIZE_MAX ? saved : null;
+  } catch {
+    return null;
+  }
+}
 
 /** The login window ends on the site's own front page; the onion mirror serves
  * its own captcha form there, the clearnet hosts use the forum login. */
@@ -24,27 +44,34 @@ function ehLoginUrl(source: string): string {
 
 export default function Catalog(): JSX.Element {
   const s = useCatalogSearch();
-  const [cardSize, setCardSize] = useState(() => {
-    try {
-      const saved = Number(localStorage.getItem(CARD_SIZE_KEY));
-      return Number.isFinite(saved) && saved >= CARD_SIZE_MIN && saved <= CARD_SIZE_MAX ? saved : CARD_SIZE_DEFAULT;
-    } catch {
-      return CARD_SIZE_DEFAULT;
-    }
-  });
+  const [cardSizeManual, setCardSizeManual] = useState(() => readSavedCardSize() != null);
+  const [cardSize, setCardSize] = useState(() => readSavedCardSize() ?? autoCardSize(window.innerWidth));
+  useEffect(() => {
+    if (cardSizeManual) return;
+    const sync = (): void => setCardSize(autoCardSize(window.innerWidth));
+    sync();
+    window.addEventListener('resize', sync);
+    return () => window.removeEventListener('resize', sync);
+  }, [cardSizeManual]);
   useEffect(() => {
     try {
-      localStorage.setItem(CARD_SIZE_KEY, String(cardSize));
+      if (cardSizeManual) {
+        localStorage.setItem(CARD_SIZE_KEY, String(cardSize));
+        localStorage.setItem(CARD_SIZE_MANUAL_KEY, '1');
+      } else {
+        localStorage.removeItem(CARD_SIZE_KEY);
+        localStorage.removeItem(CARD_SIZE_MANUAL_KEY);
+      }
     } catch {
       /* storage is optional */
     }
-  }, [cardSize]);
+  }, [cardSize, cardSizeManual]);
   const [ehLoginBusy, setEhLoginBusy] = useState(false);
   const sessionProblem = !!s.error && /пустую страницу|сесси|sad panda|cookie/i.test(s.error);
 
   return (
     <div className="catalog screen">
-      <CatalogToolbar s={s} cardSize={cardSize} onCardSize={setCardSize} />
+      <CatalogToolbar s={s} cardSize={cardSize} onCardSize={(value) => { setCardSizeManual(true); setCardSize(value); }} />
 
       <TagBar s={s} />
 
