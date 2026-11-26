@@ -123,7 +123,7 @@ export default function ThumbnailPanel({ galleryId, pageCount, currentIndex, thu
   // Follow the reader index: move the window so the current thumb is rendered,
   // then recenter after the re-render (rAF) so the element exists.
   useEffect(() => {
-    setAnchor(Math.max(0, clampIdx - WINDOW_HALF));
+    // nchor is the center of the virtual window. Subtracting the half\n    // window here too made the window end exactly at the current page, so\n    // the thumbnails below it (and after scrolling) were never rendered.\n    setAnchor(Math.max(0, clampIdx));
     const raf = requestAnimationFrame(() => center('auto'));
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -136,7 +136,7 @@ export default function ThumbnailPanel({ galleryId, pageCount, currentIndex, thu
     const panel = panelRef.current;
     if (!panel) return;
     const near = Math.floor(panel.scrollTop / row) + 1;
-    if (near < w.from || near > w.to) setAnchor(Math.max(0, near - WINDOW_HALF));
+    if (near < w.from || near > w.to) setAnchor(Math.max(0, near));
   };
 
   const items: number[] = [];
