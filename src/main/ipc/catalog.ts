@@ -414,7 +414,24 @@ export function registerCatalog(deps: CatalogDeps): {
         }
         // Grouple hosts are TCP/SNI-blocked on most RU networks — always go
         // through Tor (direct attempts just burn 10-30 s of timeouts).
-        const items = await searchGrouple(cfg, query, page, undefined, { proxy: torSocks });
+        const readmangaFilters = source === 'readmanga'
+          ? {
+              sortType: filters.readmangaSortType,
+              productionStatuses: filters.readmangaProductionStatuses,
+              translationStatuses: filters.readmangaTranslationStatuses,
+              elementIds: [
+                ...(filters.readmangaGenres ?? []),
+                ...(filters.readmangaCategories ?? []),
+                ...(filters.readmangaLimitations ?? []),
+                ...(filters.readmangaAnother ?? []),
+              ],
+              excludeElementIds: [...(filters.readmangaExcludeGenres ?? []), ...(filters.readmangaExcludeCategories ?? [])],
+              searchFilters: filters.readmangaSearchFilters,
+              yearMin: filters.readmangaYearMin,
+              yearMax: filters.readmangaYearMax,
+            }
+          : undefined;
+        const items = await searchGrouple(cfg, query, page, undefined, { proxy: torSocks, filters: readmangaFilters });
         if (!query.trim() && page === 0) groupleCache.set(source, { base: cfg.base || '', items, ts: Date.now() });
         return items;
       }

@@ -128,7 +128,21 @@ export function catalogFiltersForSource(
         remangaRatingMin: filters.remangaRatingMin,
         remangaRatingMax: filters.remangaRatingMax,
       };
-    case 'senkuro':
+    case 'readmanga':
+      return {
+        readmangaSortType: filters.readmangaSortType,
+        readmangaProductionStatuses: filters.readmangaProductionStatuses,
+        readmangaTranslationStatuses: filters.readmangaTranslationStatuses,
+        readmangaGenres: filters.readmangaGenres,
+        readmangaCategories: filters.readmangaCategories,
+        readmangaLimitations: filters.readmangaLimitations,
+        readmangaAnother: filters.readmangaAnother,
+        readmangaSearchFilters: filters.readmangaSearchFilters,
+        readmangaExcludeGenres: filters.readmangaExcludeGenres,
+        readmangaExcludeCategories: filters.readmangaExcludeCategories,
+        readmangaYearMin: filters.readmangaYearMin,
+        readmangaYearMax: filters.readmangaYearMax,
+      };    case 'senkuro':
       return {
         senkuroOrdering: filters.senkuroOrdering,
         senkuroStatuses: filters.senkuroStatuses,

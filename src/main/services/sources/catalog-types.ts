@@ -80,6 +80,18 @@ export interface CatalogFilters {
   remangaYearMax?: string;
   remangaRatingMin?: string;
   remangaRatingMax?: string;
+  readmangaSortType?: string;
+  readmangaProductionStatuses?: string[];
+  readmangaTranslationStatuses?: string[];
+  readmangaGenres?: string[];
+  readmangaCategories?: string[];
+  readmangaLimitations?: string[];
+  readmangaAnother?: string[];
+  readmangaSearchFilters?: string[];
+  readmangaExcludeGenres?: string[];
+  readmangaExcludeCategories?: string[];
+  readmangaYearMin?: string;
+  readmangaYearMax?: string;
 }
 
 export interface SimpleSiteConfig {
@@ -87,6 +99,7 @@ export interface SimpleSiteConfig {
   base: string;
   catalogPath: string;
   searchPath: string;
+  apiCatalogPath?: string;
   linkMarker: string;
 }
 

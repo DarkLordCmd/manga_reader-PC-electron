@@ -15,6 +15,7 @@ export const GROUPLE_SITES: SimpleSiteConfig[] = [
     base: 'https://readmanga.me',
     catalogPath: '/list?type=&sortType=rate',
     searchPath: '/search?q=',
+    apiCatalogPath: '/api/catalog/search',
     linkMarker: '/manga/',
   },
   { name: 'Mintmanga', base: 'https://mintmanga.com', catalogPath: '/list?sortType=rate', searchPath: '/search?q=', linkMarker: '/manga/' },
@@ -160,19 +161,61 @@ export function parseGroupleListing(html: string, base: string, _page = 0): Cata
   return results;
 }
 
+export interface GroupleCatalogFilters {
+  sortType?: string;
+  productionStatuses?: string[];
+  translationStatuses?: string[];
+  elementIds?: string[];
+  excludeElementIds?: string[];
+  searchFilters?: string[];
+  yearMin?: string;
+  yearMax?: string;
+}
+
 export async function searchGrouple(
   cfg: SimpleSiteConfig,
   query: string,
   page = 0,
   fetchOverride?: (url: string) => Promise<string>,
-  opts: { proxy?: string } = {},
+  opts: { proxy?: string; filters?: GroupleCatalogFilters } = {},
 ): Promise<CatalogItem[]> {
-  const target = query.trim()
-    ? `${cfg.base}/api/catalog/search?q=${encodeURIComponent(query.trim())}&offset=${page * 50}`
-    : // Servers ignore `page=` — the listing paginates by 50-item offset.
-      `${cfg.base}${cfg.catalogPath}${page > 0 ? `${cfg.catalogPath.includes('?') ? '&' : '?'}offset=${page * 50}` : ''}`;
+  const f = opts.filters;
+  const hasFilters = !!(
+    f &&
+    (f.sortType ||
+      f.productionStatuses?.length ||
+      f.translationStatuses?.length ||
+      f.elementIds?.length ||
+      f.excludeElementIds?.length ||
+      f.searchFilters?.length ||
+      f.yearMin ||
+      f.yearMax)
+  );
+  let target: string;
+  let isApi = false;
+  if (cfg.apiCatalogPath && hasFilters) {
+    const p = new URLSearchParams();
+    p.set('q', query.trim());
+    p.set('offset', String(page * 50));
+    p.set('sortType', f?.sortType?.trim() || 'RATING');
+    p.set('years', `${f?.yearMin?.trim() || '1950'},${f?.yearMax?.trim() || '2027'}`);
+    for (const value of f?.productionStatuses ?? []) p.append('includeProductionStatuses', value);
+    for (const value of f?.translationStatuses ?? []) p.append('includeTranslationStatuses', value);
+    for (const value of f?.elementIds ?? []) p.append('includeElementIds', value);
+    for (const value of f?.excludeElementIds ?? []) p.append('excludeElementIds', value);
+    for (const value of f?.searchFilters ?? []) p.append('includeSearchFilter', value);
+    target = `${cfg.base}${cfg.apiCatalogPath}?${p.toString()}`;
+    isApi = true;
+  } else if (query.trim()) {
+    // Keep the legacy search API URL shape for query-only calls.
+    target = `${cfg.base}/api/catalog/search?q=${encodeURIComponent(query.trim())}&offset=${page * 50}`;
+    isApi = true;
+  } else {
+    // Servers ignore `page=` — the listing paginates by 50-item offset.
+    target = `${cfg.base}${cfg.catalogPath}${page > 0 ? `${cfg.catalogPath.includes('?') ? '&' : '?'}offset=${page * 50}` : ''}`;
+  }
   const data = fetchOverride ? await fetchOverride(target) : await fetchHtmlSmart(target, { proxy: opts.proxy });
-  const results = query.trim() ? parseGroupleSearchJson(data, cfg.base) : parseGroupleListing(data, cfg.base, page);
+  const results = isApi ? parseGroupleSearchJson(data, cfg.base) : parseGroupleListing(data, cfg.base, page);
   if (results.length === 0) throw new Error(`${cfg.name}: ничего не найдено (или вёрстка изменилась)`);
   return results;
 }

@@ -165,6 +165,18 @@ export interface CatalogFilters {
   remangaYearMax?: string;
   remangaRatingMin?: string;
   remangaRatingMax?: string;
+  readmangaSortType?: string;
+  readmangaProductionStatuses?: string[];
+  readmangaTranslationStatuses?: string[];
+  readmangaGenres?: string[];
+  readmangaCategories?: string[];
+  readmangaLimitations?: string[];
+  readmangaAnother?: string[];
+  readmangaSearchFilters?: string[];
+  readmangaExcludeGenres?: string[];
+  readmangaExcludeCategories?: string[];
+  readmangaYearMin?: string;
+  readmangaYearMax?: string;
   senkuroOrdering?: string;
   senkuroStatuses?: string[];
   senkuroTypes?: string[];

@@ -1,7 +1,7 @@
 import { errorText } from '../../lib/errors';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CatalogCard, CatalogCursor, CatalogFilters, ChapterListItem, ExAccount } from '@shared/ipc';
-import { filterCardsByEhKinds, DEFAULT_REMANGA_ORDERING } from '@shared/filters';
+import { filterCardsByEhKinds, DEFAULT_REMANGA_ORDERING, DEFAULT_READMANGA_SORT } from '@shared/filters';
 import type { ReadingStatus } from '@shared/library';
 import type { QuickSearch } from '@shared/quick-search';
 import type { MenuItem } from '../../components/ContextMenu';
@@ -165,6 +165,18 @@ export function useCatalogSearch() {
   const [rmYearMax, setRmYearMax] = useState('');
   const [rmRatingMin, setRmRatingMin] = useState('');
   const [rmRatingMax, setRmRatingMax] = useState('');
+  const [grSortType, setGrSortType] = useState(DEFAULT_READMANGA_SORT);
+  const [grProduction, setGrProduction] = useState<string[]>([]);
+  const [grTranslation, setGrTranslation] = useState<string[]>([]);
+  const [grGenres, setGrGenres] = useState<string[]>([]);
+  const [grCategories, setGrCategories] = useState<string[]>([]);
+  const [grLimitations, setGrLimitations] = useState<string[]>([]);
+  const [grAnother, setGrAnother] = useState<string[]>([]);
+  const [grSearchFilters, setGrSearchFilters] = useState<string[]>([]);
+  const [grExcludeGenres, setGrExcludeGenres] = useState<string[]>([]);
+  const [grExcludeCategories, setGrExcludeCategories] = useState<string[]>([]);
+  const [grYearMin, setGrYearMin] = useState('');
+  const [grYearMax, setGrYearMax] = useState('');
   const [skOrdering, setSkOrdering] = useState('');
   const [skStatus, setSkStatus] = useState<string[]>([]);
   const [skType, setSkType] = useState<string[]>([]);
@@ -283,6 +295,18 @@ export function useCatalogSearch() {
     remangaYearMax: rmYearMax,
     remangaRatingMin: rmRatingMin,
     remangaRatingMax: rmRatingMax,
+    readmangaSortType: grSortType,
+    readmangaProductionStatuses: grProduction,
+    readmangaTranslationStatuses: grTranslation,
+    readmangaGenres: grGenres,
+    readmangaCategories: grCategories,
+    readmangaLimitations: grLimitations,
+    readmangaAnother: grAnother,
+    readmangaSearchFilters: grSearchFilters,
+    readmangaExcludeGenres: grExcludeGenres,
+    readmangaExcludeCategories: grExcludeCategories,
+    readmangaYearMin: grYearMin,
+    readmangaYearMax: grYearMax,
     senkuroOrdering: skOrdering,
     senkuroStatuses: skStatus,
     senkuroTypes: skType,
@@ -320,6 +344,7 @@ export function useCatalogSearch() {
     source === 'remanga' ||
     source === 'senkuro' ||
     source === 'comx' ||
+    source === 'readmanga' ||
     nhTagSource;
   const visibleQuickSearches = visibleQuickSearchesFor(settings.quick_searches, settings.show_r34_history);
 
@@ -604,10 +629,11 @@ export function useCatalogSearch() {
           // was used to load that page, otherwise "Пред." fetched page 1.
           const stored = pageCursorRef.current.get(`${sig}|${p}`);
           const cursor = p === 0 ? undefined : dir === 'prev' ? (stored ?? cursorFor(cards, 'prev')) : (cursorFor(cards, 'next') ?? stored);
+          const sourceTimeoutMs = source === 'readmanga' ? 60_000 : 35_000;
           res = await withSourceTimeout(
             window.api.searchCatalog(source, effectiveQuery, p, sort, filters, cursor),
-            35_000,
-            'Источник не ответил за 35 секунд. Проверьте соединение/прокси и повторите.',
+            sourceTimeoutMs,
+            `Источник не ответил за ${sourceTimeoutMs / 1000} секунд. Проверьте соединение/прокси и повторите.`,
           );
           pageCursorRef.current.set(`${sig}|${p}`, cursor);
           trimCursorCache(pageCursorRef.current);
@@ -759,6 +785,18 @@ export function useCatalogSearch() {
     setRmYearMax('');
     setRmRatingMin('');
     setRmRatingMax('');
+    setGrSortType(DEFAULT_READMANGA_SORT);
+    setGrProduction([]);
+    setGrTranslation([]);
+    setGrGenres([]);
+    setGrCategories([]);
+    setGrLimitations([]);
+    setGrAnother([]);
+    setGrSearchFilters([]);
+    setGrExcludeGenres([]);
+    setGrExcludeCategories([]);
+    setGrYearMin('');
+    setGrYearMax('');
     setSkOrdering('');
     setSkStatus([]);
     setSkType([]);
@@ -1128,6 +1166,30 @@ export function useCatalogSearch() {
     setRmRatingMin,
     rmRatingMax,
     setRmRatingMax,
+    grSortType,
+    setGrSortType,
+    grProduction,
+    setGrProduction,
+    grTranslation,
+    setGrTranslation,
+    grGenres,
+    setGrGenres,
+    grCategories,
+    setGrCategories,
+    grLimitations,
+    setGrLimitations,
+    grAnother,
+    setGrAnother,
+    grSearchFilters,
+    setGrSearchFilters,
+    grExcludeGenres,
+    setGrExcludeGenres,
+    grExcludeCategories,
+    setGrExcludeCategories,
+    grYearMin,
+    setGrYearMin,
+    grYearMax,
+    setGrYearMax,
     skOrdering,
     setSkOrdering,
     skStatus,

@@ -20,6 +20,15 @@ import {
   COMX_GENRES,
   COMX_STATUSES,
   COMX_TYPES,
+  DEFAULT_READMANGA_SORT,
+  READMANGA_SORTS,
+  READMANGA_PRODUCTION_STATUSES,
+  READMANGA_TRANSLATION_STATUSES,
+  READMANGA_GENRES,
+  READMANGA_CATEGORIES,
+  READMANGA_LIMITATIONS,
+  READMANGA_ANOTHER,
+  READMANGA_SEARCH_FILTERS,
 } from '@shared/filters';
 import {
   ML_AGES,
@@ -248,6 +257,14 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
     rmCategories: false,
     rmExcludeGenres: false,
     rmExcludeCategories: false,
+    grSort: true,
+    grMain: true,
+    grGenres: false,
+    grCategories: false,
+    grMeta: false,
+    grSearch: false,
+    grExcludeGenres: false,
+    grExcludeCategories: false,
   });
   const [msTagQuery, setMsTagQuery] = useState('');
   const [msExcludeTagQuery, setMsExcludeTagQuery] = useState('');
@@ -259,6 +276,10 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
   const [rmCategoryQuery, setRmCategoryQuery] = useState('');
   const [rmExcludeGenreQuery, setRmExcludeGenreQuery] = useState('');
   const [rmExcludeCategoryQuery, setRmExcludeCategoryQuery] = useState('');
+  const [grGenreQuery, setGrGenreQuery] = useState('');
+  const [grCategoryQuery, setGrCategoryQuery] = useState('');
+  const [grExcludeGenreQuery, setGrExcludeGenreQuery] = useState('');
+  const [grExcludeCategoryQuery, setGrExcludeCategoryQuery] = useState('');
   const toggleSection = (key: string): void => setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   const toggleIn = (setter: (fn: (prev: string[]) => string[]) => void) => (v: string) =>
     setter((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
@@ -327,7 +348,44 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
       ...REMANGA_CATEGORIES.filter(([v]) => sel.has(v)),
       ...REMANGA_CATEGORIES.filter(([v, l]) => !sel.has(v) && (!q || l.toLowerCase().includes(q))),
     ];
-  }, [rmExcludeCategoryQuery, s.rmExcludeCategories]);  const selectedLabels = s.skLabelList.filter((l) => s.skLabels.includes(l.slug));
+  }, [rmExcludeCategoryQuery, s.rmExcludeCategories]);
+
+  const grMainCount =
+    s.grProduction.length +
+    s.grTranslation.length +
+    [s.grYearMin, s.grYearMax].filter(Boolean).length;
+  const grGenreList = useMemo(() => {
+    const q = grGenreQuery.trim().toLowerCase();
+    const selected = new Set(s.grGenres);
+    return [
+      ...READMANGA_GENRES.filter(([value]) => selected.has(value)),
+      ...READMANGA_GENRES.filter(([value, label]) => !selected.has(value) && (!q || label.toLowerCase().includes(q))),
+    ];
+  }, [grGenreQuery, s.grGenres]);
+  const grCategoryList = useMemo(() => {
+    const q = grCategoryQuery.trim().toLowerCase();
+    const selected = new Set(s.grCategories);
+    return [
+      ...READMANGA_CATEGORIES.filter(([value]) => selected.has(value)),
+      ...READMANGA_CATEGORIES.filter(([value, label]) => !selected.has(value) && (!q || label.toLowerCase().includes(q))),
+    ];
+  }, [grCategoryQuery, s.grCategories]);
+  const grExcludeGenreList = useMemo(() => {
+    const q = grExcludeGenreQuery.trim().toLowerCase();
+    const selected = new Set(s.grExcludeGenres);
+    return [
+      ...READMANGA_GENRES.filter(([value]) => selected.has(value)),
+      ...READMANGA_GENRES.filter(([value, label]) => !selected.has(value) && (!q || label.toLowerCase().includes(q))),
+    ];
+  }, [grExcludeGenreQuery, s.grExcludeGenres]);
+  const grExcludeCategoryList = useMemo(() => {
+    const q = grExcludeCategoryQuery.trim().toLowerCase();
+    const selected = new Set(s.grExcludeCategories);
+    return [
+      ...READMANGA_CATEGORIES.filter(([value]) => selected.has(value)),
+      ...READMANGA_CATEGORIES.filter(([value, label]) => !selected.has(value) && (!q || label.toLowerCase().includes(q))),
+    ];
+  }, [grExcludeCategoryQuery, s.grExcludeCategories]);  const selectedLabels = s.skLabelList.filter((l) => s.skLabels.includes(l.slug));
   const msTagList = useMemo(() => {
     const q = msTagQuery.trim().toLowerCase();
     const selected = new Set(s.msTags);
@@ -1031,6 +1089,191 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
               onToggle={(v) => {
                 s.setRmCategories((prev) => prev.filter((x) => x !== v));
                 s.setRmExcludeCategories((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+              }}
+            />
+          </FilterSection>
+        </>
+      )}
+
+      {s.source === 'readmanga' && (
+        <>
+          <FilterSection
+            title="Сортировка"
+            count={s.grSortType !== DEFAULT_READMANGA_SORT ? 1 : 0}
+            open={!!openSections.grSort}
+            onToggle={() => toggleSection('grSort')}
+          >
+            <SelectFilter options={READMANGA_SORTS} value={s.grSortType} onChange={s.setGrSortType} />
+          </FilterSection>
+
+          <FilterSection
+            title="Параметры"
+            count={grMainCount}
+            open={!!openSections.grMain}
+            onToggle={() => toggleSection('grMain')}
+          >
+            <SubLabel>Статус выхода</SubLabel>
+            <TagChecklist
+              items={READMANGA_PRODUCTION_STATUSES}
+              selected={s.grProduction}
+              onToggle={(v) =>
+                s.setGrProduction((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))
+              }
+            />
+            <SubLabel>Статус перевода</SubLabel>
+            <TagChecklist
+              items={READMANGA_TRANSLATION_STATUSES}
+              selected={s.grTranslation}
+              onToggle={(v) =>
+                s.setGrTranslation((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))
+              }
+            />
+            <FilterRow label="Год выпуска">
+              <div className="filter-range">
+                <input
+                  className="filter-input narrow"
+                  inputMode="numeric"
+                  placeholder="От"
+                  aria-label="Год от"
+                  value={s.grYearMin}
+                  onChange={(e) => s.setGrYearMin(e.target.value.replace(/\D/g, ''))}
+                />
+                <span>—</span>
+                <input
+                  className="filter-input narrow"
+                  inputMode="numeric"
+                  placeholder="До"
+                  aria-label="Год до"
+                  value={s.grYearMax}
+                  onChange={(e) => s.setGrYearMax(e.target.value.replace(/\D/g, ''))}
+                />
+              </div>
+            </FilterRow>
+          </FilterSection>
+
+          <FilterSection
+            title="Жанры"
+            count={s.grGenres.length}
+            open={!!openSections.grGenres}
+            onToggle={() => toggleSection('grGenres')}
+          >
+            <input
+              className="filter-input full"
+              placeholder="Поиск жанра…"
+              value={grGenreQuery}
+              onChange={(e) => setGrGenreQuery(e.target.value)}
+            />
+            <TagChecklist
+              items={grGenreList}
+              selected={s.grGenres}
+              onToggle={(v) => {
+                s.setGrExcludeGenres((prev) => prev.filter((x) => x !== v));
+                s.setGrGenres((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+              }}
+            />
+          </FilterSection>
+
+          <FilterSection
+            title="Категории"
+            count={s.grCategories.length}
+            open={!!openSections.grCategories}
+            onToggle={() => toggleSection('grCategories')}
+          >
+            <input
+              className="filter-input full"
+              placeholder="Поиск категории…"
+              value={grCategoryQuery}
+              onChange={(e) => setGrCategoryQuery(e.target.value)}
+            />
+            <TagChecklist
+              items={grCategoryList}
+              selected={s.grCategories}
+              onToggle={(v) => {
+                s.setGrExcludeCategories((prev) => prev.filter((x) => x !== v));
+                s.setGrCategories((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+              }}
+            />
+          </FilterSection>
+
+          <FilterSection
+            title="Ограничения"
+            count={s.grLimitations.length + s.grAnother.length}
+            open={!!openSections.grMeta}
+            onToggle={() => toggleSection('grMeta')}
+          >
+            <SubLabel>Возрастной рейтинг</SubLabel>
+            <TagChecklist
+              items={READMANGA_LIMITATIONS}
+              selected={s.grLimitations}
+              onToggle={(v) =>
+                s.setGrLimitations((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))
+              }
+            />
+            <SubLabel>Дополнительно</SubLabel>
+            <TagChecklist
+              items={READMANGA_ANOTHER}
+              selected={s.grAnother}
+              onToggle={(v) =>
+                s.setGrAnother((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))
+              }
+            />
+          </FilterSection>
+
+          <FilterSection
+            title="Подборки"
+            count={s.grSearchFilters.length}
+            open={!!openSections.grSearch}
+            onToggle={() => toggleSection('grSearch')}
+          >
+            <TagChecklist
+              items={READMANGA_SEARCH_FILTERS}
+              selected={s.grSearchFilters}
+              onToggle={(v) =>
+                s.setGrSearchFilters((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))
+              }
+            />
+          </FilterSection>
+
+          <FilterSection
+            title="Исключить жанры"
+            count={s.grExcludeGenres.length}
+            open={!!openSections.grExcludeGenres}
+            onToggle={() => toggleSection('grExcludeGenres')}
+          >
+            <input
+              className="filter-input full"
+              placeholder="Найти исключаемый жанр…"
+              value={grExcludeGenreQuery}
+              onChange={(e) => setGrExcludeGenreQuery(e.target.value)}
+            />
+            <TagChecklist
+              items={grExcludeGenreList}
+              selected={s.grExcludeGenres}
+              onToggle={(v) => {
+                s.setGrGenres((prev) => prev.filter((x) => x !== v));
+                s.setGrExcludeGenres((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+              }}
+            />
+          </FilterSection>
+
+          <FilterSection
+            title="Исключить категории"
+            count={s.grExcludeCategories.length}
+            open={!!openSections.grExcludeCategories}
+            onToggle={() => toggleSection('grExcludeCategories')}
+          >
+            <input
+              className="filter-input full"
+              placeholder="Найти исключаемую категорию…"
+              value={grExcludeCategoryQuery}
+              onChange={(e) => setGrExcludeCategoryQuery(e.target.value)}
+            />
+            <TagChecklist
+              items={grExcludeCategoryList}
+              selected={s.grExcludeCategories}
+              onToggle={(v) => {
+                s.setGrCategories((prev) => prev.filter((x) => x !== v));
+                s.setGrExcludeCategories((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
               }}
             />
           </FilterSection>
