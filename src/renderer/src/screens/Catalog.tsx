@@ -12,7 +12,7 @@ const EH_SOURCES = new Set(['ehentai', 'exhentai', 'exhentai_onion']);
 const CARD_SIZE_KEY = 'catalog_card_size';
 const CARD_SIZE_DEFAULT = 150;
 const CARD_SIZE_MIN = 110;
-const CARD_SIZE_MAX = 240;
+const CARD_SIZE_MAX = 400;
 
 /** The login window ends on the site's own front page; the onion mirror serves
  * its own captcha form there, the clearnet hosts use the forum login. */

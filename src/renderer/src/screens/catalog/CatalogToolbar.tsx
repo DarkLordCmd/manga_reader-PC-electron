@@ -14,7 +14,7 @@ function CardSizeControl({ value, onChange }: { value: number; onChange: (value:
       <input
         type="range"
         min={110}
-        max={240}
+        max={400}
         step={10}
         value={value}
         aria-label="Размер карточек"
