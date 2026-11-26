@@ -289,7 +289,7 @@ export function registerCatalog(deps: CatalogDeps): {
             },
           );
         })().catch(() => {});
-        return items;
+        return items.map((c) => ({ ...c, adult: true }));
       }
       if (source === 'ehentai' || source === 'exhentai' || source === 'exhentai_onion') {
         const useOnion = source === 'exhentai_onion';
@@ -370,6 +370,9 @@ export function registerCatalog(deps: CatalogDeps): {
           score: c.rating,
           kind: c.category,
           tags: c.tags ?? [],
+          // Every E-Hentai/ExHentai gallery is adult content; without this
+          // flag the privacy blur was bypassed for the whole R34 source.
+          adult: true,
         }));
       }
       if (source === 'comx') {
@@ -486,7 +489,7 @@ export function registerCatalog(deps: CatalogDeps): {
         exProxyAddr: s.exhentai_proxy_addr,
         torProxied,
       });
-      return ex.map((c) => ({ url: c.url, title: c.title, coverUrl: c.coverUrl, pages: c.pages, score: c.rating, kind: c.category }));
+      return ex.map((c) => ({ url: c.url, title: c.title, coverUrl: c.coverUrl, pages: c.pages, score: c.rating, kind: c.category, adult: true }));
     },
   );
   handleSafe(CH.ehTagSuggest, z.tuple([anyString]), async (_e, text: string) => {
