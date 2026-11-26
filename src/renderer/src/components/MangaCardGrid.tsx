@@ -14,6 +14,8 @@ interface Props {
   onContextMenu?: (e: React.MouseEvent, card: CatalogCard) => void;
   /** Blur covers of 18+ works (privacy setting). */
   blurAdult?: boolean;
+  /** Minimum card width in px; controlled by the catalog size slider. */
+  cardSize?: number;
 }
 
 interface CardProps {
@@ -81,11 +83,11 @@ const MangaCard = memo(function MangaCard({ card, progressEntry, status, onSelec
   );
 });
 
-function MangaCardGrid({ cards, onSelect, progress, statuses, onContextMenu, blurAdult }: Props): JSX.Element {
+function MangaCardGrid({ cards, onSelect, progress, statuses, onContextMenu, blurAdult, cardSize = 150 }: Props): JSX.Element {
   const normalizedProgress = Object.fromEntries(Object.entries(progress ?? {}).map(([url, entry]) => [normalizeUrl(url), entry]));
   const normalizedStatuses = Object.fromEntries(Object.entries(statuses ?? {}).map(([url, status]) => [normalizeUrl(url), status]));
   return (
-    <div className="catalog-grid">
+    <div className="catalog-grid" style={{ '--card-min': `${cardSize}px` } as React.CSSProperties}>
       {cards.map((c) => {
         const cardUrl = normalizeUrl(c.url);
         return (

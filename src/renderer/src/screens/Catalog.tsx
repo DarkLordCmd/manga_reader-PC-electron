@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import ContextMenu from '../components/ContextMenu';
 import MangaCardGrid from '../components/MangaCardGrid';
 import CatalogToolbar from './catalog/CatalogToolbar';
@@ -9,6 +9,10 @@ import { useCatalogSearch } from './catalog/useCatalogSearch';
 import { errorText } from '../lib/errors';
 
 const EH_SOURCES = new Set(['ehentai', 'exhentai', 'exhentai_onion']);
+const CARD_SIZE_KEY = 'catalog_card_size';
+const CARD_SIZE_DEFAULT = 150;
+const CARD_SIZE_MIN = 110;
+const CARD_SIZE_MAX = 240;
 
 /** The login window ends on the site's own front page; the onion mirror serves
  * its own captcha form there, the clearnet hosts use the forum login. */
@@ -20,12 +24,27 @@ function ehLoginUrl(source: string): string {
 
 export default function Catalog(): JSX.Element {
   const s = useCatalogSearch();
+  const [cardSize, setCardSize] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem(CARD_SIZE_KEY));
+      return Number.isFinite(saved) && saved >= CARD_SIZE_MIN && saved <= CARD_SIZE_MAX ? saved : CARD_SIZE_DEFAULT;
+    } catch {
+      return CARD_SIZE_DEFAULT;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(CARD_SIZE_KEY, String(cardSize));
+    } catch {
+      /* storage is optional */
+    }
+  }, [cardSize]);
   const [ehLoginBusy, setEhLoginBusy] = useState(false);
   const sessionProblem = !!s.error && /пустую страницу|сесси|sad panda|cookie/i.test(s.error);
 
   return (
     <div className="catalog screen">
-      <CatalogToolbar s={s} />
+      <CatalogToolbar s={s} cardSize={cardSize} onCardSize={setCardSize} />
 
       <TagBar s={s} />
 
@@ -85,6 +104,7 @@ export default function Catalog(): JSX.Element {
               statuses={s.statuses}
               onContextMenu={s.openCardMenu}
               blurAdult={s.settings.blur_adult_covers}
+              cardSize={cardSize}
             />
           )}
 
