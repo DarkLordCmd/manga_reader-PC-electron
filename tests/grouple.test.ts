@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { searchGrouple, GROUPLE_SITES, fetchGroupleChapters } from '../src/main/services/sources/grouple';
+import { searchGrouple, GROUPLE_SITES, fetchGroupleChapters, parseGroupleListing } from '../src/main/services/sources/grouple';
 import { mangaSeriesUrlFromChapterUrl } from '../src/main/services/sources/remanga';
 import type { CatalogItem } from '../src/main/services/sources/catalog-types';
 
@@ -17,10 +17,7 @@ describe('GROUPLE_SITES', () => {
 describe('searchGrouple parse', () => {
   it('extracts tiles and covers', async () => {
     // searchGrouple принимает parse-callback для тестов
-    const items: CatalogItem[] = await searchGrouple(GROUPLE_SITES[0], '', 0, (url) => {
-      if (url === `${GROUPLE_SITES[0].base}/list?type=&sortType=rate`) return Promise.resolve(html);
-      throw new Error('unexpected ' + url);
-    });
+    const items: CatalogItem[] = parseGroupleListing(html, GROUPLE_SITES[0].base);
     expect(items).toHaveLength(2);
     expect(items[0].title).toBe('Берсерк');
     expect(items[0].url).toBe('https://readmanga.me/berserk-/');
@@ -37,10 +34,7 @@ describe('searchGrouple parse', () => {
   <a href="/about">О нас</a>
 </body>`,
     );
-    const items = await searchGrouple(GROUPLE_SITES[0], '', 0, (url) => {
-      if (url === `${GROUPLE_SITES[0].base}/list?type=&sortType=rate`) return Promise.resolve(junkHtml);
-      throw new Error('unexpected ' + url);
-    });
+    const items = parseGroupleListing(junkHtml, GROUPLE_SITES[0].base);
     expect(items).toHaveLength(2);
     expect(items.map((i) => i.url)).not.toContain('https://readmanga.me/collection');
   });
@@ -48,29 +42,31 @@ describe('searchGrouple parse', () => {
   it('parses JSON search results from the SPA api', async () => {
     const searchJson = readFileSync(join('tests', 'fixtures', 'grouple-search-api.json'), 'utf-8');
     const items = await searchGrouple(GROUPLE_SITES[0], 'berserk', 0, (url) => {
-      if (url === `${GROUPLE_SITES[0].base}/api/catalog/search?q=berserk&offset=0`) return Promise.resolve(searchJson);
+      if (url.startsWith(`${GROUPLE_SITES[0].base}/api/catalog/search?q=berserk&offset=0`)) return Promise.resolve(searchJson);
       throw new Error('unexpected ' + url);
     });
     expect(items).toHaveLength(2);
     expect(items[0].title).toBe('Ненасытный Берсерк');
     expect(items[0].url).toBe('https://readmanga.me/nenasytnyi_berserk/');
     expect(items[0].coverUrl).toBe('https://rm.one-way.work/uploads/pics/01/92/177.webp');
-    expect(items[0].pages).toBe(92);
-    expect(items[1].pages).toBeNull();
+    expect(items[0].chapterCount).toBe(92);
+    expect(items[1].chapterCount).toBeNull();
   });
 
   it('paginates JSON search with offset', async () => {
     const searchJson = readFileSync(join('tests', 'fixtures', 'grouple-search-api.json'), 'utf-8');
     await searchGrouple(GROUPLE_SITES[0], 'berserk', 2, (url) => {
-      if (url === `${GROUPLE_SITES[0].base}/api/catalog/search?q=berserk&offset=100`) return Promise.resolve(searchJson);
+      if (url.startsWith(`${GROUPLE_SITES[0].base}/api/catalog/search?q=berserk&offset=100`)) return Promise.resolve(searchJson);
       throw new Error('unexpected ' + url);
     });
   });
 
-  it('paginates the listing by 50-item offset', async () => {
+  it('paginates the default listing by 50-item offset', async () => {
+    const searchJson = readFileSync(join('tests', 'fixtures', 'grouple-search-api.json'), 'utf-8');
     await searchGrouple(GROUPLE_SITES[0], '', 2, (url) => {
-      if (url === `${GROUPLE_SITES[0].base}/list?type=&sortType=rate&offset=100`) return Promise.resolve(html);
-      throw new Error('unexpected ' + url);
+      expect(url).toContain('/api/catalog/search');
+      expect(new URL(url).searchParams.get('offset')).toBe('100');
+      return Promise.resolve(searchJson);
     });
   });
 });

@@ -22,7 +22,7 @@ describe('parseGroupleListing card strategy (mangapoisk markup)', () => {
     expect(mp).toBeDefined();
     expect(mp!.title).toBe('Реинкарнация в безумного наследника');
     expect(mp!.coverUrl).toContain('static2.mangapoisk.me/posters/7154/');
-    expect(mp!.pages).toBe(167);
+    expect(mp!.chapterCount).toBe(167);
   });
   it('still parses legacy tiles (readmanga markup)', () => {
     const r = parseGroupleListing(tileHtml, 'https://readmanga.me');

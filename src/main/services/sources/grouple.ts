@@ -16,6 +16,7 @@ export const GROUPLE_SITES: SimpleSiteConfig[] = [
     catalogPath: '/list?type=&sortType=rate',
     searchPath: '/search?q=',
     apiCatalogPath: '/api/catalog/search',
+    useApiCatalog: true,
     linkMarker: '/manga/',
   },
   {
@@ -110,6 +111,35 @@ export function parseGroupleListing(html: string, base: string, _page = 0): Cata
   const results: CatalogItem[] = [];
   const seen = new Set<string>();
 
+  // Mangapoisk embeds the complete page model in #app[data-page]; it is more
+  // reliable than scraping cards and includes chapters_count.
+  try {
+    const raw = $('#app').attr('data-page');
+    const data = raw ? JSON.parse(raw) : null;
+    const list = data?.props?.mangaList?.data;
+    if (Array.isArray(list) && list.length > 0) {
+      for (const m of list) {
+        const link = typeof m?.link === 'string' ? m.link : '';
+        const title = typeof m?.title === 'string' ? m.title.trim() : '';
+        if (!link || title.length < 2) continue;
+        const full = resolve(base, link);
+        if (!full || seen.has(full)) continue;
+        seen.add(full);
+        const cover = m?.poster?.link_mini ?? m?.poster?.link ?? null;
+        results.push({
+          url: full,
+          title,
+          coverUrl: typeof cover === 'string' ? resolve(base, cover) : null,
+          pages: null,
+          chapterCount: typeof m?.chapters_count === 'number' ? m.chapters_count : null,
+        });
+      }
+      if (results.length > 0) return results;
+    }
+  } catch {
+    /* fall back to the card parser */
+  }
+
   // Mangapoisk's current catalogue is a server-rendered grid of
   // <a class="mb-5" href="/manga/slug" title="…"> cover/title anchors with a
   // separate .post-description sibling. It has neither Grouple tile markers
@@ -150,7 +180,7 @@ export function parseGroupleListing(html: string, base: string, _page = 0): Cata
 
   // Strategy B: server-rendered card grids (`card shadow mb-4`, e.g.
   // mangapoisk.me) — <a href="/manga/<slug>" title="…"> with <img> inside.
-  const tryCardBlock = (el: any): { full: string; title: string; pages: number | null } | null => {
+  const tryCardBlock = (el: any): { full: string; title: string; chapterCount: number | null } | null => {
     const href = $(el).attr('href') ?? '';
     if (!href.includes('/manga/')) return null;
     // Chapter links (`/manga/<slug>/chapter/<v>-<n>`) point inside a card — skip.
@@ -172,7 +202,7 @@ export function parseGroupleListing(html: string, base: string, _page = 0): Cata
     // Latest chapter number from the trailing "167 Глава" link, if present.
     const cardText = $(el).parent().text();
     const cm = cardText.match(/(\d+)\s*Глава/);
-    return { full, title, pages: cm ? Number(cm[1]) : null };
+    return { full, title, chapterCount: cm ? Number(cm[1]) : null };
   };
 
   $('div.card').each((_d, card) => {
@@ -182,7 +212,7 @@ export function parseGroupleListing(html: string, base: string, _page = 0): Cata
     if (!hit || seen.has(hit.full)) return;
     seen.add(hit.full);
     const cover = extractCoverFromSubtree($, card);
-    results.push({ url: hit.full, title: hit.title, coverUrl: cover ? resolve(base, cover) : null, pages: hit.pages });
+    results.push({ url: hit.full, title: hit.title, coverUrl: cover ? resolve(base, cover) : null, pages: null, chapterCount: hit.chapterCount });
   });
 
   // On card-grid pages (e.g. mangapoisk) the generic anchor scan only adds
@@ -287,7 +317,8 @@ export function parseGroupleSearchJson(jsonText: string, base: string): CatalogI
       url: `${base}/${m.elementId.linkName}/`,
       title: typeof m?.name === 'string' && m.name.trim() ? m.name.trim() : 'Без названия',
       coverUrl: typeof m?.picUrl === 'string' && m.picUrl ? m.picUrl : null,
-      pages: typeof m?.chaptersCount === 'number' ? m.chaptersCount : null,
+      pages: null,
+      chapterCount: typeof m?.chaptersCount === 'number' ? m.chaptersCount : null,
     }));
 }
 
