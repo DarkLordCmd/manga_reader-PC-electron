@@ -29,6 +29,10 @@ import {
   READMANGA_LIMITATIONS,
   READMANGA_ANOTHER,
   READMANGA_SEARCH_FILTERS,
+  MINTMANGA_GENRES,
+  MINTMANGA_CATEGORIES,
+  MINTMANGA_LIMITATIONS,
+  MINTMANGA_ANOTHER,
 } from '@shared/filters';
 import {
   ML_AGES,
@@ -350,7 +354,10 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
     ];
   }, [rmExcludeCategoryQuery, s.rmExcludeCategories]);
 
-  const grMainCount =
+  const groupleGenres = s.source === 'mintmanga' ? MINTMANGA_GENRES : READMANGA_GENRES;
+  const groupleCategories = s.source === 'mintmanga' ? MINTMANGA_CATEGORIES : READMANGA_CATEGORIES;
+  const groupleLimitations = s.source === 'mintmanga' ? MINTMANGA_LIMITATIONS : READMANGA_LIMITATIONS;
+  const groupleAnother = s.source === 'mintmanga' ? MINTMANGA_ANOTHER : READMANGA_ANOTHER;  const grMainCount =
     s.grProduction.length +
     s.grTranslation.length +
     [s.grYearMin, s.grYearMax].filter(Boolean).length;
@@ -358,32 +365,32 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
     const q = grGenreQuery.trim().toLowerCase();
     const selected = new Set(s.grGenres);
     return [
-      ...READMANGA_GENRES.filter(([value]) => selected.has(value)),
-      ...READMANGA_GENRES.filter(([value, label]) => !selected.has(value) && (!q || label.toLowerCase().includes(q))),
+      ...groupleGenres.filter(([value]) => selected.has(value)),
+      ...groupleGenres.filter(([value, label]) => !selected.has(value) && (!q || label.toLowerCase().includes(q))),
     ];
   }, [grGenreQuery, s.grGenres]);
   const grCategoryList = useMemo(() => {
     const q = grCategoryQuery.trim().toLowerCase();
     const selected = new Set(s.grCategories);
     return [
-      ...READMANGA_CATEGORIES.filter(([value]) => selected.has(value)),
-      ...READMANGA_CATEGORIES.filter(([value, label]) => !selected.has(value) && (!q || label.toLowerCase().includes(q))),
+      ...groupleCategories.filter(([value]) => selected.has(value)),
+      ...groupleCategories.filter(([value, label]) => !selected.has(value) && (!q || label.toLowerCase().includes(q))),
     ];
   }, [grCategoryQuery, s.grCategories]);
   const grExcludeGenreList = useMemo(() => {
     const q = grExcludeGenreQuery.trim().toLowerCase();
     const selected = new Set(s.grExcludeGenres);
     return [
-      ...READMANGA_GENRES.filter(([value]) => selected.has(value)),
-      ...READMANGA_GENRES.filter(([value, label]) => !selected.has(value) && (!q || label.toLowerCase().includes(q))),
+      ...groupleGenres.filter(([value]) => selected.has(value)),
+      ...groupleGenres.filter(([value, label]) => !selected.has(value) && (!q || label.toLowerCase().includes(q))),
     ];
   }, [grExcludeGenreQuery, s.grExcludeGenres]);
   const grExcludeCategoryList = useMemo(() => {
     const q = grExcludeCategoryQuery.trim().toLowerCase();
     const selected = new Set(s.grExcludeCategories);
     return [
-      ...READMANGA_CATEGORIES.filter(([value]) => selected.has(value)),
-      ...READMANGA_CATEGORIES.filter(([value, label]) => !selected.has(value) && (!q || label.toLowerCase().includes(q))),
+      ...groupleCategories.filter(([value]) => selected.has(value)),
+      ...groupleCategories.filter(([value, label]) => !selected.has(value) && (!q || label.toLowerCase().includes(q))),
     ];
   }, [grExcludeCategoryQuery, s.grExcludeCategories]);  const selectedLabels = s.skLabelList.filter((l) => s.skLabels.includes(l.slug));
   const msTagList = useMemo(() => {
@@ -1095,7 +1102,7 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
         </>
       )}
 
-      {s.source === 'readmanga' && (
+      {(s.source === 'readmanga' || s.source === 'mintmanga') && (
         <>
           <FilterSection
             title="Сортировка"
@@ -1203,7 +1210,7 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
           >
             <SubLabel>Возрастной рейтинг</SubLabel>
             <TagChecklist
-              items={READMANGA_LIMITATIONS}
+              items={groupleLimitations}
               selected={s.grLimitations}
               onToggle={(v) =>
                 s.setGrLimitations((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))
@@ -1211,7 +1218,7 @@ export default function FilterPanel({ s }: { s: CatalogSearch }): JSX.Element {
             />
             <SubLabel>Дополнительно</SubLabel>
             <TagChecklist
-              items={READMANGA_ANOTHER}
+              items={groupleAnother}
               selected={s.grAnother}
               onToggle={(v) =>
                 s.setGrAnother((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))

@@ -414,7 +414,7 @@ export function registerCatalog(deps: CatalogDeps): {
         }
         // Grouple hosts are TCP/SNI-blocked on most RU networks — always go
         // through Tor (direct attempts just burn 10-30 s of timeouts).
-        const readmangaFilters = source === 'readmanga'
+        const readmangaFilters = source === 'readmanga' || source === 'mintmanga'
           ? {
               sortType: filters.readmangaSortType,
               productionStatuses: filters.readmangaProductionStatuses,

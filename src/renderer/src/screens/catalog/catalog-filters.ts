@@ -129,6 +129,7 @@ export function catalogFiltersForSource(
         remangaRatingMax: filters.remangaRatingMax,
       };
     case 'readmanga':
+    case 'mintmanga':
       return {
         readmangaSortType: filters.readmangaSortType,
         readmangaProductionStatuses: filters.readmangaProductionStatuses,

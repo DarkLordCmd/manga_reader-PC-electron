@@ -18,7 +18,15 @@ export const GROUPLE_SITES: SimpleSiteConfig[] = [
     apiCatalogPath: '/api/catalog/search',
     linkMarker: '/manga/',
   },
-  { name: 'Mintmanga', base: 'https://mintmanga.com', catalogPath: '/list?sortType=rate', searchPath: '/search?q=', linkMarker: '/manga/' },
+  {
+    name: 'Mintmanga',
+    base: 'https://1.mintmanga.com',
+    catalogPath: '/list?sortType=rate',
+    searchPath: '/search?q=',
+    apiCatalogPath: '/api/catalog/search',
+    useApiCatalog: true,
+    linkMarker: '/manga/',
+  },
   { name: 'Mangapoisk', base: 'https://mangapoisk.me', catalogPath: '/', searchPath: '?search=', linkMarker: '/manga/' },
 ];
 
@@ -193,7 +201,7 @@ export async function searchGrouple(
   );
   let target: string;
   let isApi = false;
-  if (cfg.apiCatalogPath && hasFilters) {
+  if (cfg.apiCatalogPath && (hasFilters || cfg.useApiCatalog)) {
     const p = new URLSearchParams();
     p.set('q', query.trim());
     p.set('offset', String(page * 50));

@@ -100,6 +100,8 @@ export interface SimpleSiteConfig {
   catalogPath: string;
   searchPath: string;
   apiCatalogPath?: string;
+  /** Use the JSON catalog API even for the unfiltered default listing. */
+  useApiCatalog?: boolean;
   linkMarker: string;
 }
 

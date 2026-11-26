@@ -345,6 +345,7 @@ export function useCatalogSearch() {
     source === 'senkuro' ||
     source === 'comx' ||
     source === 'readmanga' ||
+    source === 'mintmanga' ||
     nhTagSource;
   const visibleQuickSearches = visibleQuickSearchesFor(settings.quick_searches, settings.show_r34_history);
 
@@ -731,6 +732,24 @@ export function useCatalogSearch() {
     cancelPendingFilterSearch();
     setSkRatings((prev) => prev.filter((r) => r !== 'EXPLICIT'));
     setSourceState(next);
+    // Readmanga and Mintmanga share the GroupLe UI but use different element
+    // IDs. Do not carry a selected genre/category from one site into the other.
+    const fromGrouple = source === 'readmanga' || source === 'mintmanga';
+    const toGrouple = next === 'readmanga' || next === 'mintmanga';
+    if (fromGrouple && toGrouple && source !== next) {
+      setGrSortType(DEFAULT_READMANGA_SORT);
+      setGrProduction([]);
+      setGrTranslation([]);
+      setGrGenres([]);
+      setGrCategories([]);
+      setGrLimitations([]);
+      setGrAnother([]);
+      setGrSearchFilters([]);
+      setGrExcludeGenres([]);
+      setGrExcludeCategories([]);
+      setGrYearMin('');
+      setGrYearMax('');
+    }
     setCards([]);
     setError(null);
     setPage(0);
