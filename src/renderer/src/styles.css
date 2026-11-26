@@ -407,6 +407,23 @@ body.modal-open .thumb-panel {
     width: 120px;
   }
 }
+/* Windowed mode: keep the URL and page jump on their own line instead of
+   letting the fixed-width URL field hang off the right edge. */
+@media (max-width: 1400px) {
+  .rt-url {
+    order: 20;
+    flex: 1 1 200px;
+    min-width: 0;
+  }
+  .rt-url input.rt-input {
+    width: 100%;
+    min-width: 0;
+    flex: 1;
+  }
+  .rt-pages {
+    order: 21;
+  }
+}
 .spacer {
   flex: 1;
 }
